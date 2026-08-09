@@ -1,6 +1,6 @@
 /**
  * Typography catalogs — Latin font + size scale picks for the
- * translation layers (Russian + Ingush), plus the Arabic font catalog
+ * translation layer (Russian), plus the Arabic font catalog
  * that the reader can pick from in Typography settings.
  *
  * Arabic side has FOUR modes (in picker order):

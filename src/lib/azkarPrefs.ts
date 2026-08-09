@@ -2,11 +2,15 @@
  * Azkar visibility preferences.
  *
  * Stored in localStorage under an `azkar.*` namespace so they don't collide
- * with the Quran-side prefs (`showArabic` / `showIng` / `showRu`).  All
- * four blocks (Arabic + Ingush translation + Russian + Ingush-cyrillic
- * transliteration of the Arabic) are shown by default — Azkar readers
- * generally want every available aid on screen, and a future settings
- * popover will let advanced users hide whichever blocks they don't need.
+ * with the Quran-side prefs (`showArabic` / `showRu`).  All three blocks
+ * (Arabic + Russian translation + cyrillic transliteration of the Arabic)
+ * are shown by default — Azkar readers generally want every available aid
+ * on screen, and the settings popover lets them hide what they don't need.
+ *
+ * Ингушский блок убран при переносе в QuranRu (2026-08-09).  Старые ключи
+ * `azkar.showIngush` / `azkar.ingushScale` / `azkar.ingushFont` в
+ * localStorage просто перестают читаться — чистить их не нужно, они
+ * безвредны и исчезнут при переустановке.
  */
 
 import { AZKAR_FONT_IDS, type AzkarFontId } from './azkarFonts';
@@ -16,55 +20,47 @@ import {
 
 const KEYS = {
   showArabic:   'azkar.showArabic',
-  showIngush:   'azkar.showIngush',     // Ingush translation
-  showTranslit: 'azkar.showTranslit',   // Ingush cyrillic transliteration of the Arabic
+  showTranslit: 'azkar.showTranslit',   // cyrillic transliteration of the Arabic
   showRussian:  'azkar.showRussian',
   arabicFont:   'azkar.arabicFont',     // see lib/azkarFonts.ts
   arabicScale:   'azkar.arabicScale',
-  ingushScale:   'azkar.ingushScale',
   russianScale:  'azkar.russianScale',
   translitScale: 'azkar.translitScale',
-  ingushFont:    'azkar.ingushFont',    // see LATIN_FONTS in lib/typography.ts
-  russianFont:   'azkar.russianFont',
+  russianFont:   'azkar.russianFont',   // see LATIN_FONTS in lib/typography.ts
   translitFont:  'azkar.translitFont',
 } as const;
 
 const VISIBILITY_DEFAULTS = {
   showArabic:   true,
-  showIngush:   true,
   showTranslit: true,
   showRussian:  true,
 } as const;
 
-// Per-language defaults frozen from the user's preferred reading
-// configuration (Nov 2026).  Each one is the actual choice the user
-// dialed in via the typography popover; setting them as the defaults
-// here means a fresh install lands on exactly the same look.
+// Per-language defaults.
 //
 //  Arabic   — KFGQPC Uthmanic, large (1.4 / SCALE_OPTIONS[3])
-//  Ingush   — Alice serif, medium (1.0 / SCALE_OPTIONS[1])
-//  Russian  — Inter Regular, small (0.85 / SCALE_OPTIONS[0])
+//  Russian  — Inter Regular, medium (1.0 / SCALE_OPTIONS[1]).  В QuranIng
+//             русский шёл третьим языком и стоял на 0.85; здесь он
+//             основной перевод, поэтому поднят на шаг.
 //  Translit — Inter Regular, small (0.85 / SCALE_OPTIONS[0])
 //
 // The Arabic-comma issue (U+060C dotted-circle in raw KFGQPC) is
 // already solved by the "Azkar KFGQPC" composite font-family in
 // index.css (unicode-range splice from Noto Naskh).
 const DEFAULT_ARABIC_FONT: AzkarFontId = 'kfgqpc-v22';
-const DEFAULT_INGUSH_FONT: LatinFontId   = 'alice';
 const DEFAULT_RUSSIAN_FONT: LatinFontId  = 'inter-regular';
 const DEFAULT_TRANSLIT_FONT: LatinFontId = 'inter-regular';
 
 const DEFAULT_ARABIC_SCALE   = 1.4;
-const DEFAULT_INGUSH_SCALE   = 1.0;
-const DEFAULT_RUSSIAN_SCALE  = 0.85;
+const DEFAULT_RUSSIAN_SCALE  = 1.0;
 const DEFAULT_TRANSLIT_SCALE = 0.85;
 
 const LATIN_FONT_IDS = LATIN_FONTS.map(f => f.id);
 const ALLOWED_SCALES = SCALE_OPTIONS.map(o => o.value);
 
 export type AzkarVisibilityKey = keyof typeof VISIBILITY_DEFAULTS;
-export type AzkarScaleKey = 'arabicScale' | 'ingushScale' | 'russianScale' | 'translitScale';
-export type AzkarLatinFontKey = 'ingushFont' | 'russianFont' | 'translitFont';
+export type AzkarScaleKey = 'arabicScale' | 'russianScale' | 'translitScale';
+export type AzkarLatinFontKey = 'russianFont' | 'translitFont';
 
 function readBool(key: string, def: boolean): boolean {
   if (typeof window === 'undefined') return def;
@@ -117,15 +113,12 @@ function readLatinFont(key: string, def: LatinFontId): LatinFontId {
 export function readAzkarPrefs() {
   return {
     showArabic:   readBool(KEYS.showArabic,   VISIBILITY_DEFAULTS.showArabic),
-    showIngush:   readBool(KEYS.showIngush,   VISIBILITY_DEFAULTS.showIngush),
     showTranslit: readBool(KEYS.showTranslit, VISIBILITY_DEFAULTS.showTranslit),
     showRussian:  readBool(KEYS.showRussian,  VISIBILITY_DEFAULTS.showRussian),
     arabicFont:   readArabicFont(),
     arabicScale:   readScale(KEYS.arabicScale,   DEFAULT_ARABIC_SCALE),
-    ingushScale:   readScale(KEYS.ingushScale,   DEFAULT_INGUSH_SCALE),
     russianScale:  readScale(KEYS.russianScale,  DEFAULT_RUSSIAN_SCALE),
     translitScale: readScale(KEYS.translitScale, DEFAULT_TRANSLIT_SCALE),
-    ingushFont:    readLatinFont(KEYS.ingushFont,   DEFAULT_INGUSH_FONT),
     russianFont:   readLatinFont(KEYS.russianFont,  DEFAULT_RUSSIAN_FONT),
     translitFont:  readLatinFont(KEYS.translitFont, DEFAULT_TRANSLIT_FONT),
   };

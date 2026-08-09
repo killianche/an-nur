@@ -172,7 +172,6 @@ export function AzkarScreen({ theme, setTheme, onBack, onOpenCategory }: Props) 
                 key={cat.id}
                 id={cat.id}
                 titleRu={cat.title_ru}
-                titleIng={cat.title_ing}
                 count={data.by_category[cat.id] ?? 0}
                 onClick={() => onOpenCategory(cat.id)}
               />
@@ -197,22 +196,24 @@ export function AzkarScreen({ theme, setTheme, onBack, onOpenCategory }: Props) 
 /** Feature category card — "Утренние" / "Вечерние" entry buttons.
  *  Visual language mirrors the "Continue Reading" recents card in
  *  SurahPicker: flat surface, hairline border, no shadow, no ornament.
- *  Three-row stack — uppercase eyebrow ("УТРЕННИЕ"), display-serif
- *  Ingush title, small meta line with the azkar count. */
+ *  Three-row stack — uppercase eyebrow, display-serif title, small
+ *  meta line with the azkar count.
+ *
+ *  В QuranIng крупным заголовком шло ингушское название, а русское
+ *  было надстрочной подписью.  Здесь ингушского нет, поэтому русское
+ *  название поднято в заголовок, а eyebrow стал нейтральным «АЗКАРЫ». */
 function CategoryCard({
-  id, count, onClick,
+  id, titleRu, count, onClick,
 }: {
   id: AzkarCategoryId;
   titleRu: string;
-  titleIng: string;
   count: number;
   onClick: () => void;
 }) {
-  // Ingush title verbatim (user dictation).
-  const title = id === 'morning'
-    ? 'Iуйрана йоаха азкараш'
-    : 'Сайрана йоаха азкараш';
-  const eyebrow = id === 'morning' ? 'Утренние' : 'Вечерние';
+  // `title_ru` из azkar.json — «Утренние азкары» / «Вечерние азкары».
+  // Фолбэк на случай, если категория придёт без названия.
+  const title = titleRu || (id === 'morning' ? 'Утренние азкары' : 'Вечерние азкары');
+  const eyebrow = 'Азкары';
 
   // Russian count pluralisation for "азкар".
   const lastTwo = count % 100;
@@ -261,7 +262,6 @@ function CategoryCard({
         {eyebrow}
       </div>
       <div
-        lang="inh"
         className="display-serif"
         style={{
           marginTop: '10px',

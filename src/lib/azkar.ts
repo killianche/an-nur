@@ -12,7 +12,6 @@ export type AzkarCategoryId = 'morning' | 'evening' | 'intro';
 
 export type AzkarCategoryMeta = {
   id: AzkarCategoryId;
-  title_ing: string;
   title_ru: string;
 };
 
@@ -34,8 +33,6 @@ export type AzkarReward = {
 export type AzkarAyah = {
   /** Arabic verbatim from the source. */
   arabic: string;
-  /** Ingush translation verbatim. */
-  ingush: string;
   /** Russian translation verbatim. */
   russian: string;
 };
@@ -46,17 +43,18 @@ export type AzkarEntry = {
   page: string;
   n_audio: number;
   n_in_category: number;
-  /** Plain text of the section label, e.g. "1уйран" / "Сайран". */
+  /** Cyrillic transliteration of the Arabic — how the supplication sounds,
+   *  for readers who can't yet read the Arabic script.  Historically named
+   *  `header_label` in the extraction pipeline; kept as-is so the JSON
+   *  stays byte-comparable with the source data. */
   header_label: string | null;
   /** Arabic supplication text (may be multi-line, HTML-flavoured with <b>). */
   arabic: string | null;
-  /** Ingush cyrillic transliteration. */
-  translit_ingush: string | null;
   /** Russian translation. */
   russian: string | null;
   /** Hadith attribution string, e.g. "Хьадис (сохьихь да аьнна)
    *  хьадоаладаьраш: Абу Дауд, Ат-Тирмизи ба".  Split off from the end
-   *  of the Ingush / Russian translation at build time so the screen can
+   *  of the translation at build time so the screen can
    *  render it separately as a small chip instead of letting it hang
    *  off the body paragraph. */
   source: string | null;
@@ -76,7 +74,7 @@ export type AzkarEntry = {
   start_ayah?: number;
   /** Per-ayah breakdown (optional).  When present, the card renders
    *  Quran-style: each ayah block with its own arabic + translation.
-   *  Falls back to the flat `arabic`/`russian`/`translit_ingush` fields
+   *  Falls back to the flat `arabic` / `russian` / `header_label` fields
    *  when this is absent. */
   ayahs?: AzkarAyah[];
   /** Recommended recitation count (tasbih).  When > 1 the card shows

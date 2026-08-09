@@ -462,7 +462,7 @@ function PresetGrid({ setTheme, onClose, activeId, setActiveId }: {
 
 // ─── TypographySettings — `[A]` button ────────────────────────────────────
 //
-// Reciter picker + per-language tabs (Arabic / Ingush / Russian) with
+// Reciter picker + per-language tabs (Arabic / Russian) with
 // visibility toggle, scale and font.
 
 type TypographyProps = {

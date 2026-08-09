@@ -8,10 +8,9 @@
  *  • Each card has its own vertical scroll for overflow content — the
  *    horizontal swipe is owned by the OUTER container, the vertical
  *    scroll by each individual card body.
- *  • Default visibility (from lib/azkarPrefs.ts): Arabic + Ingush
- *    translation on; transliteration + Russian off.  A future settings
- *    popover will toggle these per user — for now the defaults are
- *    intentionally minimal so the card has plenty of breathing room.
+ *  • Default visibility (from lib/azkarPrefs.ts): Arabic + Russian
+ *    translation + cyrillic transliteration — все три включены.
+ *    Каждый блок отключается в попапе настроек текста.
  *  • Arabic font: KFGQPC Uthmanic Hafs v22 (already loaded for the
  *    Quran's text renderers).  The Unity export sometimes shipped TWO
  *    Arabic variants per entry — one pre-shaped (presentation-forms),
@@ -72,24 +71,18 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
   // persists to localStorage so the choice survives a reload.
   const initial = useState(() => readAzkarPrefs())[0];
   const [showArabic,   setShowArabicS]   = useState(initial.showArabic);
-  const [showIngush,   setShowIngushS]   = useState(initial.showIngush);
   const [showRussian,  setShowRussianS]  = useState(initial.showRussian);
   const [showTranslit, setShowTranslitS] = useState(initial.showTranslit);
   const [arabicScale,   setArabicScaleS]   = useState(initial.arabicScale);
-  const [ingushScale,   setIngushScaleS]   = useState(initial.ingushScale);
   const [russianScale,  setRussianScaleS]  = useState(initial.russianScale);
   const [translitScale, setTranslitScaleS] = useState(initial.translitScale);
   const [arabicFont,    setArabicFontS]    = useState<AzkarFontId>(initial.arabicFont);
-  const [ingushFont,    setIngushFontS]    = useState<LatinFontId>(initial.ingushFont);
   const [russianFont,   setRussianFontS]   = useState<LatinFontId>(initial.russianFont);
   const [translitFont,  setTranslitFontS]  = useState<LatinFontId>(initial.translitFont);
   const fontConfig = azkarFontConfig(arabicFont);
 
   const setShowArabic = (v: boolean) => {
     setShowArabicS(v); writeAzkarPref('showArabic', v);
-  };
-  const setShowIngush = (v: boolean) => {
-    setShowIngushS(v); writeAzkarPref('showIngush', v);
   };
   const setShowRussian = (v: boolean) => {
     setShowRussianS(v); writeAzkarPref('showRussian', v);
@@ -100,9 +93,6 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
   const setArabicScale = (v: number) => {
     setArabicScaleS(v); writeAzkarScale('arabicScale', v);
   };
-  const setIngushScale = (v: number) => {
-    setIngushScaleS(v); writeAzkarScale('ingushScale', v);
-  };
   const setRussianScale = (v: number) => {
     setRussianScaleS(v); writeAzkarScale('russianScale', v);
   };
@@ -111,9 +101,6 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
   };
   const setArabicFont = (v: AzkarFontId) => {
     setArabicFontS(v); writeAzkarFont(v);
-  };
-  const setIngushFont = (v: LatinFontId) => {
-    setIngushFontS(v); writeAzkarLatinFont('ingushFont', v);
   };
   const setRussianFont = (v: LatinFontId) => {
     setRussianFontS(v); writeAzkarLatinFont('russianFont', v);
@@ -210,9 +197,9 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
 
   // Category title (Russian) — pulled from source if loaded; static
   // fallback so the floating pill has a label during initial fetch.
-  // (The Ingush co-title lives only on the AzkarScreen index card now;
-  // inside the category every card already shows its own Ingush header
-  // chip, so duplicating the category-level Ingush in the pill would be
+  // (Название категории показывается только на индексе Азкаров;
+  // внутри категории каждая карточка и так несёт свой заголовок,
+  // поэтому дублировать название категории в пилюле было бы
   // redundant.)
   const catMeta = data?.categories.find(c => c.id === category);
   const titleRu = catMeta?.title_ru ?? (
@@ -468,15 +455,12 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
       {typoOpen && (
         <AzkarTypographySettings
           showArabic={showArabic}     setShowArabic={setShowArabic}
-          showIngush={showIngush}     setShowIngush={setShowIngush}
           showRussian={showRussian}   setShowRussian={setShowRussian}
           showTranslit={showTranslit} setShowTranslit={setShowTranslit}
           arabicScale={arabicScale}     setArabicScale={setArabicScale}
-          ingushScale={ingushScale}     setIngushScale={setIngushScale}
           russianScale={russianScale}   setRussianScale={setRussianScale}
           translitScale={translitScale} setTranslitScale={setTranslitScale}
           arabicFont={arabicFont}       setArabicFont={setArabicFont}
-          ingushFont={ingushFont}       setIngushFont={setIngushFont}
           russianFont={russianFont}     setRussianFont={setRussianFont}
           translitFont={translitFont}   setTranslitFont={setTranslitFont}
           onClose={() => setTypoOpen(false)}
@@ -634,13 +618,10 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                       surahNumber={entry.surah_number ?? 0}
                       startAyah={entry.start_ayah ?? 1}
                       showArabic={showArabic}
-                      showIngush={showIngush}
                       showRussian={showRussian}
                       arabicScale={arabicScale}
-                      ingushScale={ingushScale}
                       russianScale={russianScale}
                       fontConfig={fontConfig}
-                      ingushFont={ingushFont}
                       russianFont={russianFont}
                       rowProps={{
                         hasAudio: entryHasAudio(entry),
@@ -724,31 +705,14 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                     />
                   )}
 
-                  {/* Display order (per user spec):
+                  {/* Display order:
                         1. Arabic          (above this block)
-                        2. Ingush translation
-                        3. Russian translation
-                        4. Ingush-Cyrillic transliteration of the Arabic
-                      Items 3 and 4 are opt-in via the future settings UI;
-                      defaults live in lib/azkarPrefs.ts.  */}
+                        2. Russian translation
+                        3. Cyrillic transliteration of the Arabic
+                      Каждый блок можно скрыть в попапе настроек;
+                      дефолты — в lib/azkarPrefs.ts.  */}
 
-                  {/* 2. Ingush translation */}
-                  {!entry.ayahs && showIngush && entry.translit_ingush && (
-                    <p lang="inh" style={{
-                      margin: '0 0 18px',
-                      fontFamily: latinStack(ingushFont),
-                      fontSize: `${17 * ingushScale + latinSizeBump(ingushFont)}px`,
-                      fontWeight: latinWeight(ingushFont),
-                      lineHeight: 1.45,
-                      color: 'var(--lang-inh-color, var(--text-secondary))',
-                      letterSpacing: '-0.005em',
-                      whiteSpace: 'pre-line',
-                    }}>
-                      {stripTags(entry.translit_ingush)}
-                    </p>
-                  )}
-
-                  {/* 3. Russian translation */}
+                  {/* 2. Russian translation */}
                   {!entry.ayahs && showRussian && entry.russian && (
                     <p style={{
                       margin: '0 0 18px',
@@ -764,13 +728,13 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                     </p>
                   )}
 
-                  {/* 4. Ingush Cyrillic transliteration of the Arabic.
+                  {/* 3. Cyrillic transliteration of the Arabic.
                        Lives in `entry.header_label` in the source data
                        (the Unity export named the field oddly — it's NOT
                        a section header, it's the cyrillic phonetic
                        rendition of the supplication). */}
                   {!entry.ayahs && showTranslit && entry.header_label && (
-                    <p lang="inh" style={{
+                    <p style={{
                       margin: '0 0 18px',
                       fontFamily: latinStack(translitFont),
                       fontSize: `${15 * translitScale + latinSizeBump(translitFont)}px`,
@@ -801,7 +765,6 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                     />
                   ) : entry.source ? (
                     <p
-                      lang="inh"
                       style={{
                         margin: '0 0 6px',
                         fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
@@ -1231,7 +1194,7 @@ function TasbihPill({
  *   1. Arabic centred, large, with the same Naskh face the user
  *      picked in the popover.
  *   2. A small "N:M" chip in muted tone.
- *   3. Ingush + Russian translation rows underneath.
+ *   3. Russian translation row underneath.
  *   4. A hairline separator before the next ayah.
  *
  * No bookmark or audio-per-ayah buttons — keeps focus on the text;
@@ -1240,22 +1203,19 @@ function TasbihPill({
  */
 function SuraAyahs({
   ayahs, surahNumber, startAyah,
-  showArabic, showIngush, showRussian,
-  arabicScale, ingushScale, russianScale,
-  fontConfig, ingushFont, russianFont,
+  showArabic, showRussian,
+  arabicScale, russianScale,
+  fontConfig, russianFont,
   rowProps,
 }: {
   ayahs: AzkarAyah[];
   surahNumber: number;
   startAyah: number;
   showArabic: boolean;
-  showIngush: boolean;
   showRussian: boolean;
   arabicScale: number;
-  ingushScale: number;
   russianScale: number;
   fontConfig: ReturnType<typeof azkarFontConfig>;
-  ingushFont: LatinFontId;
   russianFont: LatinFontId;
   /** Если задано, под арабским каждого ayah'а рендерится общий
    *  ряд [tasbih] … [speed][play].  Все ряды одной карточки шарят
@@ -1296,21 +1256,6 @@ function SuraAyahs({
           {/* Per-ayah play+tasbih row.  Один и тот же стейт раздаётся
               на все ayah'и карточки → ряды работают синхронно. */}
           {rowProps && <PlayTasbihRow {...rowProps} />}
-
-          {/* Ingush translation — same font/size as flat-mode. */}
-          {showIngush && a.ingush && (
-            <p lang="inh" style={{
-              margin: '0 0 8px',
-              fontFamily: latinStack(ingushFont),
-              fontSize: `${17 * ingushScale + latinSizeBump(ingushFont)}px`,
-              fontWeight: latinWeight(ingushFont),
-              lineHeight: 1.55,
-              color: 'var(--lang-inh-color, var(--text-secondary))',
-              letterSpacing: '-0.005em',
-            }}>
-              {a.ingush}
-            </p>
-          )}
 
           {/* Russian translation. */}
           {showRussian && a.russian && (
@@ -1490,12 +1435,11 @@ function SourceDisclosure({
           </div>
         ))}
 
-        {/* Legacy `entry.source` (the Ingush attribution line) — shown
-            quietly below the rewards block when both are present, so we
-            don't lose the historical attribution. */}
+        {/* Legacy `entry.source` (the attribution line из исходных данных)
+            — shown quietly below the rewards block when both are present,
+            so we don't lose the historical attribution. */}
         {legacy && (
           <p
-            lang="inh"
             style={{
               margin: '4px 0 0',
               paddingTop: '12px',

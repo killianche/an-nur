@@ -336,9 +336,9 @@
   --surface:       #101c34;
   --surface-strong:#16263e;
 
-  /* Палитра текста подкручена ярче по запросу пользователя — переводы
-     (русский + ингушский на --body / --lang-inh-color) сливались с
-     миднайт-канвой.  body теперь почти white, ink почти чистый white. */
+  /* Палитра текста подкручена ярче по запросу пользователя — перевод
+     на --body сливался с миднайт-канвой.  body теперь почти white,
+     ink почти чистый white. */
   --ink:           #f3f6fb;
   --ink-soft:      #dde4ef;
   --body:          #c8d4e4;
@@ -356,7 +356,7 @@
    пинстрайп-текстура «велюровый занавес» (см. body-правило ниже).
 
    Палитра текста подкручена ярче по запросу пользователя — старая
-   была слишком muted (body #b8966a, muted #8a7048), русский/ингушский
+   была слишком muted (body #b8966a, muted #8a7048), текст перевода
    почти сливался с канвой.  Теперь все три уровня заметно ярче, но
    в той же warm-champagne hue-семье. */
 [data-theme="dark-velvet"] {
@@ -397,16 +397,6 @@
   --hairline:        #1f1f25;
   --hairline-soft:   #16161b;
   --hairline-strong: #34343c;
-}
-
-/* In cosmic mode the Ingush translation reads more legibly in pure
-   white than in the muted body grey — the warm sky behind washes out
-   --text-secondary. Russian stays muted as a secondary line.
-   Set as a CSS variable on the theme root (rather than a `color: #fff`
-   selector) because AyahCard's inline `color: var(--lang-inh-color,
-   var(--text-secondary))` would otherwise beat any non-inline rule. */
-[data-theme="cosmic-night"] {
-  --lang-inh-color: #ffffff;
 }
 
 /* Aliases shared by every theme — apply token names to `data-theme=*`
@@ -675,10 +665,6 @@ html[data-wallpaper="clouds"] {
   --hairline:        #1f1f25;
   --hairline-soft:   #16161b;
   --hairline-strong: #34343c;
-
-  /* Same boost cosmic-night gives the Ingush translation line so it
-     doesn't fade against a saturated backdrop. */
-  --lang-inh-color: #ffffff;
 }
 
 /* The old `.arabic` helper class was removed alongside the legacy

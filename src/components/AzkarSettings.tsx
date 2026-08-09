@@ -5,8 +5,8 @@
  * controls) so the two surfaces feel like one product.
  *
  * Differences vs the Quran-side TypographySettings:
- *   • Four language tabs instead of three — Azkar carries a 4th block,
- *     the Ingush-cyrillic transliteration of the Arabic (entry.header_label
+ *   • Three language tabs instead of two — Azkar carries a 3rd block,
+ *     the cyrillic transliteration of the Arabic (entry.header_label
  *     in the source JSON).
  *   • No "Reciter" pane — Azkar audio is a single OGG per entry, not a
  *     pickable list of reciters.
@@ -27,7 +27,7 @@ import {
 import { AZKAR_FONTS, type AzkarFontId } from '../lib/azkarFonts';
 import { LATIN_FONTS, type LatinFontId } from '../lib/typography';
 
-type AzkarLangTab = 'arabic' | 'ingush' | 'russian' | 'translit';
+type AzkarLangTab = 'arabic' | 'russian' | 'translit';
 
 // Persist the last-active language tab so reopening the popover lands
 // on whatever the user was tweaking last — same UX as the Quran-side
@@ -36,7 +36,9 @@ const KEY_AZKAR_LANG_TAB = 'azkar.langTab';
 function readLangTab(): AzkarLangTab {
   if (typeof window === 'undefined') return 'arabic';
   const v = window.localStorage.getItem(KEY_AZKAR_LANG_TAB);
-  return v === 'arabic' || v === 'ingush' || v === 'russian' || v === 'translit'
+  // Легаси-значение 'ingush' (из QuranIng) больше не существует —
+  // предикат отправит такого пользователя на вкладку арабского.
+  return v === 'arabic' || v === 'russian' || v === 'translit'
     ? v
     : 'arabic';
 }
@@ -48,8 +50,6 @@ function writeLangTab(v: AzkarLangTab) {
 export type AzkarTypographyProps = {
   showArabic: boolean;
   setShowArabic: (v: boolean) => void;
-  showIngush: boolean;
-  setShowIngush: (v: boolean) => void;
   showRussian: boolean;
   setShowRussian: (v: boolean) => void;
   showTranslit: boolean;
@@ -57,8 +57,6 @@ export type AzkarTypographyProps = {
 
   arabicScale: number;
   setArabicScale: (v: number) => void;
-  ingushScale: number;
-  setIngushScale: (v: number) => void;
   russianScale: number;
   setRussianScale: (v: number) => void;
   translitScale: number;
@@ -66,8 +64,6 @@ export type AzkarTypographyProps = {
 
   arabicFont: AzkarFontId;
   setArabicFont: (v: AzkarFontId) => void;
-  ingushFont: LatinFontId;
-  setIngushFont: (v: LatinFontId) => void;
   russianFont: LatinFontId;
   setRussianFont: (v: LatinFontId) => void;
   translitFont: LatinFontId;
@@ -86,31 +82,28 @@ export function AzkarTypographySettings(p: AzkarTypographyProps) {
       <section style={settingCard}>
         <p style={cardTitle}>Текст и шрифты</p>
 
-        {/* Inner language tabs — four columns on the Azkar screen.
-            On a 375 px viewport the popover is ~351 px wide → each tab
-            gets ~80 px which fits "Транс." but not "Транскрипция" in
-            13 px text.  We use the short label for the translit tab
-            so all four tabs read at the same weight without clipping. */}
+        {/* Inner language tabs — three columns on the Azkar screen.
+            Раньше их было четыре (с ингушским) и подписи приходилось
+            резать до «Араб.» / «Инг.»; теперь на 375 px каждая вкладка
+            получает ~113 px и полные слова помещаются свободно. */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px',
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px',
           background: 'var(--bg)', border: '1px solid var(--hairline)',
           borderRadius: '10px', padding: '3px',
           marginBottom: '14px',
         }}>
           {([
-            { id: 'arabic',   label: 'Араб.'  },
-            { id: 'ingush',   label: 'Инг.'   },
-            { id: 'russian',  label: 'Рус.'   },
-            { id: 'translit', label: 'Транс.' },
+            { id: 'arabic',   label: 'Арабский'      },
+            { id: 'russian',  label: 'Русский'       },
+            { id: 'translit', label: 'Транскрипция'  },
           ] as const).map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               title={
                 t.id === 'arabic'   ? 'Арабский' :
-                t.id === 'ingush'   ? 'Ингушский (перевод)' :
-                t.id === 'russian'  ? 'Русский' :
-                                      'Транскрипция арабского'
+                t.id === 'russian'  ? 'Русский перевод' :
+                                      'Транскрипция арабского кириллицей'
               }
               style={{
                 minHeight: '36px',
@@ -148,22 +141,6 @@ export function AzkarTypographySettings(p: AzkarTypographyProps) {
                 onChange={p.setArabicFont}
                 preview="بسم الله"
                 dir="rtl"
-              />
-            }
-          />
-        )}
-        {tab === 'ingush' && (
-          <LangPane
-            visible={p.showIngush}
-            onToggleVisible={() => p.setShowIngush(!p.showIngush)}
-            scale={p.ingushScale}
-            onScale={p.setIngushScale}
-            fontPicker={
-              <FontChips<LatinFontId>
-                value={p.ingushFont}
-                options={LATIN_FONTS}
-                onChange={p.setIngushFont}
-                preview="Цlена ва"
               />
             }
           />
