@@ -49,7 +49,7 @@ import {
   latinStack, latinWeight, latinIsSerif, ARABIC_FONT_IDS,
   type LatinFontId, type ArabicFontId,
 } from '../lib/typography';
-import { DEFAULT_RECITER, type ReciterId } from '../lib/reciters';
+import { RECITERS, DEFAULT_RECITER, type ReciterId } from '../lib/reciters';
 
 type Props = {
   surahNumber: number;
@@ -67,7 +67,9 @@ type Props = {
 
 const LATIN_IDS:   LatinFontId[]  = ['inter-semibold', 'inter-regular', 'garamond', 'alice'];
 const ARABIC_IDS:  ArabicFontId[] = ARABIC_FONT_IDS;
-const RECITER_IDS: ReciterId[]    = ['alafasy', 'shaatree', 'husary', 'abdulbasit', 'hanirifai', 'shuraim', 'yasser', 'tunaiji'];
+// Белый список для readPref: сохранённый id чтеца, которого больше нет
+// в каталоге (QuranIng знал восемь), молча падает на DEFAULT_RECITER.
+const RECITER_IDS: ReciterId[]    = RECITERS.map(r => r.id);
 
 function migrateLegacyScale() {
   const legacy = localStorage.getItem('fontScale');

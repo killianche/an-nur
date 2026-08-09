@@ -26,18 +26,25 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Скрипт лежит в <корень>/scripts/gen/, приложение — в корне проекта.
+// (В QuranIng приложение жило в подпапке web/, отсюда старые пути.)
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
-const SURAHS_TS = resolve(ROOT, 'web/src/content/surahs.ts');
-const OUT_PATH  = resolve(ROOT, 'web/src/content/quran-segments.ts');
+const ROOT = resolve(__dirname, '../..');
+const SURAHS_TS   = resolve(ROOT, 'src/content/surahs.ts');
+const RECITERS_TS = resolve(ROOT, 'src/lib/reciters.ts');
+const OUT_PATH    = resolve(ROOT, 'src/content/quran-segments.ts');
 
 const API = 'https://api.qurancdn.com/api/qdc/audio/reciters';
 
 /**
- * Maps our internal ReciterId (web/src/lib/reciters.ts) to the
- * quran.com recitation_id served by the qurancdn API. Reciters not
- * present on quran.com are omitted — the client falls back to no
- * word-level highlight for them.
+ * Справочник известных quran.com recitation_id по нашему ReciterId.
+ *
+ * ВАЖНО: скрипт качает тайминги НЕ для всех записей этой таблицы, а
+ * только для чтецов, реально перечисленных в src/lib/reciters.ts
+ * (см. activeReciterIds()).  Таблица шире каталога намеренно — чтобы
+ * вернуть чтеца было достаточно одной строки в reciters.ts, без
+ * поиска его id заново.  Каждый лишний чтец в выдаче — это примерно
+ * 1.3 МБ в файле таймингов, поэтому автоматически они не качаются.
  */
 const RECITER_MAP = {
   alafasy:    7,    // Mishari Rashid al-`Afasy (Murattal)
@@ -52,6 +59,23 @@ const RECITER_MAP = {
   //   sudais (id 3)        — taking off the picker
   //   mahermuaiqly         — was never on quran.com; no segments anyway
 };
+
+/** Какие чтецы реально в каталоге приложения — читаем ReciterId-union
+ *  прямо из src/lib/reciters.ts, чтобы список нельзя было рассинхронить. */
+function activeReciterIds() {
+  const src = readFileSync(RECITERS_TS, 'utf-8');
+  const m = src.match(/export type ReciterId =([\s\S]*?);/);
+  if (!m) throw new Error('ReciterId union not found in reciters.ts');
+  const ids = [...m[1].matchAll(/'([a-z]+)'/g)].map(x => x[1]);
+  const unknown = ids.filter(id => !(id in RECITER_MAP));
+  if (unknown.length) {
+    throw new Error(
+      `нет quran.com recitation_id для: ${unknown.join(', ')}. ` +
+      'Добавь их в RECITER_MAP в этом скрипте.',
+    );
+  }
+  return ids;
+}
 
 function extractSurahsWithContent() {
   const src = readFileSync(SURAHS_TS, 'utf-8');
@@ -135,7 +159,7 @@ function sortVerseKeys(a, b) {
 
 async function main() {
   const chapters = extractSurahsWithContent();
-  const reciterIds = Object.keys(RECITER_MAP);
+  const reciterIds = activeReciterIds();
   console.log(`fetching segments for chapters: ${chapters.join(', ')}`);
   console.log(`reciters: ${reciterIds.join(', ')}`);
 
