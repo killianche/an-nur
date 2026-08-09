@@ -15,11 +15,12 @@
  * All four faces are OFL-licensed (Open Font License) or KFGQPC public
  * release, safe to redistribute.
  *
- * To add another candidate:
- *   1. add an @import url(...) to web/src/index.css if it's a Google
- *      Font, or an @font-face if local;
- *   2. append a new entry below;
- *   3. the cycle button picks it up automatically.
+ * Чтобы добавить ещё один вариант:
+ *   1. положить woff2/ttf в public/ и объявить @font-face в
+ *      src/index.css.  Внешние @import с Google Fonts запрещены —
+ *      приложение должно работать без сети, см. шапку index.css;
+ *   2. дописать запись ниже;
+ *   3. пикер в настройках подхватит её сам.
  */
 
 export type AzkarFontId =
@@ -63,7 +64,10 @@ export const AZKAR_FONTS: AzkarFont[] = [
     // NotoNaskhArabic-SemiBold.ttf.
     id: 'noto-naskh-semibold',
     label: 'Noto Naskh SemiBold',
-    stack: "'Noto Naskh Arabic SemiBold', 'Noto Naskh Arabic', serif",
+    // 'Noto Naskh Arabic' (обычный вес) раньше приезжал из Google Fonts
+    // как запасной; внешних @import больше нет, поэтому в стеке только
+    // локальное семейство и системный serif.
+    stack: "'Noto Naskh Arabic SemiBold', serif",
     sizeMul: 0.95,
     lineHeight: 1.75,
   },
