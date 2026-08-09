@@ -7,8 +7,6 @@ import { AzkarCategoryScreen } from './screens/AzkarCategoryScreen';
 import { BookmarksScreen } from './screens/BookmarksScreen';
 import { CosmicLayer } from './components/CosmicLayer';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { applyLightBg } from './lib/lightBg';
-import { applyWallpaper } from './lib/wallpaper';
 import { applyHighlightVars } from './lib/audioPrefs';
 import { applyPaletteToDocument } from './lib/tajweedPalette';
 import { syncStatusBarToTheme } from './lib/nativeStatusBar';
@@ -62,17 +60,6 @@ export default function App() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-
-  // Paint the saved paper-texture vars onto :root once at mount. Subsequent
-  // changes from ReadingSettings call applyLightBg() directly, so this
-  // effect only fires on the initial render and on hard reloads.
-  useEffect(() => { applyLightBg(); }, []);
-
-  // Same first-paint hook for the photo wallpaper layer. Without this the
-  // <html data-wallpaper="…"> attribute isn't set until the user opens
-  // settings and re-picks a preset — so a returning visitor who last
-  // chose Mох/Небо/Тучи would land on a bare canvas.
-  useEffect(() => { applyWallpaper(); }, []);
 
   // Inject <style id="tajweed-palette"> with one @font-palette-values
   // block per page-scoped tajweed font family.  Re-runs on every theme

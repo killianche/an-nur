@@ -66,20 +66,20 @@
  *    передаёт, ползунок есть в профиле. Чтобы не ломать вызов
  *    и не править весь pipeline, проп просто игнорируется.
  *
- * Настраиваемые параметры (из профиля, через localStorage):
- *  - Вкл/выкл (isAuroraEnabled)
- *  - Яркость (getAuroraBrightness → opacity контейнера)
- *  - Цветовая палитра (getAuroraPalette → цвет свечения)
- *  - Скорость (getAuroraSpeed → игнорируется, дрифт фиксирован)
+ * Параметры:
+ *  - Яркость (opacity контейнера)
+ *  - Направление ('top' / 'bottom' / 'frame')
+ *  Палитра больше не выбирается — в QuranRu «Аврора» это одна тема с
+ *  фиксированным ледяным свечением (AURORA_ICE в lib/cosmic.ts), а не
+ *  конструктор из шести палитр, как было в QuranIng.
  */
 
 import { memo, useEffect, useState } from 'react';
-import { AURORA_PALETTES, type AuroraPalette, type AuroraDirection } from '../lib/cosmic';
+import { AURORA_ICE, type AuroraDirection } from '../lib/cosmic';
 
 type Props = {
   brightness?: number;         // 0.1 – 1.0
   speed?: number;              // deprecated — дрифт фиксирован, не используется
-  palette?: AuroraPalette;     // mint | violet | gold | rose | ice | ember
   direction?: AuroraDirection; // 'top' (по умолч.) | 'bottom' | 'frame'
 };
 
@@ -137,8 +137,8 @@ const AURORA_INNER_STYLE_BASE = {
   backfaceVisibility: 'hidden',
 } as const;
 
-function AuroraImpl({ brightness = 0.45, palette = 'mint', direction = 'top' }: Props) {
-  const colors = AURORA_PALETTES[palette];
+function AuroraImpl({ brightness = 0.45, direction = 'top' }: Props) {
+  const colors = AURORA_ICE;
 
   // SSR-безопасно: на сервере — без редукции, на клиенте — детектируем
   // после монтирования (matchMedia/navigator недоступны во время SSR).

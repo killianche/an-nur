@@ -249,17 +249,17 @@ export function getHighlightStyle(): HighlightStyle {
 }
 
 /**
- * Resolved highlight style, accounting for theme. Light themes always
- * resolve to 'color' regardless of the saved preference — glow on a
- * white page looks like a smudge rather than aurora. Dark/cosmic
- * themes use the raw user pick.
+ * Resolved highlight style, accounting for theme.  Светлая тема всегда
+ * сводится к 'color', какой бы ни была сохранённая настройка: свечение
+ * на белой бумаге читается как грязное пятно, а не как сияние.  Тёмная
+ * и «Аврора» используют выбор пользователя как есть.
  *
  * Pass `theme` explicitly (from useTheme) when known — falls back to
  * reading the data-theme attribute on :root when not.
  */
 export function getEffectiveHighlightStyle(theme?: string | null): HighlightStyle {
   const t = theme ?? document.documentElement.getAttribute('data-theme') ?? '';
-  if (t.startsWith('light')) return 'color';
+  if (t === 'light') return 'color';
   return getHighlightStyle();
 }
 export function setHighlightStylePref(s: HighlightStyle) {

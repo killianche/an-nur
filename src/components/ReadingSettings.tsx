@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { type Theme } from '../hooks/useTheme';
+import { ALL_THEMES, THEME_LABELS, type Theme } from '../hooks/useTheme';
 import {
   LATIN_FONTS, ARABIC_FONTS, SCALE_OPTIONS, SCALE_FONT_PX,
   type LatinFontId, type ArabicFontId,
@@ -15,10 +15,6 @@ import {
   getGlowPalette, setGlowPalettePref, type GlowPalette,
   AURORA_PALETTES, GLOW_PALETTES_ORDER,
 } from '../lib/audioPrefs';
-import {
-  PRESETS, getActivePreset, applyPreset, type ThemePresetId,
-  PRESET_HIGHLIGHT_OPTIONS, type HighlightChoice,
-} from '../lib/themePresets';
 // Раньше тут sync-импортился весь 10-МБ QURAN_SEGMENTS только ради
 // проверки `!!QURAN_SEGMENTS[reciter]`.  Заменено на сет-константу
 // в reciters.ts — тот же sync-чек, ноль bundle-overhead.
@@ -224,9 +220,10 @@ export function SettingsSheet({
 
 // ─── ThemeSettings — palette button (⊙) ───────────────────────────────────
 //
-// Holds Theme picker (Light / Dark / Cosmic + variants) + the mode-specific
-// follow-up panels (Paper textures for light, Atmosphere for cosmic). All
-// look-and-feel lives here.
+// Выбор одной из трёх тем + настройка подсветки читаемого слова.
+// В QuranIng здесь дополнительно жили панели «бумажные паттерны» для
+// светлых тем и «атмосфера» для космических; вместе с самими темами
+// они сняты — тема теперь не конструктор, а готовый вид.
 
 type ThemeProps = {
   theme: Theme;
@@ -246,219 +243,143 @@ type ThemeProps = {
 };
 
 export function ThemeSettings(p: ThemeProps) {
-  // Лифтнул activePresetId сюда из PresetGrid — теперь HighlightCard
-  // тоже видит выбранный пресет и адаптирует UI (некоторые пресеты
-  // ограничены парой-тройкой подсветок, см. PRESET_HIGHLIGHT_OPTIONS).
-  const [activePresetId, setActivePresetId] = useState<ThemePresetId | null>(getActivePreset);
   return (
     <SettingsSheet onClose={p.onClose} placement="top-popover" anchorEl={p.anchorEl}>
       <div style={{ display: 'grid', gap: '10px' }}>
-        <PresetGrid
-          setTheme={p.setTheme}
-          onClose={p.onClose}
-          activeId={activePresetId}
-          setActiveId={setActivePresetId}
-        />
-        {p.reciter && <HighlightCard reciter={p.reciter} activePresetId={activePresetId} />}
+        <ThemePicker theme={p.theme} setTheme={p.setTheme} />
+        {p.reciter && <HighlightCard reciter={p.reciter} />}
       </div>
     </SettingsSheet>
   );
 }
 
-/** Perceived luminance — picks light text for dark backgrounds and v.v. */
-function isDarkHex(hex: string): boolean {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return (0.299 * r + 0.587 * g + 0.114 * b) < 140;
-}
+/**
+ * Превью темы на карточке.
+ *
+ * Карточка не подписана цветом, а показывает уменьшённую сцену: канва
+ * темы, строка «текста» её цветом чернил и — для «Авроры» — намёк на
+ * сияние сверху плюс несколько звёзд.  Пользователь выбирает глазами,
+ * а не читает ярлык.
+ *
+ * В QuranIng тут был грид из одиннадцати пресетов на четыре ряда с
+ * отдельной функцией-диорамой на каждый; теперь тем три, и превью
+ * описывается одной таблицей.
+ */
+const THEME_PREVIEW: Record<Theme, { canvas: string; ink: string; glow?: string }> = {
+  light:  { canvas: '#ffffff', ink: '#111111' },
+  dark:   { canvas: '#1a1a1c', ink: '#ececec' },
+  aurora: {
+    canvas: '#000000',
+    ink: '#f4f4f5',
+    // Тот же ледяной тон, что у AURORA_ICE.layer1, только приглушённый —
+    // на карточке 96×64 полноценная яркость смотрелась бы кричаще.
+    glow: 'radial-gradient(120% 80% at 50% 0%, rgba(120,200,240,0.55) 0%, rgba(120,200,240,0.16) 45%, transparent 75%)',
+  },
+};
 
-/** Per-preset background — each card paints a tiny diorama of the
- *  theme it applies, so the user sees what they're picking instead of
- *  reading a label.  Plain swatches are flat; gridded uses a CSS
- *  hairline pattern; cosmic uses fake star dots; aurora uses a
- *  vertical gradient. */
-function presetCardBg(id: ThemePresetId, top: string, bottom: string): CSSProperties {
-  switch (id) {
-    case 'white-plain':
-      return { background: top };
-    case 'cream-paper':
-      return { background: top };
-    case 'emerald':
-      // «Изумруд» — изумрудная канва + spotlight сверху + тёплый
-      // янтарный pool в правом-нижнем углу (мини-копия body-правила,
-      // с изюминкой контрастного warm-света).
-      return {
-        background: top,
-        backgroundImage:
-          // Spotlight сверху-центра
-          'radial-gradient(120% 60% at 50% 0%,' +
-          ' rgba(255,255,255,0.20) 0%,' +
-          ' rgba(255,255,255,0.06) 35%,' +
-          ' transparent 70%),' +
-          // Янтарный warm-pool в правом-нижнем углу
-          ' radial-gradient(80% 80% at 100% 100%,' +
-          ' rgba(255,200,120,0.18) 0%,' +
-          ' transparent 55%)',
-      };
-    case 'reverie':
-      // «Грёза» — миднайт-нэйви канва + 3 размытых синих cloud-blob'а
-      // в разных позициях, мини-копия full-screen body-правила.
-      return {
-        background: top,
-        backgroundImage:
-          'radial-gradient(circle at 25% 70%, rgba(80,130,200,0.42)  0%, transparent 40%),' +
-          ' radial-gradient(circle at 75% 25%, rgba(110,150,220,0.32) 0%, transparent 35%),' +
-          ' radial-gradient(circle at 50% 105%, rgba(70,110,190,0.25) 0%, transparent 45%)',
-      };
-    case 'velvet':
-      // «Бархат» — wine-канва + вертикальная пинстрайп-текстура
-      // («велюровый занавес»), мини-копия body-правила.  Stripes
-      // плотнее (4 px шаг) чтобы текстура читалась в 58-px
-      // карточке.
-      return {
-        background: top,
-        backgroundImage:
-          'repeating-linear-gradient(90deg,' +
-          ' rgba(232,201,160,0.08) 0px,' +
-          ' rgba(232,201,160,0.08) 1px,' +
-          ' transparent 1px,' +
-          ' transparent 4px)',
-      };
-    case 'dark-plain':
-      return { background: top };
-    case 'dark-graphite':
-      return { background: top };
-    case 'gray-grid':
-      return {
-        background: top,
-        backgroundImage:
-          'linear-gradient(rgba(0,0,0,0.07) 1px, transparent 1px),' +
-          ' linear-gradient(90deg, rgba(0,0,0,0.07) 1px, transparent 1px)',
-        backgroundSize: '8px 8px',
-      };
-    case 'cosmic-warp':
-      return {
-        background: '#0a0a14',
-        backgroundImage:
-          'radial-gradient(1px 1px at 22% 28%, rgba(255,255,255,0.85), transparent 60%),' +
-          ' radial-gradient(1px 1px at 68% 62%, rgba(221,224,255,0.75), transparent 60%),' +
-          ' radial-gradient(1px 1px at 48% 84%, rgba(255,255,255,0.6),  transparent 60%),' +
-          ' radial-gradient(1px 1px at 86% 24%, rgba(221,224,255,0.65), transparent 60%),' +
-          ' radial-gradient(1px 1px at 12% 70%, rgba(255,255,255,0.5),  transparent 60%)',
-      };
-    case 'aurora-ice':
-      return {
-        background: `linear-gradient(180deg, ${top} 0%, #1a4f80 55%, ${bottom} 100%)`,
-      };
-    case 'aurora-mint-frame':
-      // Превью frame-эффекта самой авроры (Aurora.tsx, ветка
-      // direction='frame'): 4 узких градиента-ободка по краям из мяты,
-      // быстро тающие к центру, поверх — звёзды и тёмно-зелёная канва.
-      // Карточка читается как «фон будущей темы прямо сейчас».
-      return {
-        background: top,
-        backgroundImage:
-          // 4 «mist»-ободка от каждого края.  Сильное у кромки (alpha
-          // 0.55), быстрый спад к ~30% — оставляет центр прозрачным
-          // под звёздами, как и настоящий frame в Aurora.tsx.
-          'linear-gradient(to bottom, rgba(72,190,170,0.55) 0%, rgba(72,190,170,0.20) 18%, transparent 32%),' +
-          ' linear-gradient(to top,    rgba(72,190,170,0.55) 0%, rgba(72,190,170,0.20) 18%, transparent 32%),' +
-          ' linear-gradient(to right,  rgba(72,190,170,0.40) 0%, rgba(72,190,170,0.14) 14%, transparent 26%),' +
-          ' linear-gradient(to left,   rgba(72,190,170,0.40) 0%, rgba(72,190,170,0.14) 14%, transparent 26%),' +
-          // Звёзды в центре — даёт сигнал «космос», а не «светлая тема».
-          ' radial-gradient(1px 1px at 22% 28%, rgba(255,255,255,0.85), transparent 60%),' +
-          ' radial-gradient(1px 1px at 68% 62%, rgba(180,255,220,0.75), transparent 60%),' +
-          ' radial-gradient(1px 1px at 48% 84%, rgba(255,255,255,0.6),  transparent 60%),' +
-          ' radial-gradient(1px 1px at 86% 24%, rgba(180,255,220,0.65), transparent 60%),' +
-          ' radial-gradient(1px 1px at 12% 70%, rgba(255,255,255,0.5),  transparent 60%)',
-        // Дополнительный мягкий inset-halo для глубины (3 слоя),
-        // чтобы кромка ощущалась как свечение, а не как обведённая
-        // линия.  Чуть-чуть «дышит» внутрь.
-        boxShadow:
-          'inset 0 0 10px 2px rgba(72,190,170,0.45),' +
-          ' inset 0 0 24px 8px rgba(72,190,170,0.22),' +
-          ' inset 0 0 44px 16px rgba(72,190,170,0.10)',
-      };
-  }
-}
-
-function PresetGrid({ setTheme, onClose, activeId, setActiveId }: {
+function ThemePicker({ theme, setTheme }: {
+  theme: Theme;
   setTheme: (t: Theme) => void;
-  onClose: () => void;
-  activeId: ThemePresetId | null;
-  setActiveId: (id: ThemePresetId | null) => void;
 }) {
   return (
-    <div style={{
-      display: 'grid',
-      // 3 колонки (по запросу пользователя): ширина шита не меняется,
-      // сами карточки становятся уже.  На 380-px sheet'е это даёт
-      // ~108 px на карточку — этого хватает для самых длинных лейблов
-      // («Аврора II»).  Min-height у карточек оставлен 58 px, чтобы
-      // сигнатура свотча оставалась читаемой.
-      gridTemplateColumns: 'repeat(3, 1fr)',
-      gap: '6px',
-    }}>
-      {PRESETS.map(preset => {
-        const active = activeId === preset.id;
-        const dark = isDarkHex(preset.swatchTop);
-        return (
-          <button
-            key={preset.id}
-            onClick={() => {
-              applyPreset(preset, setTheme);
-              setActiveId(preset.id);
-              // Brief delay so the user sees the card flash into the
-              // "active" state (heavier border + ring) before the sheet
-              // dismisses — without it the close animation eats the
-              // confirmation feedback and the click feels uncertain.
-              setTimeout(onClose, 140);
-            }}
-            aria-label={preset.label}
-            style={{
-              ...presetCardBg(preset.id, preset.swatchTop, preset.swatchBottom),
-              minHeight: '58px',
-              // Label sits in the bottom-left corner of the card so the
-              // colour preview gets the full top region — mirrors how
-              // macOS / iOS theme pickers position the title.
-              padding: '6px 8px',
-              borderRadius: '10px',
-              // Subtle hairline so a pure-white card still has an edge
-              // against the menu's translucent panel; thicker accent
-              // ring when active.
-              border: `1px solid ${active ? 'var(--text-primary)' : 'rgba(0,0,0,0.18)'}`,
-              boxShadow: active
-                ? 'inset 0 0 0 2px var(--text-primary)'
-                : 'none',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              position: 'relative',
-              overflow: 'hidden',
-              display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'flex-start',
-            }}
-          >
-            <span style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              color: dark ? 'rgba(255,255,255,0.94)' : 'rgba(0,0,0,0.82)',
-              textShadow: dark
-                ? '0 1px 2px rgba(0,0,0,0.45)'
-                : '0 1px 1px rgba(255,255,255,0.5)',
-              letterSpacing: '0.005em',
-              lineHeight: 1,
-              whiteSpace: 'nowrap',
-            }}>
-              {preset.label}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <section>
+      <p style={sectionTitle}>Оформление</p>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '8px',
+      }}>
+        {ALL_THEMES.map(id => {
+          const preview = THEME_PREVIEW[id];
+          const active = theme === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setTheme(id)}
+              aria-pressed={active}
+              aria-label={THEME_LABELS[id]}
+              style={{
+                display: 'grid',
+                gap: '6px',
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              {/* Сцена-превью */}
+              <span
+                aria-hidden
+                style={{
+                  position: 'relative',
+                  display: 'block',
+                  height: '64px',
+                  borderRadius: '10px',
+                  overflow: 'hidden',
+                  background: preview.canvas,
+                  // Активная карточка обводится чернилами темы попапа, а
+                  // не темы превью — иначе на белой карточке в тёмном
+                  // интерфейсе обводка исчезает.
+                  boxShadow: active
+                    ? 'inset 0 0 0 2px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 12%, transparent)'
+                    : 'inset 0 0 0 1px var(--hairline-strong)',
+                  transition: 'box-shadow 140ms ease',
+                }}
+              >
+                {preview.glow && (
+                  <span style={{
+                    position: 'absolute', inset: 0,
+                    background: preview.glow,
+                  }} />
+                )}
+                {id === 'aurora' && (
+                  <span style={{
+                    position: 'absolute', inset: 0,
+                    backgroundImage:
+                      'radial-gradient(1.2px 1.2px at 22% 62%, rgba(255,255,255,0.9), transparent 100%),' +
+                      'radial-gradient(1px 1px at 64% 48%, rgba(255,255,255,0.75), transparent 100%),' +
+                      'radial-gradient(1.2px 1.2px at 82% 72%, rgba(255,255,255,0.85), transparent 100%),' +
+                      'radial-gradient(1px 1px at 40% 80%, rgba(255,255,255,0.7), transparent 100%)',
+                  }} />
+                )}
+                {/* Три «строки текста» — дают почувствовать контраст
+                    чернил на канве ещё до применения темы. */}
+                <span style={{
+                  position: 'absolute',
+                  left: '10px', right: '10px', bottom: '12px',
+                  display: 'grid', gap: '4px',
+                }}>
+                  {[100, 84, 62].map(w => (
+                    <span key={w} style={{
+                      display: 'block',
+                      height: '3px',
+                      width: `${w}%`,
+                      borderRadius: '2px',
+                      background: preview.ink,
+                      opacity: w === 100 ? 0.85 : 0.45,
+                    }} />
+                  ))}
+                </span>
+              </span>
+
+              <span style={{
+                fontSize: '11.5px',
+                fontWeight: active ? 600 : 500,
+                color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                letterSpacing: '0.005em',
+                lineHeight: 1,
+              }}>
+                {THEME_LABELS[id]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
+
 
 // ─── TypographySettings — `[A]` button ────────────────────────────────────
 //
@@ -750,17 +671,17 @@ function useRootDataTheme(): string {
   return t;
 }
 
-function HighlightCard({ reciter, activePresetId }: { reciter: ReciterId; activePresetId: ThemePresetId | null }) {
+function HighlightCard({ reciter }: { reciter: ReciterId }) {
   const [on, setOnS]       = useState<boolean>(getHighlightEnabled);
   const [style, setStyleS] = useState<HighlightStyle>(getHighlightStyle);
   const [color, setColorS] = useState<HighlightColor>(getHighlightColor);
   const [glow,  setGlowS]  = useState<GlowPalette>(getGlowPalette);
-  // Live theme — when it flips between light/dark/cosmic we re-render
-  // and either show or hide the style tabs. On light themes glow is
+  // Live theme — when it flips between light/dark/aurora we re-render
+  // and either show or hide the style tabs. On the light theme glow is
   // force-resolved to color by audioPrefs anyway, so showing a
   // "Свечение" tab there would be a dead choice.
   const themeAttr = useRootDataTheme();
-  const isLight = themeAttr.startsWith('light');
+  const isLight = themeAttr === 'light';
 
   // Some reciters (Maher Al-Muaiqly) aren't on quran.com so we have no
   // word-level segments for them — show a notice instead of dead
@@ -801,23 +722,6 @@ function HighlightCard({ reciter, activePresetId }: { reciter: ReciterId; active
     setStyleS(s);
     setHighlightStylePref(s);
   };
-  // Constrained-preset handler: один клик задаёт style и color/palette.
-  const onPickChoice = (c: HighlightChoice) => {
-    if (c.kind === 'color') {
-      setStyleS('color'); setHighlightStylePref('color');
-      setColorS(c.color); setHighlightColorPref(c.color);
-    } else {
-      setStyleS('glow');     setHighlightStylePref('glow');
-      setGlowS(c.palette);   setGlowPalettePref(c.palette);
-    }
-  };
-
-  // Узкий набор для текущего пресета (если он есть в карте).
-  const constrainedOptions = activePresetId != null ? PRESET_HIGHLIGHT_OPTIONS[activePresetId] : undefined;
-  const isChoiceActive = (c: HighlightChoice) =>
-    c.kind === 'color' ? (style === 'color' && color === c.color)
-                       : (style === 'glow'  && glow  === c.palette);
-
   return (
     // Секция-«футер»: никакого card-chrome (border / fill / большой
     // padding) — темы остаются основной площадью, подсветка
@@ -855,75 +759,7 @@ function HighlightCard({ reciter, activePresetId }: { reciter: ReciterId; active
         <Switch on={on} />
       </div>
 
-      {on && constrainedOptions && (
-        // Чипы ещё мельче — 24-px высота, свотч-точка 12-px, текст 11-px.
-        // Auto-fit grid, min-width 78-px.
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(78px, 1fr))',
-          gap: '4px',
-        }}>
-          {constrainedOptions.map((c, i) => {
-            const active = isChoiceActive(c);
-            const label = c.kind === 'color'
-              ? HIGHLIGHT_COLORS.find(x => x.id === c.color)!.label
-              : AURORA_PALETTES[c.palette].label;
-            const swatchBg = c.kind === 'color'
-              ? HIGHLIGHT_COLORS.find(x => x.id === c.color)!.swatch
-              : `${AURORA_PALETTES[c.palette].ayahGlow}, #14141c`;
-            return (
-              <button
-                key={i}
-                onClick={() => onPickChoice(c)}
-                aria-label={label}
-                title={label}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '0 7px 0 5px',
-                  height: '24px',
-                  border: 'none',
-                  background: active
-                    ? 'color-mix(in srgb, var(--ink) 7%, transparent)'
-                    : 'transparent',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  fontSize: '11px',
-                  fontWeight: active ? 600 : 400,
-                  color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  transition: 'background 140ms ease, color 140ms ease',
-                  textAlign: 'left',
-                }}
-              >
-                <span aria-hidden style={{
-                  flexShrink: 0,
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  background: swatchBg,
-                  boxShadow: active
-                    ? '0 0 0 1.5px var(--text-primary)'
-                    : 'inset 0 0 0 1px color-mix(in srgb, var(--ink) 14%, transparent)',
-                  transition: 'box-shadow 140ms ease',
-                }} />
-                <span style={{
-                  flex: 1,
-                  minWidth: 0,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}>
-                  {label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {on && !constrainedOptions && (
+      {on && (
         <>
           {/* Style tabs — only shown on dark/cosmic themes where both
               modes make visual sense. On light themes the glow effect

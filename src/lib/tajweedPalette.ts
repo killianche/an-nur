@@ -109,11 +109,11 @@ export function setRuleEnabled(index: number, enabled: boolean) {
 type Mode = 'light' | 'dark';
 
 /** Read the active theme off documentElement and reduce it to light vs.
- *  not-light (dark + cosmic both use the dark palette). */
+ *  not-light — тёмная и «Аврора» обе берут тёмную палитру глифов. */
 function detectMode(): Mode {
   if (typeof document === 'undefined') return 'dark';
   const theme = document.documentElement.getAttribute('data-theme') ?? '';
-  return theme.startsWith('light') ? 'light' : 'dark';
+  return theme === 'light' ? 'light' : 'dark';
 }
 
 // ── CSS generation ───────────────────────────────────────────────────────────

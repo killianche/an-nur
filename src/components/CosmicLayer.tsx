@@ -1,82 +1,46 @@
 /**
- * CosmicLayer — composite backdrop for the cosmic theme.
+ * CosmicLayer — фон темы «Аврора».
  *
- * Three optional layers stack inside one full-screen `aria-hidden` div:
- *   1. Stars  (CosmicWarp = canvas 3D-flight, OR StarsTwinkle = static
- *              twinkling field). Picked by `cosmic.stars.mode`.
- *   2. Aurora (single DOM-element drift over a chosen palette).
+ * Два слоя в одном full-screen `aria-hidden` контейнере:
+ *   1. Звёзды — <CosmicWarp>, 3D-пролёт на canvas.
+ *   2. Сияние — <Aurora>, один DOM-слой с медленным дрифтом.
  *
- * The container uses `isolation: isolate` + `contain: paint` so the
- * blend tree is settled inside this layer — without it iOS Safari
- * recomposites the page on every scroll tick and the prose above stutters.
+ * `isolation: isolate` + `contain: paint` держат дерево композитинга
+ * внутри этого слоя — без них iOS Safari перекомпоновывает страницу на
+ * каждом тике скролла и текст выше начинает дёргаться.
  *
- * The whole thing is gated by `themeMode === 'cosmic'` upstream
- * (see App.tsx). When the user switches to light/dark this component
- * just doesn't render — no opacity fade, no DOM cost.
+ * Рендерится только когда активна тема «Аврора» — гейт стоит выше, в
+ * App.tsx (`themeMode(theme) === 'cosmic'`).  На светлой и тёмной
+ * компонент просто не монтируется: ни fade, ни затрат на DOM.
+ *
+ * Отличие от QuranIng: там сцена собиралась из восьми localStorage-
+ * префов (режим звёзд, скорость, плотность, палитра, направление,
+ * яркость…) и слушала событие `cosmic-changed`, чтобы подхватывать
+ * правки из панели настроек.  Здесь «Аврора» — одна тема с
+ * фиксированным видом, поэтому ни состояния, ни подписок нет:
+ * константы приезжают из AURORA_SCENE.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Aurora } from './Aurora';
 import { CosmicWarp } from './CosmicWarp';
-import { StarsTwinkle } from './StarsTwinkle';
-import {
-  isStarsEnabled, getStarsMode, getStarsSpeed, getStarsTwinkleDensity,
-  isAuroraEnabled, getAuroraBrightness, getAuroraPalette, getAuroraDirection,
-  STARS_TWINKLE_COUNTS, AURORA_PALETTES,
-} from '../lib/cosmic';
-
-const COSMIC_CHANGED_EVENT = 'cosmic-changed';
-
-/** Fire this from any setter in lib/cosmic.ts to make CosmicLayer pick up
- *  the new value without a parent re-render. */
-export function dispatchCosmicChanged() {
-  window.dispatchEvent(new Event(COSMIC_CHANGED_EVENT));
-}
+import { AURORA_ICE, AURORA_SCENE } from '../lib/cosmic';
 
 export function CosmicLayer() {
-  const [starsOn,        setStarsOn]        = useState<boolean>(isStarsEnabled);
-  const [starsMode,      setStarsMode]      = useState(getStarsMode);
-  const [starsSpeed,     setStarsSpeed]     = useState<number>(getStarsSpeed);
-  const [twinkleDensity, setTwinkleDensity] = useState(getStarsTwinkleDensity);
-  const [auroraOn,       setAuroraOn]       = useState<boolean>(isAuroraEnabled);
-  const [brightness,     setBrightness]     = useState<number>(getAuroraBrightness);
-  const [palette,        setPalette]        = useState(getAuroraPalette);
-  const [direction,      setDirection]      = useState(getAuroraDirection);
-
-  useEffect(() => {
-    const refresh = () => {
-      setStarsOn(isStarsEnabled());
-      setStarsMode(getStarsMode());
-      setStarsSpeed(getStarsSpeed());
-      setTwinkleDensity(getStarsTwinkleDensity());
-      setAuroraOn(isAuroraEnabled());
-      setBrightness(getAuroraBrightness());
-      setPalette(getAuroraPalette());
-      setDirection(getAuroraDirection());
-    };
-    window.addEventListener(COSMIC_CHANGED_EVENT, refresh);
-    window.addEventListener('storage', refresh); // cross-tab
-    return () => {
-      window.removeEventListener(COSMIC_CHANGED_EVENT, refresh);
-      window.removeEventListener('storage', refresh);
-    };
-  }, []);
-
-  // Project the aurora palette onto the karaoke-highlight CSS var so the
-  // active word lights up in the same colour as the sky. The default
-  // text-shadow rule in index.css falls through to a neutral ink glow when
-  // this variable is absent (light/dark themes), so untheming is automatic
-  // — when CosmicLayer unmounts it leaves the var dangling but no element
-  // outside cosmic mode references it.
+  // Проецируем палитру сияния на CSS-переменную караоке-подсветки,
+  // чтобы активное слово загоралось тем же цветом, что и небо.
+  // Правило в index.css падает на нейтральное свечение, когда
+  // переменной нет (светлая и тёмная темы), так что «расстилизация»
+  // происходит сама собой при размонтировании слоя.
   useEffect(() => {
     document.documentElement.style.setProperty(
       '--ayah-word-shadow',
-      AURORA_PALETTES[palette].wordShadow,
+      AURORA_ICE.wordShadow,
     );
     return () => {
       document.documentElement.style.removeProperty('--ayah-word-shadow');
     };
-  }, [palette]);
+  }, []);
 
   return (
     <div
@@ -93,17 +57,11 @@ export function CosmicLayer() {
         background: '#000',
       }}
     >
-      {starsOn && (starsMode === 'twinkle'
-        ? <StarsTwinkle count={STARS_TWINKLE_COUNTS[twinkleDensity]} speed={starsSpeed} />
-        : <CosmicWarp speed={starsSpeed} />)
-      }
-      {auroraOn && (
-        <Aurora
-          brightness={brightness}
-          palette={palette}
-          direction={direction}
-        />
-      )}
+      <CosmicWarp speed={AURORA_SCENE.starsSpeed} />
+      <Aurora
+        brightness={AURORA_SCENE.auroraBrightness}
+        direction={AURORA_SCENE.auroraDirection}
+      />
     </div>
   );
 }
