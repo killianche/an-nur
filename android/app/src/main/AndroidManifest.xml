@@ -1,6 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -8,7 +7,6 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
@@ -16,12 +14,10 @@
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
             android:exported="true">
-
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
         </activity>
 
         <provider
@@ -29,9 +25,7 @@
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths"></meta-data>
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
     </application>
 
@@ -44,15 +38,19 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Фоновое воспроизведение.
-         ⚠️ ВАЖНО: одних разрешений НЕДОСТАТОЧНО.  Android ставит WebView
-         на паузу, когда приложение уходит в фон, и <audio> замолкает.
-         Чтобы чтение продолжалось с погашенным экраном, нужен нативный
-         foreground service с MediaSession — его в проекте ещё нет
-         (см. STATUS.md, раздел «Что дальше»).  Разрешения объявлены
-         заранее, чтобы при добавлении сервиса не пересобирать манифест
-         и не ловить сюрприз на ревью.
-         На iOS этот сценарий уже закрыт ключом UIBackgroundModes=audio
-         в Info.plist — там WebView в фоне звук не глушит. -->
+         Что известно точно (сверено с исходниками @capacitor/android):
+         Bridge.onPause() НЕ приостанавливает WebView — он только
+         оповещает плагины, а webView.onPause()/pauseTimers() не
+         вызывает.  Значит <audio> в фоне не глушится самим Capacitor,
+         и navigator.mediaSession (он у нас настроен в lib/mediaSession.ts)
+         должен поднять системное медиа-уведомление силами WebView.
+         ⚠️ НЕ ПРОВЕРЕНО на устройстве: Android вправе убить фоновый
+         процесс без foreground service, поэтому длительное чтение с
+         погашенным экраном может обрываться.  Если проверка это
+         подтвердит — понадобится нативный foreground service с
+         MediaSession; разрешения под него объявлены здесь заранее,
+         чтобы не пересобирать манифест и не ловить сюрприз на ревью.
+         На iOS сценарий закрыт ключом UIBackgroundModes=audio. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
