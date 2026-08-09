@@ -13,6 +13,7 @@ import { TabBar, type TabId } from './components/TabBar';
 import { applyHighlightVars } from './lib/audioPrefs';
 import { applyPaletteToDocument } from './lib/tajweedPalette';
 import { syncStatusBarToTheme } from './lib/nativeStatusBar';
+import { hideSplashAfterFirstPaint } from './lib/nativeSplash';
 import type { AzkarCategoryId } from './lib/azkar';
 
 /**
@@ -100,6 +101,12 @@ export default function App() {
 
   // Нативный статус-бар (iOS + Android) под тему.  В вебе no-op.
   useEffect(() => { syncStatusBarToTheme(theme); }, [theme]);
+
+  // Снять нативный сплэш после первого отрисованного кадра.  Конфиг
+  // держит заставку до явного вызова (launchAutoHide: false), поэтому
+  // без этого эффекта приложение зависло бы на ней — ровно та ошибка,
+  // что осталась незамеченной в QuranIng.
+  useEffect(() => { hideSplashAfterFirstPaint(); }, []);
 
   // ── Позиция прокрутки вкладок ────────────────────────────────────────────
   // Активная вкладка одна, остальные размонтированы, поэтому браузер

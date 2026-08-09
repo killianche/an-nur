@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Privacy Manifest — обязателен для всех приложений в App Store с весны
+  2024.  Декларирует, какие Required Reason API используются и какие
+  данные собираются.
+
+  Состояние QuranRu:
+   • Аккаунтов, логина, рекламы и трекинга нет — PII не собираем.
+   • Sentry (если включён через VITE_SENTRY_DSN) шлёт только данные о
+     падениях, без идентификатора пользователя: send_default_pii=false.
+   • UserDefaults — через @capacitor/preferences: настройки чтения и
+     прогресс офлайн-загрузки, всё внутри песочницы приложения.
+   • File timestamp — через @capacitor/filesystem: работа с папкой
+     скачанного аудио, тоже внутри песочницы.
+
+  ⚠️ Если в приложении появится аналитика, реклама или логин — этот
+  файл нужно обновить ДО отправки сборки, иначе App Store Connect
+  отклонит её автоматической проверкой.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array>
+        <!-- Crash data (Sentry) — не связана с личностью, не для трекинга. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeCrashData</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+            </array>
+        </dict>
+    </array>
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <!-- UserDefaults: @capacitor/preferences хранит настройки чтения
+             и прогресс офлайн-загрузки в песочнице приложения. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+        <!-- File timestamp: @capacitor/filesystem работает с файлами
+             скачанного аудио внутри песочницы приложения. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+        <!-- System boot time: косвенно через WebKit / Capacitor
+             (тайминги rAF и т.п.).  Декларируем заранее, чтобы не
+             получить предупреждение при загрузке сборки. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+        <!-- Disk space: система запрашивает свободное место при записи
+             скачанных аятов.  Категория декларируется, потому что
+             WebKit и Filesystem обращаются к ней под капотом. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>E174.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

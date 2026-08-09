@@ -25,3 +25,11 @@ android/local.properties
 
 # Аудио, скачанное локально для офлайн-тестов (не в git — сотни мегабайт)
 public/audio-offline/
+
+# Capacitor: собранные веб-ассеты копируются в нативные проекты при
+# `cap sync` — это артефакт сборки, в git ему не место (иначе каждый
+# билд даёт 350 МБ дельты).
+ios/App/App/public/
+android/app/src/main/assets/public/
+ios/App/App/capacitor.config.json
+android/app/src/main/assets/capacitor.config.json
