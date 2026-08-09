@@ -423,224 +423,146 @@ function writeLangTab(v: LangTab) {
   localStorage.setItem(KEY_LANG_TAB, v);
 }
 
-// Outer (section) tab — splits the dense settings sheet into two
-// focused panes so the user doesn't have to scroll past everything on
-// small phones. Reciter / Text. (The third "Подсветка" pane moved to
-// the Theme popover — it's a visual-look knob.)
-// Persisted so reopening the menu lands on the same pane the user was
-// last tweaking, mirroring how the inner language tab is persisted.
-type OuterTab = 'reciter' | 'text';
-const KEY_OUTER_TAB = 'typography.outerTab';
-function readOuterTab(): OuterTab {
-  const v = localStorage.getItem(KEY_OUTER_TAB);
-  // Legacy 'playback' values from before the Подсветка-move fall back
-  // to 'text' (the new default) via the predicate.
-  return v === 'reciter' || v === 'text' ? v : 'text';
-}
-function writeOuterTab(v: OuterTab) {
-  localStorage.setItem(KEY_OUTER_TAB, v);
-}
-
 export function TypographySettings(p: TypographyProps) {
-  // Inner language tab — Arabic / Russian inside the "Text" pane.
-  // See readLangTab() for persistence rationale.
+  // Вкладка языка внутри блока «Текст и шрифты».
+  // См. readLangTab() — почему выбор запоминается.
   const [tab, setTabS] = useState<LangTab>(readLangTab);
   const setTab = (v: LangTab) => { setTabS(v); writeLangTab(v); };
-
-  // Outer pane tab — picks which of the three section groups is shown.
-  // Default 'text' because it's the most-edited surface (the user
-  // changes font / size more often than reciter or playback prefs).
-  const [outerTab, setOuterTabS] = useState<OuterTab>(readOuterTab);
-  const setOuterTab = (v: OuterTab) => { setOuterTabS(v); writeOuterTab(v); };
 
   return (
     // Same top-popover treatment as ThemeSettings — anchored under the
     // [A] button in the header. Keeps the menu visually paired with its
     // trigger and leaves the lower portion of the surah uncovered for
     // live preview of font / size changes.
+    //
+    // В QuranIng попап был разбит на две внешние вкладки «Текст / Чтец»,
+    // потому что восемь чтецов в сетке 2×4 не помещались рядом с
+    // типографикой на 4.7" экране.  Чтецов теперь два — они занимают
+    // одну строку, и весь попап снова читается одним куском без
+    // переключения вкладок.
     <SettingsSheet onClose={p.onClose} placement="top-popover" anchorEl={p.anchorEl}>
-      {/* ── Outer tabs ──────────────────────────────────────────────────
-          One pane visible at a time keeps the sheet short enough to
-          read on a 4.7" phone without scrolling. Visual pattern matches
-          the inner language-tab segmented control below so the two
-          levels read as the same component family. */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px',
-        background: 'var(--bg)', border: '1px solid var(--hairline)',
-        borderRadius: '10px', padding: '3px',
-        marginBottom: '10px',
-      }}>
-        {/* Tab order: Text first, Reciter second — text/font settings
-            are touched far more often than reciter, so the user lands
-            on them by default and reaches Reciter with one tap.  The
-            mic glyph on Reciter doubles as a visual cue that this tab
-            is for voice/audio rather than another typography knob. */}
-        {([
-          { id: 'text',    label: 'Текст', icon: null  },
-          { id: 'reciter', label: 'Чтец',  icon: 'mic' },
-        ] as const).map(t => (
-          <button
-            key={t.id}
-            onClick={() => setOuterTab(t.id)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              minHeight: '36px',
-              padding: '9px 0', borderRadius: '7px',
-              border: 'none',
-              background: outerTab === t.id
-                ? 'color-mix(in srgb, var(--ink) 8%, var(--surface))'
-                : 'transparent',
-              color: outerTab === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: '13px',
-              fontWeight: outerTab === t.id ? 600 : 500,
-              boxShadow: outerTab === t.id
-                ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent)'
-                : 'none',
-              transition: 'box-shadow 140ms ease, background 140ms ease',
-            }}
-          >
-            {t.icon === 'mic' && (
-              <Microphone size={14} />
-            )}
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Pane: Reciter ──────────────────────────────────────────────
-          2-column compact grid. Latin transliteration only — Arabic
-          calligraphy added per-card visual richness but doubled the
-          height of every chip; the user is picking by familiar Latin
-          name anyway, so the bilingual block was decoration tax. */}
-      {outerTab === 'reciter' && (
-        <section style={settingCard}>
-          <p style={cardTitle}>Чтец</p>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '6px',
-          }}>
-            {RECITERS.map(r => {
-              const active = p.reciter === r.id;
-              return (
-                <button
-                  key={r.id}
-                  onClick={() => p.setReciter(r.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-start',
-                    minHeight: '36px',
-                    padding: '8px 10px',
-                    borderRadius: '10px',
-                    border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline)'}`,
-                    background: active
-                      ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
-                      : 'color-mix(in srgb, var(--ink) 3%, transparent)',
-                    boxShadow: active ? 'inset 0 0 0 1px var(--text-primary)' : 'none',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    textAlign: 'left',
-                    overflow: 'hidden',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    letterSpacing: '0.005em',
-                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    whiteSpace: 'nowrap',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {r.label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ── Pane: Text & fonts ────────────────────────────────────────── */}
-      {outerTab === 'text' && (
-        <section style={settingCard}>
-          <p style={cardTitle}>Текст и шрифты</p>
-
-          {/* Inner language tabs */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px',
-            background: 'var(--bg)', border: '1px solid var(--hairline)',
-            borderRadius: '10px', padding: '3px',
-            marginBottom: '14px',
-          }}>
-            {([
-              { id: 'arabic',  label: 'Арабский'   },
-              { id: 'russian', label: 'Русский'    },
-            ] as const).map(t => (
+      {/* ── Чтец ───────────────────────────────────────────────────── */}
+      <section style={settingCard}>
+        <p style={{ ...cardTitle, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Microphone size={13} />
+          Чтец
+        </p>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '6px',
+        }}>
+          {RECITERS.map(r => {
+            const active = p.reciter === r.id;
+            return (
               <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
+                key={r.id}
+                onClick={() => p.setReciter(r.id)}
+                aria-pressed={active}
                 style={{
-                  minHeight: '36px',
-                  padding: '9px 0', borderRadius: '7px',
-                  border: 'none',
-                  background: tab === t.id
-                    ? 'color-mix(in srgb, var(--ink) 8%, var(--surface))'
-                    : 'transparent',
-                  color: tab === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-start',
+                  minHeight: '38px',
+                  padding: '8px 10px',
+                  borderRadius: '10px',
+                  border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline)'}`,
+                  background: active
+                    ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
+                    : 'color-mix(in srgb, var(--ink) 3%, transparent)',
+                  boxShadow: active ? 'inset 0 0 0 1px var(--text-primary)' : 'none',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
-                  fontSize: '13px',
-                  fontWeight: tab === t.id ? 600 : 500,
-                  boxShadow: tab === t.id
-                    ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent)'
-                    : 'none',
+                  textAlign: 'left',
+                  overflow: 'hidden',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  letterSpacing: '0.005em',
+                  color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis',
                   transition: 'box-shadow 140ms ease, background 140ms ease',
                 }}
               >
-                {t.label}
+                {r.label}
               </button>
-            ))}
-          </div>
+            );
+          })}
+        </div>
+      </section>
 
-          {/* Active language body */}
-          {tab === 'arabic' && (
-            <LangBody
-              visible={p.showArabic}
-              onToggleVisible={() => p.setShowArabic(!p.showArabic)}
-              scale={p.arabicScale}
-              onScale={p.setArabicScale}
-              font={p.arabicFont}
-              onFont={p.setArabicFont}
-              options={ARABIC_FONTS}
-              preview="بسم الله"
-              dir="rtl"
-            />
-          )}
-          {tab === 'russian' && (
-            <LangBody
-              visible={p.showRu}
-              onToggleVisible={() => p.setShowRu(!p.showRu)}
-              scale={p.ruScale}
-              onScale={p.setRuScale}
-              font={p.ruFont}
-              onFont={p.setRuFont}
-              options={LATIN_FONTS}
-              preview="Благословен"
-            />
-          )}
-        </section>
-      )}
+      {/* ── Текст и шрифты ─────────────────────────────────────────── */}
+      <section style={{ ...settingCard, marginTop: '10px' }}>
+        <p style={cardTitle}>Текст и шрифты</p>
 
-      {/* Auto-scroll toggle — meaningful for BOTH panes.  The setting
-          itself is global (controls how the reading view follows
-          playback through the ayah feed), and conceptually belongs
-          alongside the reciter (it's "what happens during playback")
-          as much as alongside the text/fonts.  Shown as a sibling row
-          beneath whichever pane is open so the user always has access
-          to it from settings, not buried in just one tab. */}
+        {/* Вкладки языка */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px',
+          background: 'var(--bg)', border: '1px solid var(--hairline)',
+          borderRadius: '10px', padding: '3px',
+          marginBottom: '14px',
+        }}>
+          {([
+            { id: 'arabic',  label: 'Арабский' },
+            { id: 'russian', label: 'Русский'  },
+          ] as const).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              style={{
+                minHeight: '36px',
+                padding: '9px 0', borderRadius: '7px',
+                border: 'none',
+                background: tab === t.id
+                  ? 'color-mix(in srgb, var(--ink) 8%, var(--surface))'
+                  : 'transparent',
+                color: tab === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                fontSize: '13px',
+                fontWeight: tab === t.id ? 600 : 500,
+                boxShadow: tab === t.id
+                  ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent)'
+                  : 'none',
+                transition: 'box-shadow 140ms ease, background 140ms ease',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Тело активного языка */}
+        {tab === 'arabic' && (
+          <LangBody
+            visible={p.showArabic}
+            onToggleVisible={() => p.setShowArabic(!p.showArabic)}
+            scale={p.arabicScale}
+            onScale={p.setArabicScale}
+            font={p.arabicFont}
+            onFont={p.setArabicFont}
+            options={ARABIC_FONTS}
+            preview="بسم الله"
+            dir="rtl"
+          />
+        )}
+        {tab === 'russian' && (
+          <LangBody
+            visible={p.showRu}
+            onToggleVisible={() => p.setShowRu(!p.showRu)}
+            scale={p.ruScale}
+            onScale={p.setRuScale}
+            font={p.ruFont}
+            onFont={p.setRuFont}
+            options={LATIN_FONTS}
+            preview="Благословен"
+          />
+        )}
+      </section>
+
+      {/* Автопрокрутка — глобальная настройка воспроизведения: лента
+          сама доезжает до звучащего аята.  Стоит последней строкой,
+          отдельно от карточек. */}
       <div style={{ marginTop: '10px' }}>
         <AutoScrollToggleRow />
       </div>
