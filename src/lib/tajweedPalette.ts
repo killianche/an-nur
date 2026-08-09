@@ -32,6 +32,7 @@
 // Sync-импорт только meta (~5 строк констант) — большой словарь
 // TAJWEED_GLYPHS lazy-import'ится из ArabicAyahRouter/TajweedAyah.
 import { ALL_TAJWEED_FONT_FAMILIES } from '../content/quran-tajweed-meta';
+import { isLightTheme, type Theme } from '../hooks/useTheme';
 
 export const PALETTE_NAME = '--asr-tajweed';
 const STYLE_ID = 'tajweed-palette';
@@ -109,11 +110,13 @@ export function setRuleEnabled(index: number, enabled: boolean) {
 type Mode = 'light' | 'dark';
 
 /** Read the active theme off documentElement and reduce it to light vs.
- *  not-light — тёмная и «Аврора» обе берут тёмную палитру глифов. */
+ *  not-light — тёмная и «Аврора» обе берут тёмную палитру глифов.
+ *  Список светлых тем не дублируем: единственный его владелец —
+ *  isLightTheme() в hooks/useTheme.ts. */
 function detectMode(): Mode {
   if (typeof document === 'undefined') return 'dark';
   const theme = document.documentElement.getAttribute('data-theme') ?? '';
-  return (theme === 'light' || theme === 'mushaf') ? 'light' : 'dark';
+  return isLightTheme(theme as Theme) ? 'light' : 'dark';
 }
 
 // ── CSS generation ───────────────────────────────────────────────────────────

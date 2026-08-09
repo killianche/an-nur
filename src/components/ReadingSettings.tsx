@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ALL_THEMES, THEME_LABELS, type Theme } from '../hooks/useTheme';
+import { ALL_THEMES, THEME_LABELS, isLightTheme, type Theme } from '../hooks/useTheme';
 import {
   LATIN_FONTS, ARABIC_FONTS, SCALE_OPTIONS, SCALE_FONT_PX,
   type LatinFontId, type ArabicFontId,
@@ -620,7 +620,11 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
   // force-resolved to color by audioPrefs anyway, so showing a
   // "Свечение" tab there would be a dead choice.
   const themeAttr = useRootDataTheme();
-  const isLight = themeAttr === 'light';
+  // Светлых тем две — «Светлая» и «Мусхаф».  Сравнение с одной строкой
+  // тут уже приводило к багу: на «Мусхафе» показывались вкладки
+  // «Цвет / Свечение», хотя свечение на бумаге сводится к 'color'
+  // в audioPrefs и выбор был мёртвым.
+  const isLight = isLightTheme(themeAttr as Theme);
 
   // Some reciters (Maher Al-Muaiqly) aren't on quran.com so we have no
   // word-level segments for them — show a notice instead of dead

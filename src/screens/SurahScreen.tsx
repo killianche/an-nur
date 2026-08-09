@@ -428,7 +428,9 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
       }}>
         <ScreenHeader
           title={meta?.transliteration ?? `Сура ${surahNumber}`}
-          subtitle={meta ? `${meta.russian} · ${meta.ayahs} аят${meta.ayahs === 1 ? '' : (meta.ayahs < 5 ? 'а' : 'ов')}` : undefined}
+          // Подзаголовка нет намеренно: перевод названия и число аятов
+          // крупно стоят в блоке заголовка сразу под панелью, и в
+          // первом экране получалось два одинаковых текста подряд.
           onBack={onBack}
           actions={[
             ...(meta && meta.ayahs > 10 ? [{

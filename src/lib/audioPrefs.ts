@@ -25,6 +25,8 @@
  * applyHighlightVars()) listen and re-read on demand.
  */
 
+import { isLightTheme, type Theme } from '../hooks/useTheme';
+
 const KEY_AUTO_SCROLL       = 'audio.autoScroll';
 const KEY_HIGHLIGHT_ENABLED = 'highlight.enabled';
 const KEY_HIGHLIGHT_STYLE   = 'highlight.style';
@@ -259,9 +261,11 @@ export function getHighlightStyle(): HighlightStyle {
  */
 export function getEffectiveHighlightStyle(theme?: string | null): HighlightStyle {
   const t = theme ?? document.documentElement.getAttribute('data-theme') ?? '';
-  // Светлых тем две — «Светлая» и «Мусхаф»; на обеих свечение читается
-  // как грязное пятно, поэтому обе сводятся к 'color'.
-  if (t === 'light' || t === 'mushaf') return 'color';
+  // На светлых темах свечение читается как грязное пятно, поэтому все
+  // они сводятся к 'color'.  Какие темы светлые — знает только
+  // isLightTheme(); дублировать список здесь нельзя, на этом уже
+  // споткнулись в HighlightCard.
+  if (isLightTheme(t as Theme)) return 'color';
   return getHighlightStyle();
 }
 export function setHighlightStylePref(s: HighlightStyle) {
