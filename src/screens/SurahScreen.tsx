@@ -75,7 +75,6 @@ function migrateLegacyScale() {
   if (!legacy) return;
   if (!localStorage.getItem('arabicScale')) localStorage.setItem('arabicScale', legacy);
   if (!localStorage.getItem('ruScale'))     localStorage.setItem('ruScale',     legacy);
-  if (!localStorage.getItem('ingScale'))    localStorage.setItem('ingScale',    legacy);
   localStorage.removeItem('fontScale');
 }
 
@@ -88,13 +87,10 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
 
   // ── Typography prefs ───────────────────────────────────────────────────────
   const [arabicScale, setArabicScaleS] = useState<number>(() => readNumber('arabicScale', 1.0));
-  const [ruScale,     setRuScaleS]     = useState<number>(() => readNumber('ruScale',     0.85));
-  const [ingScale,    setIngScaleS]    = useState<number>(() => readNumber('ingScale',    1.0));
+  const [ruScale,     setRuScaleS]     = useState<number>(() => readNumber('ruScale',     1.0));
   const [ruFont,      setRuFontS]      = useState<LatinFontId>(()  => readPref('ruFont',     'inter-regular', LATIN_IDS));
-  const [ingFont,     setIngFontS]     = useState<LatinFontId>(()  => readPref('ingFont',    'alice',         LATIN_IDS));
   const [arabicFont,  setArabicFontS]  = useState<ArabicFontId>(() => readPref('arabicFont', 'uthmani', ARABIC_IDS));
   const [showArabic,  setShowArabicS]  = useState<boolean>(() => localStorage.getItem('showArabic') !== '0');
-  const [showIng,     setShowIngS]     = useState<boolean>(() => localStorage.getItem('showIng')    !== '0');
   const [showRu,      setShowRuS]      = useState<boolean>(() => localStorage.getItem('showRu')     !== '0');
 
   const persist = <T extends string | number | boolean>(key: string) => (v: T) => {
@@ -103,12 +99,9 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
   const setReciter     = (v: ReciterId)    => { setReciterS(v);     persist<string>('reciter')(v); };
   const setArabicScale = (v: number)       => { setArabicScaleS(v); persist<number>('arabicScale')(v); };
   const setRuScale     = (v: number)       => { setRuScaleS(v);     persist<number>('ruScale')(v); };
-  const setIngScale    = (v: number)       => { setIngScaleS(v);    persist<number>('ingScale')(v); };
   const setRuFont      = (v: LatinFontId)  => { setRuFontS(v);      persist<string>('ruFont')(v); };
-  const setIngFont     = (v: LatinFontId)  => { setIngFontS(v);     persist<string>('ingFont')(v); };
   const setArabicFont  = (v: ArabicFontId) => { setArabicFontS(v);  persist<string>('arabicFont')(v); };
   const setShowArabic  = (v: boolean)      => { setShowArabicS(v);  persist<boolean>('showArabic')(v); };
-  const setShowIng     = (v: boolean)      => { setShowIngS(v);     persist<boolean>('showIng')(v); };
   const setShowRu      = (v: boolean)      => { setShowRuS(v);      persist<boolean>('showRu')(v); };
 
   // ── Header popovers ────────────────────────────────────────────────────────
@@ -524,13 +517,10 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
         <TypographySettings
           reciter={reciter} setReciter={setReciter}
           showArabic={showArabic} setShowArabic={setShowArabic}
-          showIng={showIng}       setShowIng={setShowIng}
           showRu={showRu}         setShowRu={setShowRu}
           arabicScale={arabicScale} setArabicScale={setArabicScale}
           ruScale={ruScale}         setRuScale={setRuScale}
-          ingScale={ingScale}       setIngScale={setIngScale}
           ruFont={ruFont}         setRuFont={setRuFont}
-          ingFont={ingFont}       setIngFont={setIngFont}
           arabicFont={arabicFont} setArabicFont={setArabicFont}
           onClose={() => setTypographyOpen(false)}
           anchorEl={typographyBtnRef.current}
@@ -605,10 +595,6 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
               const ruFontSize  = latinIsSerif(ruFont)
                 ? `calc(16px * ${ruScale} + ${serifBump(ruScale)}px)`
                 : `calc(16px * ${ruScale})`;
-              const ingFontSize = latinIsSerif(ingFont)
-                ? `calc(16px * ${ingScale} + ${serifBump(ingScale)}px)`
-                : `calc(16px * ${ingScale})`;
-              const ingLineHeight = 1.4;
               const ruLineHeight  = 1.48;
 
               return (
@@ -634,29 +620,10 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
                     />
                   )}
 
-                  {/* Ingush */}
-                  {showIng && source?.translations.inh && (
-                    <p lang="inh" style={{
-                      margin: showArabic ? '14px 0 0' : 0,
-                      fontFamily: latinStack(ingFont),
-                      fontSize: ingFontSize,
-                      fontWeight: latinWeight(ingFont),
-                      // Serif faces use tighter leading (see comment
-                      // above); the historic 1.4 stays for Inter.
-                      lineHeight: ingLineHeight,
-                      color: 'var(--lang-inh-color, var(--text-secondary))',
-                      letterSpacing: '-0.005em',
-                    }}>
-                      {source.translations.inh}
-                    </p>
-                  )}
-
                   {/* Russian */}
                   {showRu && source && (
                     <p style={{
-                      margin: (showIng && source.translations.inh) || showArabic
-                        ? '12px 0 0'
-                        : 0,
+                      margin: showArabic ? '14px 0 0' : 0,
                       fontFamily: latinStack(ruFont),
                       fontSize: ruFontSize,
                       fontWeight: latinWeight(ruFont),

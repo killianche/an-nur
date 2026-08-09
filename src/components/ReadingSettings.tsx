@@ -471,8 +471,6 @@ type TypographyProps = {
 
   showArabic: boolean;
   setShowArabic: (v: boolean) => void;
-  showIng: boolean;
-  setShowIng: (v: boolean) => void;
   showRu: boolean;
   setShowRu: (v: boolean) => void;
 
@@ -480,13 +478,9 @@ type TypographyProps = {
   setArabicScale: (v: number) => void;
   ruScale: number;
   setRuScale: (v: number) => void;
-  ingScale: number;
-  setIngScale: (v: number) => void;
 
   ruFont: LatinFontId;
   setRuFont: (v: LatinFontId) => void;
-  ingFont: LatinFontId;
-  setIngFont: (v: LatinFontId) => void;
   arabicFont: ArabicFontId;
   setArabicFont: (v: ArabicFontId) => void;
 
@@ -495,12 +489,14 @@ type TypographyProps = {
   anchorEl?: HTMLElement | null;
 };
 
-type LangTab = 'arabic' | 'ingush' | 'russian';
+type LangTab = 'arabic' | 'russian';
 
 const KEY_LANG_TAB = 'typography.langTab';
 function readLangTab(): LangTab {
   const v = localStorage.getItem(KEY_LANG_TAB);
-  return v === 'arabic' || v === 'ingush' || v === 'russian' ? v : 'arabic';
+  // Легаси-значение 'ingush' (из QuranIng) больше не существует — предикат
+  // ниже отправит такого пользователя на вкладку арабского.
+  return v === 'arabic' || v === 'russian' ? v : 'arabic';
 }
 function writeLangTab(v: LangTab) {
   localStorage.setItem(KEY_LANG_TAB, v);
@@ -525,8 +521,8 @@ function writeOuterTab(v: OuterTab) {
 }
 
 export function TypographySettings(p: TypographyProps) {
-  // Inner language tab — kept as-is (Arabic / Ingush / Russian inside
-  // the "Text" pane). See readLangTab() for persistence rationale.
+  // Inner language tab — Arabic / Russian inside the "Text" pane.
+  // See readLangTab() for persistence rationale.
   const [tab, setTabS] = useState<LangTab>(readLangTab);
   const setTab = (v: LangTab) => { setTabS(v); writeLangTab(v); };
 
@@ -653,14 +649,13 @@ export function TypographySettings(p: TypographyProps) {
 
           {/* Inner language tabs */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px',
+            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px',
             background: 'var(--bg)', border: '1px solid var(--hairline)',
             borderRadius: '10px', padding: '3px',
             marginBottom: '14px',
           }}>
             {([
               { id: 'arabic',  label: 'Арабский'   },
-              { id: 'ingush',  label: 'Ингушский'  },
               { id: 'russian', label: 'Русский'    },
             ] as const).map(t => (
               <button
@@ -701,18 +696,6 @@ export function TypographySettings(p: TypographyProps) {
               options={ARABIC_FONTS}
               preview="بسم الله"
               dir="rtl"
-            />
-          )}
-          {tab === 'ingush' && (
-            <LangBody
-              visible={p.showIng}
-              onToggleVisible={() => p.setShowIng(!p.showIng)}
-              scale={p.ingScale}
-              onScale={p.setIngScale}
-              font={p.ingFont}
-              onFont={p.setIngFont}
-              options={LATIN_FONTS}
-              preview="Цlена ва"
             />
           )}
           {tab === 'russian' && (

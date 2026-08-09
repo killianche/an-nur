@@ -5,8 +5,6 @@
 // Ингушский перевод удалён при переносе из QuranIng в QuranRu (2026-08-09):
 // поле `inh` вырезано из всех 6236 записей скриптом, арабский и русский
 // при этом сверены посимвольно с оригиналом и не изменились.
-// Тип ниже сохраняет `inh?` как опциональное поле только до тех пор, пока
-// UI не почищен, — см. STATUS.md, задача 5.
 
 export type QuranSource = {
   surah: number;
@@ -14,7 +12,6 @@ export type QuranSource = {
   arabic: string;       // verbatim ar-simple-clean
   translations: {
     ru: string;         // verbatim ru-kuliev
-    inh?: string;       // ингушский (не для всех аятов)
   };
   editions: {
     arabic: string;
