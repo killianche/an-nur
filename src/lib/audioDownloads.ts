@@ -20,13 +20,29 @@
  * стрима.  Так библиотека растёт сама собой от обычного чтения, без
  * единого нажатия «скачать».  Вызывается из useAyahAudio.
  *
- * ── Почему fetch + writeFile ──────────────────────────────────────────
+ * ── Почему CapacitorHttp, а не fetch ──────────────────────────────────
  *
- * `Filesystem.downloadFile` помечен deprecated с @capacitor/filesystem
- * 7.1.0 и предлагает тянуть отдельный плагин @capacitor/file-transfer.
- * Ради того же результата новая зависимость не нужна: файлы мелкие
- * (~60 КБ при 64 kbps), base64-конвертация одного стоит доли
- * миллисекунды и не копится в памяти.
+ * Первая версия качала обычным `fetch()`, и на устройстве это НЕ
+ * РАБОТАЛО ВООБЩЕ: каждая загрузка падала с «Load failed».
+ * Причина — CORS.  Страница в WebView живёт на origin
+ * `capacitor://localhost`, а `cdn.islamic.network` не отдаёт заголовок
+ * `Access-Control-Allow-Origin` (проверено curl'ом), поэтому браузер
+ * режет кросс-доменный fetch.  При этом стриминг работал и сбивал с
+ * толку: медиа-элементу `<audio src>` CORS не нужен, ему хватает
+ * простого GET.
+ *
+ * `CapacitorHttp` входит в @capacitor/core, выполняет запрос НАТИВНО —
+ * то есть мимо браузерной политики происхождения — и для
+ * `responseType: 'blob'` возвращает уже готовый base64.  Это заодно
+ * убирает нашу собственную конвертацию: `Filesystem.writeFile` хочет
+ * ровно base64.
+ *
+ * Альтернативы, которые отвергнуты: `Filesystem.downloadFile`
+ * (deprecated с 7.1.0), отдельный плагин @capacitor/file-transfer
+ * (лишняя зависимость ради того же), включение глобального патча
+ * fetch через `plugins.CapacitorHttp.enabled` (подменяет window.fetch
+ * во всём приложении — слишком широкий побочный эффект ради одной
+ * функции).
  *
  * Параллельность 4: упираемся не в сеть, а в запись через мост
  * Capacitor, и на бюджетных Android-устройствах восемь одновременных
@@ -232,32 +248,43 @@ function cdnUrl(reciter: ReciterId, surah: number, ayah: number): string {
   throw new Error(`нет источника аудио для чтеца ${reciter}`);
 }
 
-function toBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let bin = '';
-  // Чанками, а не String.fromCharCode(...bytes): на файле в ~140 КБ
-  // спред развернулся бы в 140 000 аргументов и уронил стек.
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(bin);
+/** Длина исходных данных по длине base64 — чтобы не декодировать
+ *  строку обратно только ради счётчика байт. */
+function base64ByteLength(b64: string): number {
+  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  return Math.max(0, (b64.length * 3) / 4 - padding);
 }
 
 /** Скачать и записать один аят.  Возвращает размер в байтах. */
 async function fetchAndStore(reciter: ReciterId, surah: number, ayah: number): Promise<number> {
-  const res = await fetch(cdnUrl(reciter, surah, ayah));
-  if (!res.ok) throw new Error(`${surah}:${ayah} — HTTP ${res.status}`);
-  const buf = await res.arrayBuffer();
-  const { Filesystem, Directory } = await import('@capacitor/filesystem');
+  const [{ CapacitorHttp }, { Filesystem, Directory }] = await Promise.all([
+    import('@capacitor/core'),
+    import('@capacitor/filesystem'),
+  ]);
+
+  const res = await CapacitorHttp.request({
+    url: cdnUrl(reciter, surah, ayah),
+    method: 'GET',
+    // 'blob' на нативной платформе возвращает base64-строку — именно
+    // то, что принимает Filesystem.writeFile.
+    responseType: 'blob',
+  });
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`${surah}:${ayah} — HTTP ${res.status}`);
+  }
+  const data = res.data;
+  if (typeof data !== 'string' || data.length === 0) {
+    throw new Error(`${surah}:${ayah} — пустой ответ`);
+  }
+
   await Filesystem.writeFile({
     directory: Directory.LibraryNoCloud,
     path: ayahFilePath(reciter, surah, ayah),
-    data: toBase64(buf),
+    data,
     recursive: true,
   });
   markDownloaded(reciter, surah, ayah);
-  return buf.byteLength;
+  return base64ByteLength(data);
 }
 
 /**
