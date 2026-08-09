@@ -1,25 +1,23 @@
 import { reciterById, DEFAULT_RECITER, type ReciterId } from './reciters';
 import { SURAHS_WITH_LOCAL_AUDIO } from '../content/surahs';
+import { localAyahSrc } from './audioStore';
+import { globalAyahNumber } from './ayahNumbering';
 
-// Количество аятов в каждой суре (1–114)
-const AYAHS_PER_SURAH = [
-  7,286,200,176,120,165,206,75,129,109,123,111,43,52,99,128,111,110,98,135,
-  112,78,118,64,77,227,93,88,69,60,34,30,73,54,45,83,182,88,75,85,54,53,89,
-  59,37,35,38,29,18,45,60,49,62,55,78,96,29,22,24,13,14,11,11,18,12,12,30,
-  52,52,44,28,28,20,56,40,31,50,40,46,42,29,19,36,25,22,17,19,26,30,20,15,
-  21,11,8,8,19,5,8,8,11,11,8,3,9,5,4,7,3,6,3,5,4,5,6,
-];
-
-export function globalAyahNumber(surah: number, ayah: number): number {
-  let g = ayah;
-  for (let i = 1; i < surah; i++) g += AYAHS_PER_SURAH[i - 1];
-  return g;
-}
+// Таблица длин сур и globalAyahNumber переехали в lib/ayahNumbering.ts —
+// листовой модуль без импортов.  Иначе получался цикл
+// quranUtils → audioStore → quranUtils: разрешение URL спрашивает
+// реестр скачанного, а реестру нужен сквозной номер аята.
+export { globalAyahNumber, ayahsInSurah, TOTAL_AYAHS } from './ayahNumbering';
 
 /**
  * Build the playback URL for one ayah.
  *
- * Three sources, in priority order:
+ * Four sources, in priority order:
+ *
+ *   0. Скачано в память устройства (audioStore) — пользователь нажал
+ *      «Скачать» в настройках.  Работает только в нативной обёртке и
+ *      только для аятов ниже «планки» скачанного; проверка
+ *      синхронная, см. шапку lib/audioStore.ts.
  *
  *   1. Local origin — only for the default reciter (Alafasy) on surahs
  *      whose mp3s we ship in the bundle (SURAHS_WITH_LOCAL_AUDIO).
@@ -51,6 +49,8 @@ function pad3(n: number): string {
 }
 
 export function ayahAudioUrl(surah: number, ayah: number, reciter: ReciterId = DEFAULT_RECITER): string {
+  const offline = localAyahSrc(surah, ayah, reciter);
+  if (offline) return offline;
   if (reciter === 'alafasy' && SURAHS_WITH_LOCAL_AUDIO.has(surah)) {
     return `/audio/${globalAyahNumber(surah, ayah)}.mp3`;
   }

@@ -20,6 +20,7 @@ import {
 // в reciters.ts — тот же sync-чек, ноль bundle-overhead.
 import { RECITERS_WITH_SEGMENTS } from '../lib/reciters';
 import { Microphone } from './icons';
+import { OfflineAudioCard } from './OfflineAudioCard';
 
 const sectionTitle: CSSProperties = {
   margin: '0 0 8px',
@@ -490,6 +491,9 @@ export function TypographySettings(p: TypographyProps) {
           })}
         </div>
       </section>
+
+      {/* ── Офлайн-загрузка ────────────────────────────────────────── */}
+      <OfflineAudioCard />
 
       {/* ── Текст и шрифты ─────────────────────────────────────────── */}
       <section style={{ ...settingCard, marginTop: '10px' }}>

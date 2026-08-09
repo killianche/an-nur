@@ -223,3 +223,30 @@ export const Microphone = ({ size = 16 }: Props) => (
     <line x1="8" y1="22" x2="16" y2="22" />
   </svg>
 );
+
+/** Стрелка в лоток — «скачать в память устройства». */
+export const Download = ({ size = 18 }: Props) => (
+  <svg {...stroke(size)}>
+    <path d="M12 3.75v10.5" />
+    <path d="m8 10.5 4 4 4-4" />
+    <path d="M4.75 16.5v1.75a2 2 0 0 0 2 2h10.5a2 2 0 0 0 2-2V16.5" />
+  </svg>
+);
+
+/** Корзина — «удалить скачанное». */
+export const Trash = ({ size = 18 }: Props) => (
+  <svg {...stroke(size)}>
+    <path d="M4.75 6.5h14.5" />
+    <path d="M9.5 6.5V5.25a1.5 1.5 0 0 1 1.5-1.5h2a1.5 1.5 0 0 1 1.5 1.5V6.5" />
+    <path d="M6.75 6.5l.7 11.4a2 2 0 0 0 2 1.85h5.1a2 2 0 0 0 2-1.85l.7-11.4" />
+    <path d="M10.5 10.25v6M13.5 10.25v6" />
+  </svg>
+);
+
+/** Галочка в круге — «скачано полностью». */
+export const CheckCircle = ({ size = 18 }: Props) => (
+  <svg {...stroke(size)}>
+    <circle cx="12" cy="12" r="8.25" />
+    <path d="m8.5 12.25 2.4 2.4 4.6-5.05" />
+  </svg>
+);
