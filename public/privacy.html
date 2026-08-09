@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QuranIng — Политика конфиденциальности</title>
+<style>
+  :root { --max: 720px; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #fafafa;
+    color: #1a1a1a;
+    line-height: 1.65;
+    margin: 0;
+    padding: 32px 20px 64px;
+  }
+  main { max-width: var(--max); margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .lead { color: #666; margin: 0 0 32px; }
+  h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 36px 0 12px; }
+  p, li { font-size: 15px; }
+  ul { padding-left: 22px; }
+  li { margin: 6px 0; }
+  code {
+    background: #efefef; padding: 2px 6px; border-radius: 4px;
+    font-size: 13px; font-family: ui-monospace, monospace;
+  }
+  hr { border: none; border-top: 1px solid #ddd; margin: 32px 0; }
+  a { color: #1565c0; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .meta { color: #999; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Политика конфиденциальности</h1>
+  <p class="lead">QuranIng — приложение для чтения Корана с ингушским переводом и азкарами. Эта страница объясняет, какие данные собирает приложение и для чего.</p>
+  <p class="meta">Действует с: <time datetime="2026-05-27">27 мая 2026</time></p>
+
+  <h2>Короткая версия</h2>
+  <ul>
+    <li>Мы НЕ собираем никаких персональных данных (имя, email, телефон, локацию).</li>
+    <li>Мы НЕ показываем рекламу.</li>
+    <li>Мы НЕ отслеживаем вашу активность для маркетинга.</li>
+    <li>Мы НЕ передаём данные третьим лицам, кроме сервиса автоматических crash-репортов (Sentry).</li>
+    <li>Все ваши закладки, настройки и скачанные аудио хранятся только на вашем устройстве.</li>
+  </ul>
+
+  <h2>Что хранится на устройстве</h2>
+  <p>Все следующие данные не покидают ваш телефон:</p>
+  <ul>
+    <li><strong>Настройки темы</strong> (выбранный пресет, цвет подсветки, размер шрифта) — в <code>localStorage</code> на вебе, в системном <code>Preferences</code> в нативном приложении.</li>
+    <li><strong>Закладки на аяты</strong> — список номеров сур и аятов.</li>
+    <li><strong>Прогресс чтения</strong> — последняя открытая сура и аят, чтобы восстановить позицию.</li>
+    <li><strong>Скачанные аудио-файлы чтецов</strong> — в системной папке Documents (приватная sandbox-папка приложения).</li>
+    <li><strong>Прогресс счётчиков (тасбих)</strong> — счётчики повторений азкаров, временные на время сессии.</li>
+  </ul>
+
+  <h2>Что отправляется на серверы</h2>
+  <p>Только два типа сетевых запросов:</p>
+  <ul>
+    <li><strong>Аудио чтения Корана.</strong> Если включено воспроизведение и аудио не скачано офлайн — загрузка с CDN <code>cdn.islamic.network</code> или <code>everyayah.com</code>. Эти сервисы получают: ваш IP-адрес, URL запрашиваемого аудио-файла, тип браузера/устройства. Это стандартное поведение любого HTTP-запроса. Мы не передаём им никакой дополнительной информации.</li>
+    <li><strong>Crash-репорты в Sentry</strong> (если включён). Когда приложение неожиданно падает, отправляется техническая информация: текст ошибки, версия приложения, тип устройства, операционная система, текущий URL/экран в приложении. <strong>Не отправляются</strong>: ваши закладки, прогресс чтения, скачанные сегменты, настройки, никакие персональные идентификаторы.</li>
+  </ul>
+
+  <h2>Что НЕ делает приложение</h2>
+  <ul>
+    <li>Не запрашивает регистрацию или вход через email/телефон/соц-сети.</li>
+    <li>Не использует Google Analytics, Facebook Pixel или подобные tracking-системы.</li>
+    <li>Не показывает рекламу.</li>
+    <li>Не запрашивает доступ к контактам, фото, камере, микрофону, локации.</li>
+    <li>Не отправляет push-уведомления (планируется в будущей версии, потребует отдельного согласия).</li>
+    <li>Не хранит данные на серверах разработчика — никакого облака, никаких бекапов.</li>
+  </ul>
+
+  <h2>Сторонние сервисы</h2>
+  <ul>
+    <li><strong>cdn.islamic.network</strong> (Islamic Network Foundation) — CDN для аудио чтения Корана. <a href="https://alquran.cloud/contact" target="_blank" rel="noopener">Их политика конфиденциальности</a>.</li>
+    <li><strong>everyayah.com</strong> — CDN для расширенного каталога чтецов. Использует стандартные HTTP-логи.</li>
+    <li><strong>Sentry</strong> (Functional Software Inc., США) — система crash-репортов. <a href="https://sentry.io/privacy/" target="_blank" rel="noopener">Их политика конфиденциальности</a>. Используется только для технических ошибок без персональных данных.</li>
+    <li><strong>Google Fonts</strong> (если загружаются онлайн) — для отображения некоторых UI-шрифтов. <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Политика Google</a>.</li>
+  </ul>
+
+  <h2>Дети младше 13 лет</h2>
+  <p>Приложение не имеет ограничений по возрасту, рейтинг 4+. Мы не собираем никаких данных, идентифицирующих ребёнка, и не запрашиваем согласие родителей — потому что не собираем данных вообще.</p>
+
+  <h2>Удаление данных</h2>
+  <p>Так как все данные хранятся локально:</p>
+  <ul>
+    <li>Очистить настройки и закладки — Settings → Загрузки → «Сбросить все данные» (в будущей версии) или удалить приложение.</li>
+    <li>Удалить скачанные аудио — Settings → Загрузки → выбрать чтеца → «Удалить».</li>
+    <li>Полностью удалить всё — удалить приложение через стандартный механизм iOS/Android.</li>
+  </ul>
+
+  <h2>Изменения в политике</h2>
+  <p>Если политика меняется, мы публикуем новую версию по этому же адресу с обновлённой датой. Если изменения существенные (например, добавляются новые сторонние сервисы), они анонсируются в release notes приложения.</p>
+
+  <h2>Контакты</h2>
+  <p>Вопросы — пишите по email на <code>privacy@quraning.app</code>.</p>
+
+  <hr />
+  <p class="meta">QuranIng не связан с организацией Islamic Network, everyayah.com или Sentry. Аудио чтения Корана используется в рамках open distribution. Имена чтецов, упомянутых в приложении (Mishary Al-Afasy, Husary, AbdulBasit и др.), являются их собственностью.</p>
+</main>
+</body>
+</html>

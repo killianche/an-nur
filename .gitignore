@@ -1,0 +1,27 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.production.local
+*.log
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Нативные проекты Capacitor коммитим (ios/ и android/), игнорим только артефакты сборки
+*.tsbuildinfo
+*.xcuserstate
+xcuserdata/
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+android/build/
+android/.gradle/
+android/app/build/
+android/local.properties
+
+# Аудио, скачанное локально для офлайн-тестов (не в git — сотни мегабайт)
+public/audio-offline/

@@ -1,0 +1,1515 @@
+/**
+ * AzkarCategoryScreen — horizontal swipe-carousel of azkar cards.
+ *
+ *  • One azkar = one full-viewport card.  Horizontal CSS scroll-snap
+ *    gives native finger-swipe on touch and 2-finger horizontal scroll
+ *    on trackpads; the floating BottomDock's prev/next also scrolls
+ *    the carousel programmatically (so it works on plain mice too).
+ *  • Each card has its own vertical scroll for overflow content — the
+ *    horizontal swipe is owned by the OUTER container, the vertical
+ *    scroll by each individual card body.
+ *  • Default visibility (from lib/azkarPrefs.ts): Arabic + Ingush
+ *    translation on; transliteration + Russian off.  A future settings
+ *    popover will toggle these per user — for now the defaults are
+ *    intentionally minimal so the card has plenty of breathing room.
+ *  • Arabic font: KFGQPC Uthmanic Hafs v22 (already loaded for the
+ *    Quran's text renderers).  The Unity export sometimes shipped TWO
+ *    Arabic variants per entry — one pre-shaped (presentation-forms),
+ *    one normal Unicode — and only the normal-Unicode line shapes
+ *    correctly in a Naskh font; build_json.py strips the pre-shaped
+ *    sibling so we only render the well-shaped one here.
+ */
+import {
+  useEffect, useLayoutEffect, useMemo, useRef, useState,
+} from 'react';
+import type { Theme } from '../hooks/useTheme';
+import {
+  loadAzkarData,
+  pickAudio,
+  azkarAudioUrl,
+  type AzkarCategoryId,
+  type AzkarEntry,
+  type AzkarData,
+  type AzkarReward,
+  type AzkarAyah,
+} from '../lib/azkar';
+import { useAzkarAudio, type AzkarTrack } from '../hooks/useAzkarAudio';
+import { ayahAudioUrl } from '../lib/quranUtils';
+import {
+  readAzkarPrefs, writeAzkarPref, writeAzkarScale,
+  writeAzkarFont, writeAzkarLatinFont,
+} from '../lib/azkarPrefs';
+import { azkarFontConfig, type AzkarFontId } from '../lib/azkarFonts';
+import {
+  latinStack, latinWeight, latinSizeBump, type LatinFontId,
+} from '../lib/typography';
+import { ThemeSettings } from '../components/ReadingSettings';
+import { AzkarTypographySettings } from '../components/AzkarSettings';
+import {
+  ChevronLeft, Palette, Play, Pause, SquareBracketsLetterA,
+} from '../components/icons';
+
+type Props = {
+  category: AzkarCategoryId;
+  theme: Theme;
+  setTheme: (t: Theme) => void;
+  onBack: () => void;
+};
+
+/** Strip the simple <b>…</b> / <i>…</i> tags the source ships with. */
+function stripTags(s: string | null | undefined): string {
+  if (!s) return '';
+  return s.replace(/<\/?[bi]>/g, '');
+}
+
+export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props) {
+  const [data, setData] = useState<AzkarData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // ── Live typography prefs ─────────────────────────────────────────
+  // Seed from localStorage, then keep in React state so the popover
+  // can mutate them in place and the carousel re-renders.  Each setter
+  // persists to localStorage so the choice survives a reload.
+  const initial = useState(() => readAzkarPrefs())[0];
+  const [showArabic,   setShowArabicS]   = useState(initial.showArabic);
+  const [showIngush,   setShowIngushS]   = useState(initial.showIngush);
+  const [showRussian,  setShowRussianS]  = useState(initial.showRussian);
+  const [showTranslit, setShowTranslitS] = useState(initial.showTranslit);
+  const [arabicScale,   setArabicScaleS]   = useState(initial.arabicScale);
+  const [ingushScale,   setIngushScaleS]   = useState(initial.ingushScale);
+  const [russianScale,  setRussianScaleS]  = useState(initial.russianScale);
+  const [translitScale, setTranslitScaleS] = useState(initial.translitScale);
+  const [arabicFont,    setArabicFontS]    = useState<AzkarFontId>(initial.arabicFont);
+  const [ingushFont,    setIngushFontS]    = useState<LatinFontId>(initial.ingushFont);
+  const [russianFont,   setRussianFontS]   = useState<LatinFontId>(initial.russianFont);
+  const [translitFont,  setTranslitFontS]  = useState<LatinFontId>(initial.translitFont);
+  const fontConfig = azkarFontConfig(arabicFont);
+
+  const setShowArabic = (v: boolean) => {
+    setShowArabicS(v); writeAzkarPref('showArabic', v);
+  };
+  const setShowIngush = (v: boolean) => {
+    setShowIngushS(v); writeAzkarPref('showIngush', v);
+  };
+  const setShowRussian = (v: boolean) => {
+    setShowRussianS(v); writeAzkarPref('showRussian', v);
+  };
+  const setShowTranslit = (v: boolean) => {
+    setShowTranslitS(v); writeAzkarPref('showTranslit', v);
+  };
+  const setArabicScale = (v: number) => {
+    setArabicScaleS(v); writeAzkarScale('arabicScale', v);
+  };
+  const setIngushScale = (v: number) => {
+    setIngushScaleS(v); writeAzkarScale('ingushScale', v);
+  };
+  const setRussianScale = (v: number) => {
+    setRussianScaleS(v); writeAzkarScale('russianScale', v);
+  };
+  const setTranslitScale = (v: number) => {
+    setTranslitScaleS(v); writeAzkarScale('translitScale', v);
+  };
+  const setArabicFont = (v: AzkarFontId) => {
+    setArabicFontS(v); writeAzkarFont(v);
+  };
+  const setIngushFont = (v: LatinFontId) => {
+    setIngushFontS(v); writeAzkarLatinFont('ingushFont', v);
+  };
+  const setRussianFont = (v: LatinFontId) => {
+    setRussianFontS(v); writeAzkarLatinFont('russianFont', v);
+  };
+  const setTranslitFont = (v: LatinFontId) => {
+    setTranslitFontS(v); writeAzkarLatinFont('translitFont', v);
+  };
+
+  const audio = useAzkarAudio();
+
+  const [themeOpen, setThemeOpen] = useState(false);
+  const themeBtnRef = useRef<HTMLButtonElement>(null);
+  // Typography popover — anchored under the [A] icon in the header.
+  const [typoOpen, setTypoOpen] = useState(false);
+  const typoBtnRef = useRef<HTMLButtonElement>(null);
+  // Shared open/closed state for the "Источник" disclosure across ALL
+  // cards in the carousel — opening it on one card means it's open on
+  // every other card the user swipes to (and vice versa).  Lifted out
+  // of the native <details> per-element state into one boolean here.
+  const [sourceOpen, setSourceOpen] = useState(false);
+
+  // Tap-counter ("tasbih") per azkar.  Each entry with
+  // `recommended_count > 1` shows a chip with current count / target;
+  // tapping the card body increments by 1, long-press resets to 0.
+  // Persists only during the current screen mount — resets when the
+  // user backs out of the category.
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const incCount = (entryId: string) => {
+    setCounts(prev => ({ ...prev, [entryId]: (prev[entryId] ?? 0) + 1 }));
+  };
+  const resetCount = (entryId: string) => {
+    setCounts(prev => ({ ...prev, [entryId]: 0 }));
+  };
+  // Press-feedback: which entry is currently being pressed.  Only used
+  // on entries with `recommended_count > 1` so non-tasbih cards don't
+  // get the haptic squish.  Cleared on pointer up / cancel.
+  const [pressedId, setPressedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    loadAzkarData()
+      .then(d => { if (alive) setData(d); })
+      .catch(e => { if (alive) setError(e?.message ?? String(e)); });
+    return () => { alive = false; };
+  }, []);
+
+  // Stop audio when leaving the category — without this the OGG keeps
+  // playing in the background after the user hits Back and there's no
+  // UI to pause it from the index.
+  const stopAllRef = useRef(audio.stopAll);
+  stopAllRef.current = audio.stopAll;
+  useEffect(() => () => stopAllRef.current(), []);
+
+  // ── Filter + sort entries for this category, build the audio queue ──
+  const entries: AzkarEntry[] = useMemo(() => {
+    if (!data) return [];
+    return data.entries
+      .filter(e => e.category === category)
+      .sort((a, b) => (a.n_in_category ?? 0) - (b.n_in_category ?? 0));
+  }, [data, category]);
+
+  // Per-entry track queue.  Two paths:
+  //
+  //   • Quranic azkar (`entry.surah_number` + `entry.ayahs[]` set) —
+  //     build a per-ayah queue using the same Mishari Alafasy CDN the
+  //     Quran reader streams from.  Each ayah becomes its own AzkarTrack
+  //     with the SAME `id: entry.id` so that `audio.activeId` stays
+  //     pinned to the card while the queue auto-advances through verses;
+  //     keeps card-sync, restart and auto-stop-on-leave intact.
+  //
+  //   • Non-Quranic azkar — fall back to the legacy single OGG/M4A from
+  //     `pickAudio()` (one-element queue, no auto-advance).
+  //
+  // Entries with no audio at all are absent from the map.
+  const tracksByEntry = useMemo(() => {
+    const m = new Map<string, AzkarTrack[]>();
+    for (const e of entries) {
+      if (e.surah_number && e.ayahs && e.ayahs.length > 0) {
+        const start = e.start_ayah ?? 1;
+        const list: AzkarTrack[] = e.ayahs.map((_, i) => ({
+          id: e.id,
+          url: ayahAudioUrl(e.surah_number!, start + i, 'alafasy'),
+        }));
+        m.set(e.id, list);
+        continue;
+      }
+      const f = pickAudio(e, category);
+      if (f) m.set(e.id, [{ id: e.id, url: azkarAudioUrl(f) }]);
+    }
+    return m;
+  }, [entries, category]);
+
+  const entryHasAudio = (e: AzkarEntry) => tracksByEntry.has(e.id);
+
+  // Category title (Russian) — pulled from source if loaded; static
+  // fallback so the floating pill has a label during initial fetch.
+  // (The Ingush co-title lives only on the AzkarScreen index card now;
+  // inside the category every card already shows its own Ingush header
+  // chip, so duplicating the category-level Ingush in the pill would be
+  // redundant.)
+  const catMeta = data?.categories.find(c => c.id === category);
+  const titleRu = catMeta?.title_ru ?? (
+    category === 'morning' ? 'Утренние' :
+    category === 'evening' ? 'Вечерние' :
+    'Азкары'
+  );
+
+  // ── Carousel state ───────────────────────────────────────────────────
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Track current visible card via scroll position.  Read scrollLeft
+  // and divide by container width; rAF-throttled so fast swipes don't
+  // schedule a setState per frame.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const w = el.clientWidth;
+        if (w <= 0) return;
+        const idx = Math.round(el.scrollLeft / w);
+        setCurrentIndex(prev => prev === idx ? prev : idx);
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [entries.length]);
+
+  // Helper: scroll to a card index programmatically.  Used by prev/next
+  // buttons, by keyboard arrows, and when audio queue advances.
+  const scrollToIndex = (idx: number, behavior: ScrollBehavior = 'smooth') => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const clamped = Math.max(0, Math.min(entries.length - 1, idx));
+    el.scrollTo({ left: clamped * el.clientWidth, behavior });
+  };
+
+  // When audio advances (or starts on a different card), sync the
+  // carousel to that card so the user always sees what's playing.
+  const lastSyncedActiveIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!audio.activeId) return;
+    if (audio.activeId === lastSyncedActiveIdRef.current) return;
+    const idx = entries.findIndex(e => e.id === audio.activeId);
+    if (idx < 0) return;
+    lastSyncedActiveIdRef.current = audio.activeId;
+    scrollToIndex(idx, 'smooth');
+  }, [audio.activeId, entries]);
+
+  // Auto-stop audio when the visible card no longer matches the one
+  // being played.  User explicitly asked: «играй только пока я на этой
+  // карточке» — swipe to a sibling card or hit «Выход» kills the
+  // current track instead of letting it keep running off-screen.
+  //
+  // Debounced by 600 ms so the auto-scroll-to-active (above) can
+  // settle without false-positive stops during its smooth transition.
+  // If the mismatch resolves itself (carousel finishes scrolling to
+  // the active card), we cancel the pending stop.
+  const stopOnLeaveRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!audio.activeId) {
+      if (stopOnLeaveRef.current !== undefined) {
+        clearTimeout(stopOnLeaveRef.current);
+        stopOnLeaveRef.current = undefined;
+      }
+      return;
+    }
+    const visible = entries[currentIndex];
+    if (!visible || visible.id === audio.activeId) {
+      if (stopOnLeaveRef.current !== undefined) {
+        clearTimeout(stopOnLeaveRef.current);
+        stopOnLeaveRef.current = undefined;
+      }
+      return;
+    }
+    // Mismatch: schedule stop. Don't pile up timers if one is already pending.
+    if (stopOnLeaveRef.current !== undefined) return;
+    stopOnLeaveRef.current = window.setTimeout(() => {
+      audio.stopAll();
+      stopOnLeaveRef.current = undefined;
+    }, 600);
+  }, [currentIndex, audio.activeId, entries, audio]);
+
+  // Snap to first card whenever the category changes (defensive — the
+  // route key normally remounts AzkarCategoryScreen so the carousel
+  // restarts at 0 anyway, but if the parent ever holds it mounted while
+  // swapping categories this keeps state coherent).
+  useLayoutEffect(() => {
+    scrollToIndex(0, 'auto');
+    setCurrentIndex(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category]);
+
+  // Keyboard navigation between cards.  Skipped while focus is in an
+  // input — there isn't one on this screen today, but cheap to guard.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); scrollToIndex(currentIndex + 1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); scrollToIndex(currentIndex - 1); }
+      else if (e.key === 'Escape' && audio.activeId) { audio.stopAll(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, entries.length, audio.activeId]);
+
+  // ── Audio handlers ───────────────────────────────────────────────────
+  // Play this card's audio.  For non-Quranic azkars the queue is one
+  // OGG track, so `onended → advanceOrStop` falls through to idle and
+  // never jumps to the next card (per explicit user request: «не надо
+  // переходить к следующей карточке»).  For Quranic azkars the queue
+  // is the per-ayah Mishari Alafasy URLs; auto-advance walks the verses
+  // of the SAME card (all tracks share `id: entry.id`) and idles after
+  // the final ayah without leaving the card.
+  const handlePlayEntry = (entryId: string) => {
+    const queue = tracksByEntry.get(entryId);
+    if (!queue || queue.length === 0) return;
+    audio.handlePlay(queue, 0);
+  };
+
+  // Chrome (header + кнопки + scrim) — всегда видимы.  Прошлый
+  // auto-hide (тап/скролл) откачен по запросу пользователя: при чтении
+  // ничего не должно прятаться без явного действия.
+
+  return (
+    <div style={{
+      background: 'transparent',
+      minHeight: '100dvh',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* ── Floating pill header ───────────────────────────────────────
+          Rounded "island" floating near the top of the screen, fully
+          backdrop-blurred so the wallpaper behind shows through.
+          Centred horizontally; contains back / title / [A] / palette.
+          The carousel progress bar lives just below as a separate
+          floating bar (also blurred so it reads as the same chrome
+          unit when content scrolls under it). */}
+      <header
+        role="banner"
+        style={{
+          position: 'fixed',
+          top: 'max(12px, env(safe-area-inset-top))',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 30,
+          height: '52px',
+          maxWidth: 'min(96vw, 520px)',
+          width: 'fit-content',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '0 6px',
+          background: 'color-mix(in srgb, var(--surface) 94%, transparent)',
+          border: '1px solid var(--hairline)',
+          borderRadius: '9999px',
+          // Тень снова ×2 слабее: было 0.02 / 0.06 → стало 0.01 / 0.03.
+          boxShadow: 'rgba(0,0,0,0.01) 0 1px 2px, rgba(0,0,0,0.03) 0 14px 36px',
+          backdropFilter: 'saturate(160%) blur(20px)',
+          WebkitBackdropFilter: 'saturate(160%) blur(20px)',
+        }}
+      >
+        <button
+          onClick={onBack}
+          aria-label="Back"
+          className="icon-btn"
+          style={{ width: '40px', height: '40px', color: 'var(--text-tertiary)', flexShrink: 0 }}
+        >
+          <ChevronLeft size={20} />
+        </button>
+
+        <div style={{
+          minWidth: 0, flex: '0 1 auto', padding: '0 10px',
+          display: 'inline-flex', alignItems: 'baseline', gap: '8px',
+        }}>
+          <span
+            className="display-serif"
+            style={{
+              fontSize: '16px', fontWeight: 500,
+              color: 'var(--text-primary)', letterSpacing: '-0.012em',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              lineHeight: 1, maxWidth: '180px',
+            }}
+          >
+            {titleRu}
+          </span>
+          {entries.length > 0 && (
+            <span
+              aria-label={`Карточка ${currentIndex + 1} из ${entries.length}`}
+              style={{
+                fontSize: '12px',
+                fontWeight: 500,
+                color: 'var(--text-tertiary)',
+                letterSpacing: '0.04em',
+                fontVariantNumeric: 'tabular-nums',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+              }}
+            >
+              {currentIndex + 1} / {entries.length}
+            </span>
+          )}
+        </div>
+
+        <button
+          ref={typoBtnRef}
+          onClick={() => setTypoOpen(v => !v)}
+          aria-label="Настройки текста"
+          title="Настройки текста"
+          className="icon-btn"
+          data-active={typoOpen}
+          style={{
+            width: '40px', height: '40px', flexShrink: 0,
+            color: typoOpen ? 'var(--text-primary)' : 'var(--text-tertiary)',
+          }}
+        >
+          <SquareBracketsLetterA size={20} />
+        </button>
+
+        <button
+          ref={themeBtnRef}
+          onClick={() => setThemeOpen(v => !v)}
+          aria-label="Theme settings"
+          className="icon-btn"
+          data-active={themeOpen}
+          style={{
+            width: '40px', height: '40px', flexShrink: 0,
+            color: themeOpen ? 'var(--text-primary)' : 'var(--text-tertiary)',
+          }}
+        >
+          <Palette size={20} />
+        </button>
+      </header>
+
+      {themeOpen && (
+        <ThemeSettings
+          theme={theme} setTheme={setTheme}
+          onClose={() => setThemeOpen(false)}
+          anchorEl={themeBtnRef.current}
+        />
+      )}
+
+      {typoOpen && (
+        <AzkarTypographySettings
+          showArabic={showArabic}     setShowArabic={setShowArabic}
+          showIngush={showIngush}     setShowIngush={setShowIngush}
+          showRussian={showRussian}   setShowRussian={setShowRussian}
+          showTranslit={showTranslit} setShowTranslit={setShowTranslit}
+          arabicScale={arabicScale}     setArabicScale={setArabicScale}
+          ingushScale={ingushScale}     setIngushScale={setIngushScale}
+          russianScale={russianScale}   setRussianScale={setRussianScale}
+          translitScale={translitScale} setTranslitScale={setTranslitScale}
+          arabicFont={arabicFont}       setArabicFont={setArabicFont}
+          ingushFont={ingushFont}       setIngushFont={setIngushFont}
+          russianFont={russianFont}     setRussianFont={setRussianFont}
+          translitFont={translitFont}   setTranslitFont={setTranslitFont}
+          onClose={() => setTypoOpen(false)}
+          anchorEl={typoBtnRef.current}
+        />
+      )}
+
+      {/* ── States: loading / error ──────────────────────────────────── */}
+      {!data && !error && (
+        <div style={{
+          height: '100dvh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div className="skeleton" style={{
+            height: '60%',
+            width: 'min(96vw, 560px)',
+            maxHeight: '600px',
+            borderRadius: '20px',
+          }} />
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          height: '100dvh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '14px', color: 'var(--text-tertiary)',
+          padding: '0 24px', textAlign: 'center',
+        }}>
+          <div>
+            Не удалось загрузить азкары<br />
+            <span style={{ fontSize: '12px', opacity: 0.7 }}>{error}</span>
+          </div>
+        </div>
+      )}
+
+      {data && entries.length === 0 && (
+        <p style={{
+          height: '100dvh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-tertiary)', fontSize: '14px',
+        }}>
+          В этой категории пока нет азкаров.
+        </p>
+      )}
+
+      {/* ── Horizontal swipe carousel ────────────────────────────────── */}
+      {data && entries.length > 0 && (
+        <div
+          ref={scrollerRef}
+          role="region"
+          aria-label="Azkar carousel"
+          style={{
+            display: 'flex',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            scrollSnapType: 'x mandatory',
+            // iOS momentum scrolling — without this the swipe ends with
+            // an abrupt stop instead of decelerating naturally.
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            height: '100dvh',
+            width: '100%',
+            // Desktop cap: centre the carousel inside a 1200-px column
+            // so the floating bottom controls (whose `left`/`right` are
+            // also pinned to this column via leftEdge/rightEdge) align
+            // with the card edges and nothing flies to the viewport
+            // corners on wide displays.
+            maxWidth: '1200px',
+            marginInline: 'auto',
+            position: 'relative',
+            zIndex: 1,
+          }}
+          // Hide scrollbar in WebKit too — `scrollbar-width: none` is the
+          // standard but Safari ignores it.
+          className="azkar-carousel"
+        >
+          {entries.map((entry, idx) => {
+            const isActive = audio.activeId === entry.id;
+            const hasAudio = entryHasAudio(entry);
+            const isVisible = idx === currentIndex;
+            return (
+              <article
+                key={entry.id}
+                data-azkar-card={entry.id}
+                aria-current={isVisible ? 'true' : undefined}
+                onClick={e => {
+                  // Tap-counter (tasbih): tap on the card body
+                  // increments by 1.  Clicks on interactive children
+                  // are ignored.  Chrome NEVER hides on tap per user
+                  // request — the controls stay put.
+                  if (!entry.recommended_count || entry.recommended_count <= 1) return;
+                  const t = e.target as HTMLElement | null;
+                  if (!t) return;
+                  if (t.closest('button, summary, a, details, [role="button"], input, [data-no-count]')) return;
+                  incCount(entry.id);
+                }}
+                onPointerDown={e => {
+                  if (!entry.recommended_count || entry.recommended_count <= 1) return;
+                  const t = e.target as HTMLElement | null;
+                  if (t && t.closest('button, summary, a, details, [role="button"], input, [data-no-count]')) return;
+                  setPressedId(entry.id);
+                }}
+                onPointerUp={() => setPressedId(null)}
+                onPointerCancel={() => setPressedId(null)}
+                onPointerLeave={() => setPressedId(null)}
+                style={{
+                  flex: '0 0 100%',
+                  width: '100%',
+                  height: '100dvh',
+                  scrollSnapAlign: 'center',
+                  scrollSnapStop: 'always',
+                  // Each card owns its OWN vertical scroll for overflow
+                  // content (long supplications spill below the fold on
+                  // small phones).  The outer flex handles horizontal,
+                  // this handles vertical.
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  // Top app bar is 56 px + safe-area-inset-top → clear
+                  // that plus ~24 px breathing room.  BottomDock is
+                  // 76 px + 16 px → 120 px at the bottom (only when
+                  // playing, but keep the room regardless so layout
+                  // doesn't jump).
+                  padding: 'calc(env(safe-area-inset-top) + 56px + 56px) 22px 120px',
+                  boxSizing: 'border-box',
+                  // Tasbih press-feedback: card content slightly
+                  // squishes and dims while the finger is held, then
+                  // springs back on release.  Only on entries with a
+                  // recommended_count so non-tasbih cards stay still.
+                  transition: 'transform 140ms cubic-bezier(0.4, 0, 0.2, 1), filter 140ms ease',
+                  transform: pressedId === entry.id ? 'scale(0.985)' : 'scale(1)',
+                  filter: pressedId === entry.id ? 'brightness(0.92)' : 'brightness(1)',
+                }}
+              >
+                <div style={{
+                  maxWidth: '680px',
+                  margin: '0 auto',
+                }}>
+                  {/* Sura-mode: per-ayah render with the play+tasbih row
+                      placed UNDER EACH ARABIC ayah inside SuraAyahs.
+                      Все ряды шарят один стейт (audio activeId === entry.id
+                      и единый tasbih-счётчик), поэтому работают
+                      синхронно — тап по любому play-кнопке запускает
+                      то же аудио, инкремент tasbih'а апдейтит все ряды. */}
+                  {entry.ayahs && entry.ayahs.length > 0 ? (
+                    <SuraAyahs
+                      ayahs={entry.ayahs}
+                      surahNumber={entry.surah_number ?? 0}
+                      startAyah={entry.start_ayah ?? 1}
+                      showArabic={showArabic}
+                      showIngush={showIngush}
+                      showRussian={showRussian}
+                      arabicScale={arabicScale}
+                      ingushScale={ingushScale}
+                      russianScale={russianScale}
+                      fontConfig={fontConfig}
+                      ingushFont={ingushFont}
+                      russianFont={russianFont}
+                      rowProps={{
+                        hasAudio: entryHasAudio(entry),
+                        isPlaying: audio.activeId === entry.id && audio.audioState === 'playing',
+                        isActive: audio.activeId === entry.id && audio.audioState !== 'idle',
+                        isLoading: audio.activeId === entry.id && audio.audioState === 'loading',
+                        playbackRate: audio.playbackRate,
+                        onPlayToggle: () => {
+                          if (audio.activeId === entry.id && audio.audioState === 'playing') {
+                            audio.pause();
+                          } else {
+                            handlePlayEntry(entry.id);
+                          }
+                        },
+                        onCycleRate: audio.cyclePlaybackRate,
+                        tasbihCount: entry.recommended_count,
+                        tasbihCurrent: counts[entry.id] ?? 0,
+                        onTasbihTap: () => incCount(entry.id),
+                        onTasbihReset: () => resetCount(entry.id),
+                      }}
+                    />
+                  ) : null}
+
+                  {/* Arabic — RTL, large, with the selected Naskh face.
+                      Pre-shaped presentation-form duplicates were filtered
+                      out at build time so this always shapes correctly.
+                      `arabicScale` is the user's size pick from the
+                      typography popover (0.85 / 1.0 / 1.2 / 1.4); it
+                      stacks with the per-face `sizeMul` so different
+                      faces stay optically balanced at the same step. */}
+                  {!entry.ayahs && showArabic && entry.arabic && (
+                    <div
+                      dir="rtl"
+                      lang="ar"
+                      style={{
+                        direction: 'rtl',
+                        textAlign: 'right',
+                        fontFamily: fontConfig.stack,
+                        // Arabic gets a flat +17px reading bump across every
+                        // size step — applied to each value of the clamp()
+                        // so the bump shows up at min, preferred, and max.
+                        fontSize: `clamp(${26 * fontConfig.sizeMul * arabicScale + 17}px, calc(${6.5 * fontConfig.sizeMul * arabicScale}vw + 17px), ${38 * fontConfig.sizeMul * arabicScale + 17}px)`,
+                        lineHeight: fontConfig.lineHeight,
+                        color: 'var(--text-primary)',
+                        whiteSpace: 'pre-line',
+                        letterSpacing: 0,
+                        wordSpacing: 0,
+                        // OpenType features for proper Naskh joining and
+                        // contextual alternates — all four candidate faces
+                        // expose ligature + calt tables.
+                        fontFeatureSettings: '"liga" 1, "calt" 1, "kern" 1',
+                        marginBottom: '24px',
+                      }}
+                    >
+                      {stripTags(entry.arabic)}
+                    </div>
+                  )}
+
+                  {/* Flat-mode play+tasbih row — один экземпляр между
+                      арабским и переводами.  Для sura-mode ряд
+                      рендерится внутри SuraAyahs под каждым ayah'ом. */}
+                  {!entry.ayahs && (
+                    <PlayTasbihRow
+                      hasAudio={entryHasAudio(entry)}
+                      isPlaying={audio.activeId === entry.id && audio.audioState === 'playing'}
+                      isActive={audio.activeId === entry.id && audio.audioState !== 'idle'}
+                      isLoading={audio.activeId === entry.id && audio.audioState === 'loading'}
+                      playbackRate={audio.playbackRate}
+                      onPlayToggle={() => {
+                        if (audio.activeId === entry.id && audio.audioState === 'playing') {
+                          audio.pause();
+                        } else {
+                          handlePlayEntry(entry.id);
+                        }
+                      }}
+                      onCycleRate={audio.cyclePlaybackRate}
+                      tasbihCount={entry.recommended_count}
+                      tasbihCurrent={counts[entry.id] ?? 0}
+                      onTasbihTap={() => incCount(entry.id)}
+                      onTasbihReset={() => resetCount(entry.id)}
+                    />
+                  )}
+
+                  {/* Display order (per user spec):
+                        1. Arabic          (above this block)
+                        2. Ingush translation
+                        3. Russian translation
+                        4. Ingush-Cyrillic transliteration of the Arabic
+                      Items 3 and 4 are opt-in via the future settings UI;
+                      defaults live in lib/azkarPrefs.ts.  */}
+
+                  {/* 2. Ingush translation */}
+                  {!entry.ayahs && showIngush && entry.translit_ingush && (
+                    <p lang="inh" style={{
+                      margin: '0 0 18px',
+                      fontFamily: latinStack(ingushFont),
+                      fontSize: `${17 * ingushScale + latinSizeBump(ingushFont)}px`,
+                      fontWeight: latinWeight(ingushFont),
+                      lineHeight: 1.45,
+                      color: 'var(--lang-inh-color, var(--text-secondary))',
+                      letterSpacing: '-0.005em',
+                      whiteSpace: 'pre-line',
+                    }}>
+                      {stripTags(entry.translit_ingush)}
+                    </p>
+                  )}
+
+                  {/* 3. Russian translation */}
+                  {!entry.ayahs && showRussian && entry.russian && (
+                    <p style={{
+                      margin: '0 0 18px',
+                      fontFamily: latinStack(russianFont),
+                      fontSize: `${15 * russianScale + latinSizeBump(russianFont)}px`,
+                      fontWeight: latinWeight(russianFont),
+                      lineHeight: 1.55,
+                      color: 'var(--text-secondary)',
+                      letterSpacing: '-0.005em',
+                      whiteSpace: 'pre-line',
+                    }}>
+                      {stripTags(entry.russian)}
+                    </p>
+                  )}
+
+                  {/* 4. Ingush Cyrillic transliteration of the Arabic.
+                       Lives in `entry.header_label` in the source data
+                       (the Unity export named the field oddly — it's NOT
+                       a section header, it's the cyrillic phonetic
+                       rendition of the supplication). */}
+                  {!entry.ayahs && showTranslit && entry.header_label && (
+                    <p lang="inh" style={{
+                      margin: '0 0 18px',
+                      fontFamily: latinStack(translitFont),
+                      fontSize: `${15 * translitScale + latinSizeBump(translitFont)}px`,
+                      fontWeight: latinWeight(translitFont),
+                      lineHeight: 1.55,
+                      color: 'var(--text-tertiary)',
+                      letterSpacing: '-0.005em',
+                      whiteSpace: 'pre-line',
+                    }}>
+                      {stripTags(entry.header_label)}
+                    </p>
+                  )}
+
+                  {/* Source / Rewards — collapsible.
+                      `entry.rewards` (when present) lists structured
+                      rewards with hadith refs; renders inside a native
+                      <details> element so collapse/expand is handled by
+                      the browser (a11y for free, no JS state).  If
+                      there are no rewards, fall back to a tiny one-line
+                      `entry.source` chip — preserves the previous look
+                      for entries that haven't been upgraded yet. */}
+                  {entry.rewards && entry.rewards.length > 0 ? (
+                    <SourceDisclosure
+                      rewards={entry.rewards}
+                      legacy={entry.source}
+                      open={sourceOpen}
+                      onToggle={setSourceOpen}
+                    />
+                  ) : entry.source ? (
+                    <p
+                      lang="inh"
+                      style={{
+                        margin: '0 0 6px',
+                        fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+                        fontSize: '11px',
+                        fontWeight: 400,
+                        lineHeight: 1.45,
+                        color: 'var(--text-tertiary)',
+                        letterSpacing: '0.01em',
+                        opacity: 0.75,
+                      }}
+                    >
+                      <span style={{
+                        display: 'inline-block',
+                        marginInlineEnd: '6px',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.12em',
+                        fontSize: '10px',
+                      }}>
+                        Источник
+                      </span>
+                      {entry.source}
+                    </p>
+                  ) : null}
+
+                  {/* Action row — hidden globally per user request.
+                      The play button is suppressed on every azkar card.
+                      Code kept intact in case audio surfaces again. */}
+                  {false && hasAudio && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      marginTop: '18px',
+                      paddingTop: '18px',
+                      borderTop: '1px solid var(--hairline)',
+                    }}>
+                      <PlayBtn
+                        isActive={isActive}
+                        audioState={audio.audioState}
+                        disabled={false}
+                        onPlay={() => handlePlayEntry(entry.id)}
+                      />
+                    </div>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+/**
+ * InlinePlay — пара кнопок [▶ play] [1× speed] для inline-ряда
+ * внутри карточки.  Не оборачивает себя во внешний контейнер
+ * (Fragment) — родитель сам кладёт их в общий flex-row с tasbih'ом.
+ *
+ *   • Play / Pause — всегда виден, когда у карточки есть аудио.
+ *   • Speed — появляется fade'ом рядом, только когда трек активен.
+ *
+ * Стиль кнопок: 36×36 / 44×36, hairline-border, лёгкая ink-подложка,
+ * никакого blur/тени — выглядят как часть текста.
+ */
+function InlinePlay({
+  isPlaying, isActive, isLoading, playbackRate, onPlayToggle, onCycleRate,
+}: {
+  isPlaying: boolean;
+  isActive: boolean;
+  isLoading: boolean;
+  playbackRate: number;
+  onPlayToggle: () => void;
+  onCycleRate: () => void;
+}) {
+  const tile: React.CSSProperties = {
+    height: '32px',
+    borderRadius: '8px',
+    border: '1px solid var(--hairline)',
+    background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'inherit',
+    transition: 'opacity 220ms ease, transform 180ms ease, background 160ms ease',
+  };
+  return (
+    <>
+      <button
+        onClick={onCycleRate}
+        aria-label={`Скорость ${playbackRate}×`}
+        title={`Скорость ${playbackRate}×`}
+        aria-hidden={!isActive}
+        tabIndex={isActive ? 0 : -1}
+        style={{
+          ...tile,
+          width: '40px',
+          color: 'var(--text-secondary)',
+          opacity: isActive ? 1 : 0,
+          transform: isActive ? 'scale(1)' : 'scale(0.86)',
+          pointerEvents: isActive ? 'auto' : 'none',
+        }}
+      >
+        <span style={{
+          fontSize: '11px',
+          fontWeight: 600,
+          fontVariantNumeric: 'tabular-nums',
+          letterSpacing: '-0.01em',
+          lineHeight: 1,
+          opacity: 0.7,
+        }}>
+          {playbackRate}×
+        </span>
+      </button>
+
+      {(() => {
+        // Мода кнопки — ключ React'а: при смене size/icon/label старый
+        // span размонтируется, новый монтируется → CSS-keyframe
+        // `inlinePlaySwap` отрабатывает мягкий fade+lift в 180 мс.
+        const mode: 'play' | 'pause' | 'loading' =
+          isLoading ? 'loading' : isPlaying ? 'pause' : 'play';
+        const label =
+          mode === 'loading' ? 'Загрузка' :
+          mode === 'pause'   ? 'Пауза'    :
+                               'Слушать';
+        const ariaLabel =
+          mode === 'loading' ? 'Загрузка' :
+          mode === 'pause'   ? 'Пауза'    :
+                               'Слушать азкар';
+        return (
+          <button
+            onClick={onPlayToggle}
+            aria-label={ariaLabel}
+            title={ariaLabel}
+            style={{
+              ...tile,
+              // width: auto — текстовая подпись рядом с иконкой
+              // («Слушать» / «Пауза» / «Загрузка»), фиксированная
+              // ширина не работает; padding по бокам даёт стабильный
+              // отступ от рамки до текста.
+              padding: '0 10px 0 8px',
+              gap: '6px',
+              transform: isLoading ? 'scale(0.96)' : 'scale(1)',
+              opacity: isLoading ? 0.7 : 1,
+            }}
+          >
+            <span
+              key={mode}
+              className="inline-play-swap"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span aria-hidden style={{
+                opacity: 0.75,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                {mode === 'pause' ? (
+                  // Outlined pause — две тонкие вертикальные линии,
+                  // совпадает по весу с outlined play.
+                  <svg
+                    width="13" height="13" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <line x1="9"  y1="5" x2="9"  y2="19" />
+                    <line x1="15" y1="5" x2="15" y2="19" />
+                  </svg>
+                ) : (
+                  // Outlined play — треугольник линиями, не заливка.
+                  <svg
+                    width="13" height="13" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <polygon points="6 4 20 12 6 20 6 4" />
+                  </svg>
+                )}
+              </span>
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                letterSpacing: '-0.005em',
+                lineHeight: 1,
+                opacity: 0.7,
+                whiteSpace: 'nowrap',
+              }}>
+                {label}
+              </span>
+            </span>
+          </button>
+        );
+      })()}
+    </>
+  );
+}
+
+/**
+ * PlayTasbihRow — общий ряд под арабским текстом азкара.  Слева —
+ * капсула tasbih'а (если у карточки есть recommended_count > 1),
+ * справа — кластер [speed][play] из InlinePlay (если у карточки есть
+ * аудио).  Используется и в flat-mode (один экземпляр под единственным
+ * Arabic-блоком), и в sura-mode (по экземпляру под каждым ayah'ом).
+ *
+ * Все инстансы одной карточки шарят ОДИН и тот же стейт (audio
+ * activeId + tasbih counter — оба per-entry), поэтому работают
+ * синхронно: тап по любой play-кнопке любого ayah'а запускает то же
+ * самое аудио, инкремент tasbih'а на любом ряду обновляет все ряды.
+ */
+type PlayTasbihRowProps = {
+  hasAudio: boolean;
+  isPlaying: boolean;
+  isActive: boolean;
+  isLoading: boolean;
+  playbackRate: number;
+  onPlayToggle: () => void;
+  onCycleRate: () => void;
+  tasbihCount?: number;
+  tasbihCurrent?: number;
+  onTasbihTap?: () => void;
+  onTasbihReset?: () => void;
+};
+function PlayTasbihRow(props: PlayTasbihRowProps) {
+  const hasTasbih = props.tasbihCount != null && props.tasbihCount > 1;
+  if (!props.hasAudio && !hasTasbih) return null;
+  return (
+    <div style={{
+      display: 'flex',
+      gap: '6px',
+      alignItems: 'center',
+      margin: '4px 0 22px',
+    }}>
+      {hasTasbih && (
+        <TasbihPill
+          current={props.tasbihCurrent ?? 0}
+          target={props.tasbihCount!}
+          onTap={props.onTasbihTap ?? (() => {})}
+          onReset={props.onTasbihReset ?? (() => {})}
+        />
+      )}
+      {props.hasAudio && (
+        <div style={{
+          display: 'flex',
+          gap: '6px',
+          alignItems: 'center',
+          marginLeft: 'auto',
+        }}>
+          <InlinePlay
+            isPlaying={props.isPlaying}
+            isActive={props.isActive}
+            isLoading={props.isLoading}
+            playbackRate={props.playbackRate}
+            onPlayToggle={props.onPlayToggle}
+            onCycleRate={props.onCycleRate}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Play/pause button for a single azkar card. */
+function PlayBtn({
+  isActive, audioState, disabled, onPlay,
+}: {
+  isActive: boolean;
+  audioState: 'idle' | 'loading' | 'playing' | 'paused';
+  disabled?: boolean;
+  onPlay: () => void;
+}) {
+  const playing = isActive && audioState === 'playing';
+  return (
+    <button
+      aria-label={playing ? 'Пауза' : 'Слушать'}
+      onClick={e => { e.stopPropagation(); onPlay(); }}
+      className="icon-btn"
+      data-active={isActive}
+      disabled={disabled}
+      style={{
+        width: '44px',
+        height: '44px',
+        color: disabled
+          ? 'var(--text-tertiary)'
+          : isActive ? 'var(--text-primary)' : 'var(--text-tertiary)',
+        opacity: disabled ? 0.4 : 1,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      {playing ? <Pause size={20} /> : <Play size={20} />}
+    </button>
+  );
+}
+
+/**
+ * TasbihPill — small inline counter pill that lives under the Arabic
+ * body of an azkar with `recommended_count > 1`.  Compact "game"-style
+ * capsule: current / target on the left, a thin progress bar that fills
+ * as the user taps; on completion the pill flips into a soft "Готово ✓"
+ * state.  Tap = +1; right-click / long-press equivalent = reset.
+ */
+function TasbihPill({
+  current, target, onTap, onReset,
+}: {
+  current: number;
+  target: number;
+  onTap: () => void;
+  onReset: () => void;
+}) {
+  const done = current >= target;
+  const progress = Math.min(1, current / target);
+  return (
+    <button
+      data-no-count
+      onClick={e => { e.stopPropagation(); done ? onReset() : onTap(); }}
+      onContextMenu={e => { e.preventDefault(); onReset(); }}
+      aria-label={done ? `Завершено ${target} из ${target} — клик чтобы сбросить` : `Счётчик: ${current} из ${target}, нажми чтобы добавить`}
+      title={done ? `${current} / ${target} — клик чтобы сбросить` : `${current} / ${target}`}
+      className={done ? 'tasbih-pill-done' : undefined}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '5px 12px 5px 10px',
+        borderRadius: '9999px',
+        // Done-стиль сделан в десять раз мягче: пользователь жаловался,
+        // что в светлой теме «done»-состояние читается как алерт.
+        // Раньше: bg 16%, border 55%, шадоу-хало 10/18%, scale(1.04).
+        // Теперь: bg 6%, border 28%, без хало (только лёгкое drop-shadow),
+        // без scale-overshoot.  Чекмарк остаётся как явный сигнал.
+        border: done
+          ? '1px solid color-mix(in srgb, var(--text-primary) 28%, transparent)'
+          : '1px solid var(--hairline)',
+        background: done
+          ? 'color-mix(in srgb, var(--text-primary) 6%, transparent)'
+          : 'color-mix(in srgb, var(--ink) 4%, transparent)',
+        color: 'var(--text-primary)',
+        fontFamily: 'inherit',
+        cursor: 'pointer',
+        transform: 'scale(1)',
+        boxShadow: done
+          ? '0 1px 4px color-mix(in srgb, var(--text-primary) 8%, transparent)'
+          : 'none',
+        transition: 'background 240ms ease, box-shadow 240ms ease, border-color 240ms ease',
+      }}
+    >
+      {/* Checkmark — fades in on completion */}
+      <svg
+        width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden
+        style={{
+          color: 'var(--text-primary)',
+          opacity: done ? 1 : 0,
+          width: done ? '14px' : 0,
+          marginRight: done ? 0 : '-8px',
+          transition: 'opacity 200ms ease 60ms, width 220ms cubic-bezier(0.4, 0, 0.2, 1), margin-right 220ms cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+      >
+        <path d="M5 12l4 4 10-10" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+
+      {/* Current count — намеренно тот же размер/цвет/вес, что и
+          у "/ target" справа: пользователь просил одинаковый стиль. */}
+      <span style={{
+        fontSize: '12px',
+        fontWeight: 500,
+        fontVariantNumeric: 'tabular-nums',
+        color: done ? 'var(--text-primary)' : 'var(--text-tertiary)',
+        minWidth: '14px',
+        textAlign: 'right',
+        transition: 'color 200ms ease',
+      }}>
+        {current}
+      </span>
+      <span style={{
+        fontSize: '12px',
+        fontWeight: 500,
+        color: done ? 'var(--text-primary)' : 'var(--text-tertiary)',
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: '0.02em',
+        transition: 'color 200ms ease',
+      }}>
+        / {target}
+      </span>
+
+      {/* Thin progress bar — fills to 100% on completion */}
+      <span
+        aria-hidden
+        style={{
+          width: '52px',
+          height: '3px',
+          borderRadius: '999px',
+          background: 'color-mix(in srgb, var(--text-primary) 10%, transparent)',
+          overflow: 'hidden',
+          display: 'block',
+        }}
+      >
+        <span
+          style={{
+            display: 'block',
+            width: `${progress * 100}%`,
+            height: '100%',
+            background: 'var(--text-primary)',
+            // Раньше при done бар становился solid 100% → в светлой
+            // теме читался как чёрная отметка-алерт.  Снижено до 0.55,
+            // чтобы прогресс ощущался как «полный, но мягкий».
+            opacity: done ? 0.55 : 0.7,
+            transition: 'width 240ms cubic-bezier(0.32, 0.72, 0, 1), opacity 240ms ease',
+          }}
+        />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * SuraAyahs — Quran-style per-ayah render for azkars that are full
+ * suras (Al-Ikhlas / Al-Falaq / An-Nas).  Each ayah is its own block:
+ *   1. Arabic centred, large, with the same Naskh face the user
+ *      picked in the popover.
+ *   2. A small "N:M" chip in muted tone.
+ *   3. Ingush + Russian translation rows underneath.
+ *   4. A hairline separator before the next ayah.
+ *
+ * No bookmark or audio-per-ayah buttons — keeps focus on the text;
+ * the carousel's existing play button still drives audio for the
+ * whole sura recording.
+ */
+function SuraAyahs({
+  ayahs, surahNumber, startAyah,
+  showArabic, showIngush, showRussian,
+  arabicScale, ingushScale, russianScale,
+  fontConfig, ingushFont, russianFont,
+  rowProps,
+}: {
+  ayahs: AzkarAyah[];
+  surahNumber: number;
+  startAyah: number;
+  showArabic: boolean;
+  showIngush: boolean;
+  showRussian: boolean;
+  arabicScale: number;
+  ingushScale: number;
+  russianScale: number;
+  fontConfig: ReturnType<typeof azkarFontConfig>;
+  ingushFont: LatinFontId;
+  russianFont: LatinFontId;
+  /** Если задано, под арабским каждого ayah'а рендерится общий
+   *  ряд [tasbih] … [speed][play].  Все ряды одной карточки шарят
+   *  один и тот же стейт — работают синхронно. */
+  rowProps?: PlayTasbihRowProps;
+}) {
+  return (
+    <div style={{ marginBottom: '20px' }}>
+      {ayahs.map((a, i) => (
+        <div key={i} style={{
+          paddingTop: i === 0 ? 0 : '20px',
+          paddingBottom: i === ayahs.length - 1 ? 0 : '20px',
+          borderBottom: i === ayahs.length - 1 ? 'none' : '1px solid var(--hairline)',
+        }}>
+          {/* Arabic — right-aligned (rtl), large, same Naskh face as
+              flat-mode. */}
+          {showArabic && (
+            <div
+              dir="rtl"
+              lang="ar"
+              style={{
+                direction: 'rtl',
+                textAlign: 'right',
+                fontFamily: fontConfig.stack,
+                // +17px flat reading bump across all 4 size steps, applied
+                // to every value of the clamp().
+                fontSize: `clamp(${28 * fontConfig.sizeMul * arabicScale + 17}px, calc(${7 * fontConfig.sizeMul * arabicScale}vw + 17px), ${44 * fontConfig.sizeMul * arabicScale + 17}px)`,
+                lineHeight: fontConfig.lineHeight,
+                color: 'var(--text-primary)',
+                fontFeatureSettings: '"liga" 1, "calt" 1, "kern" 1',
+                marginBottom: '10px',
+              }}
+            >
+              {a.arabic}
+            </div>
+          )}
+
+          {/* Per-ayah play+tasbih row.  Один и тот же стейт раздаётся
+              на все ayah'и карточки → ряды работают синхронно. */}
+          {rowProps && <PlayTasbihRow {...rowProps} />}
+
+          {/* Ingush translation — same font/size as flat-mode. */}
+          {showIngush && a.ingush && (
+            <p lang="inh" style={{
+              margin: '0 0 8px',
+              fontFamily: latinStack(ingushFont),
+              fontSize: `${17 * ingushScale + latinSizeBump(ingushFont)}px`,
+              fontWeight: latinWeight(ingushFont),
+              lineHeight: 1.55,
+              color: 'var(--lang-inh-color, var(--text-secondary))',
+              letterSpacing: '-0.005em',
+            }}>
+              {a.ingush}
+            </p>
+          )}
+
+          {/* Russian translation. */}
+          {showRussian && a.russian && (
+            <p style={{
+              margin: '0 0 12px',
+              fontFamily: latinStack(russianFont),
+              fontSize: `${15 * russianScale + latinSizeBump(russianFont)}px`,
+              fontWeight: latinWeight(russianFont),
+              lineHeight: 1.55,
+              color: 'var(--text-secondary)',
+              letterSpacing: '-0.005em',
+            }}>
+              {a.russian}
+            </p>
+          )}
+
+          {/* "N:M" tag — pinned to the left, under both translations.
+              No chrome (no fill, no border) so it reads as a quiet
+              annotation rather than a UI control. */}
+          {surahNumber > 0 && (
+            <div style={{
+              textAlign: 'left',
+            }}>
+              <span style={{
+                display: 'inline-block',
+                padding: 0,
+                background: 'transparent',
+                border: 'none',
+                fontSize: '10px',
+                fontWeight: 500,
+                color: 'var(--text-tertiary)',
+                opacity: 0.55,
+                letterSpacing: '0.08em',
+                fontVariantNumeric: 'tabular-nums',
+              }}>
+                {surahNumber}:{startAyah + i}
+              </span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * SourceDisclosure — collapsible "Источник и награды" panel.
+ *
+ * Uses native <details>/<summary>: the browser owns the open/close
+ * state, keyboard handling, and ARIA semantics; no React state needed.
+ * The custom summary chrome (hairline border, leading icon, trailing
+ * chevron that rotates when open) is pure CSS — see the inline style
+ * blocks below and the global rule `details[open] summary svg.chev`
+ * which we add to `index.css` separately.
+ */
+function SourceDisclosure({
+  rewards, legacy, open, onToggle,
+}: {
+  rewards: AzkarReward[];
+  legacy?: string | null;
+  /** Controlled open/closed state — shared across every card in the
+   *  carousel so the user only needs to expand once. */
+  open: boolean;
+  onToggle: (open: boolean) => void;
+}) {
+  return (
+    <details
+      className="azkar-source-disclosure"
+      open={open}
+      onToggle={e => {
+        const next = (e.currentTarget as HTMLDetailsElement).open;
+        if (next !== open) onToggle(next);
+      }}
+      style={{
+        margin: '0 0 6px',
+        border: '1px solid var(--hairline)',
+        borderRadius: '12px',
+        background: 'color-mix(in srgb, var(--ink) 3%, transparent)',
+        overflow: 'hidden',
+      }}
+    >
+      <summary
+        style={{
+          listStyle: 'none',
+          cursor: 'pointer',
+          padding: '12px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          userSelect: 'none',
+        }}
+      >
+        {/* Book icon — visually anchors the row as "source / scholarly". */}
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="1.75"
+          strokeLinecap="round" strokeLinejoin="round"
+          style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}
+          aria-hidden
+        >
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+        </svg>
+        <span style={{
+          flex: 1,
+          fontSize: '12px',
+          fontWeight: 600,
+          color: 'var(--text-secondary)',
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+        }}>
+          Источник
+        </span>
+        <svg
+          className="chev"
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round"
+          style={{
+            color: 'var(--text-tertiary)',
+            flexShrink: 0,
+            transition: 'transform 180ms ease',
+          }}
+          aria-hidden
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </summary>
+
+      <div style={{
+        padding: '0 14px 14px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '14px',
+      }}>
+        {rewards.map((reward, i) => (
+          <div key={i} style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            paddingTop: i === 0 ? '4px' : '14px',
+            borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',
+          }}>
+            <p style={{
+              margin: 0,
+              fontSize: '13px',
+              lineHeight: 1.55,
+              color: 'var(--text-secondary)',
+              letterSpacing: '0.005em',
+            }}>
+              {reward.text}
+            </p>
+            {reward.hadiths.length > 0 && (
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '6px',
+                marginTop: '2px',
+              }}>
+                {reward.hadiths.map((h, j) => (
+                  <span key={j} style={{
+                    display: 'inline-block',
+                    padding: '3px 9px',
+                    borderRadius: '999px',
+                    background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
+                    border: '1px solid var(--hairline)',
+                    fontSize: '11px',
+                    color: 'var(--text-tertiary)',
+                    letterSpacing: '0.01em',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {h}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Legacy `entry.source` (the Ingush attribution line) — shown
+            quietly below the rewards block when both are present, so we
+            don't lose the historical attribution. */}
+        {legacy && (
+          <p
+            lang="inh"
+            style={{
+              margin: '4px 0 0',
+              paddingTop: '12px',
+              borderTop: '1px solid var(--hairline)',
+              fontSize: '11px',
+              lineHeight: 1.45,
+              color: 'var(--text-tertiary)',
+              opacity: 0.8,
+            }}
+          >
+            {legacy}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}

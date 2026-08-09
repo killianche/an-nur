@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a14" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fcf7e9" media="(prefers-color-scheme: light)" />
+    <meta name="description" content="КъорIа — чтение Корана с ингушским переводом, аудио и азкарами." />
+
+    <title>КъорIа</title>
+
+    <!-- Favicon: SVG (modern browsers) + PNG fallback (older browsers). -->
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16.png" />
+
+    <!-- iOS home-screen icon. 180x180 is the modern Apple-recommended
+         size; iOS Safari uses this when the user "Add to Home Screen". -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
+
+    <!-- PWA manifest — drives the install prompt on Android/desktop
+         Chrome and the icon/title shown after install. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- iOS PWA meta tags — hide Safari chrome when launched from the
+         home screen, set the status-bar style, and give the standalone
+         app its display title. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="КъорIа" />
+
+    <!-- Open Graph / link-preview card. -->
+    <meta property="og:title" content="КъорIа" />
+    <meta property="og:description" content="Чтение Корана с ингушским переводом, аудио и азкарами." />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta property="og:type" content="website" />
+
+    <!-- Arabic body text is rendered with QCF V4 PUA glyphs loaded
+         on demand (per visible page) by useQcfFont — no preload of a
+         single global font is needed any more. -->
+
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>КъорIа — звёздное небо</title>
+
+  <!-- Cosmic-night canvas, matched to the app's cosmic-night palette
+       so the icon feels of-a-piece with the dark-mode reader. -->
+  <defs>
+    <radialGradient id="sky" cx="50%" cy="40%" r="75%">
+      <stop offset="0%"  stop-color="#1a1a2e"/>
+      <stop offset="55%" stop-color="#0c0c18"/>
+      <stop offset="100%" stop-color="#06060f"/>
+    </radialGradient>
+    <linearGradient id="cloudFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#262635"/>
+      <stop offset="100%" stop-color="#15151f"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background fills entire canvas — Android maskable masks crop it
+       safely, iOS apple-touch-icon needs opaque background. -->
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+
+  <!-- Far-field tiny stars (within maskable safe zone 102..922). -->
+  <g fill="#ffffff">
+    <circle cx="240" cy="240" r="4"   opacity="0.6"/>
+    <circle cx="340" cy="180" r="3"   opacity="0.45"/>
+    <circle cx="690" cy="220" r="4"   opacity="0.70"/>
+    <circle cx="800" cy="320" r="3"   opacity="0.55"/>
+    <circle cx="180" cy="380" r="3.5" opacity="0.60"/>
+    <circle cx="780" cy="160" r="2.5" opacity="0.50"/>
+    <circle cx="450" cy="220" r="3"   opacity="0.60"/>
+    <circle cx="600" cy="310" r="3"   opacity="0.55"/>
+    <circle cx="380" cy="320" r="4"   opacity="0.75"/>
+    <circle cx="220" cy="500" r="3"   opacity="0.55"/>
+    <circle cx="860" cy="500" r="3.5" opacity="0.60"/>
+    <circle cx="500" cy="160" r="2.5" opacity="0.45"/>
+    <circle cx="160" cy="280" r="2.5" opacity="0.50"/>
+    <circle cx="900" cy="240" r="2.5" opacity="0.50"/>
+  </g>
+
+  <!-- Hero 4-point sparkle, slightly above geometric centre.
+       Concave-diamond shape (Material "auto_awesome") reads as a
+       classic "twinkle" rather than a hard polygon star. -->
+  <g transform="translate(512 420)">
+    <path d="
+      M 0,-220
+      C 24,-72 72,-24 220,0
+      C 72,24 24,72 0,220
+      C -24,72 -72,24 -220,0
+      C -72,-24 -24,-72 0,-220 Z"
+      fill="#ffffff"/>
+  </g>
+
+  <!-- Secondary sparkles (smaller, off-axis) so the upper half feels
+       like a small constellation instead of one lone star. -->
+  <g transform="translate(760 480)" opacity="0.92">
+    <path d="
+      M 0,-72
+      C 8,-24 24,-8 72,0
+      C 24,8 8,24 0,72
+      C -8,24 -24,8 -72,0
+      C -24,-8 -8,-24 0,-72 Z"
+      fill="#ffffff"/>
+  </g>
+  <g transform="translate(280 600)" opacity="0.82">
+    <path d="
+      M 0,-52
+      C 6,-17 17,-6 52,0
+      C 17,6 6,17 0,52
+      C -6,17 -17,6 -52,0
+      C -17,-6 -6,-17 0,-52 Z"
+      fill="#ffffff"/>
+  </g>
+
+  <!-- Cloud silhouette — cumulus humps along the bottom 25% of the
+       canvas. Extends to the full bottom edge so non-maskable
+       contexts get a complete cloud-band; the upper edge of the cloud
+       stays within the safe zone so the silhouette remains visible
+       even when Android crops to a circle/squircle. -->
+  <path d="
+    M 0,840
+    C 40,800 90,790 140,800
+    C 170,740 270,750 310,800
+    C 360,760 440,770 480,820
+    C 530,780 620,795 660,840
+    C 720,810 820,820 880,860
+    C 940,840 990,860 1024,890
+    L 1024,1024
+    L 0,1024 Z"
+    fill="url(#cloudFill)"/>
+
+  <!-- Thin highlight along the cloud's top edge so it lifts from the
+       navy backdrop instead of fusing into it. Same hue family as the
+       body, two steps brighter. -->
+  <path d="
+    M 0,840
+    C 40,800 90,790 140,800
+    C 170,740 270,750 310,800
+    C 360,760 440,770 480,820
+    C 530,780 620,795 660,840
+    C 720,810 820,820 880,860
+    C 940,840 990,860 1024,890"
+    fill="none" stroke="#4a4a60" stroke-width="3" opacity="0.55"/>
+</svg>

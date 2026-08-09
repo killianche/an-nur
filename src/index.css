@@ -1,0 +1,986 @@
+/* ВАЖНО: ПОРЯДОК @import строго фиксированный.  Спецификация CSS:
+   все @import url(...) должны идти РАНЬШЕ любых других правил.
+   • Tailwind разворачивается в множество rules сразу же inline.
+   • Tajweed-fonts.css — 604 @font-face declarations, тоже expand'ятся.
+   Если положить tailwind ИЛИ tajweed до Google-Fonts @import — Vite
+   ругнётся warning'ом и Google Fonts на проде не подгрузятся.  Поэтому:
+   1) UI Google Fonts (Inter)
+   2) Arabic Google Fonts (Amiri / Noto Naskh / Scheherazade)
+   3) tailwindcss
+   4) tajweed-fonts.css */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Scheherazade+New:wght@400;700&display=swap');
+@import "tailwindcss";
+@import "./styles/tajweed-fonts.css";
+
+/* EB Garamond — variable weight (100–900). Single woff2 carries the
+   whole axis, so any `font-weight` between 100 and 900 just works. */
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('/latin-fonts/EBGaramond-VariableFont_wght.woff2') format('woff2-variations'),
+       url('/latin-fonts/EBGaramond-VariableFont_wght.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+/* Alice — single Regular cut. */
+@font-face {
+  font-family: 'Alice';
+  src: url('/latin-fonts/Alice-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Unicode-text Arabic faces — loaded only when the reader picks the
+   Уthmani alternative font in Typography settings (default still
+   QCF V4).
+     - 'KFGQPC Uthmanic Hafs'     → KFGQPC Uthman Hafs Naskh, Saudi
+       Hafs Uthmanic script (from nuqayah/qpc-fonts/various-woff2)
+     - 'KFGQPC Uthmanic Hafs v22' → newer cut of the same family
+     - 'PDMS Saleem QuranFont'    → Indo-Pakistani Naskh, kept
+       registered for possible future use even though no current
+       arabicFont preset references it.
+   font-display: swap — text-fonts have a usable fallback (system
+   Arabic), so a brief swap is fine; PUA fonts use 'block'. */
+@font-face {
+  font-family: 'KFGQPC Uthmanic Hafs';
+  src: local('KFGQPC Uthmanic Script HAFS'),
+       url('/qcf-text-fonts/UthmanicHafs1.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'KFGQPC Uthmanic Hafs v22';
+  src: url('/qcf-text-fonts/UthmanicHafs_v22.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PDMS Saleem QuranFont';
+  src: local('_PDMS_Saleem_QuranFont'),
+       url('/qcf-text-fonts/PDMS_Saleem.woff2') format('woff2');
+  font-display: swap;
+}
+
+/* Azkar-specific Arabic face added by the user.  Lives under
+   /azkar/fonts/ rather than /qcf-text-fonts/ — it's a plain-Unicode
+   body face used by the Azkar screen and as a glyph-level
+   fallback for KFGQPC (which has a defective glyph for U+060C "،"),
+   kept separate from the Quran's mushaf-font pipeline. */
+@font-face {
+  font-family: 'Noto Naskh Arabic SemiBold';
+  src: url('/azkar/fonts/NotoNaskhArabic-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-display: swap;
+}
+
+/* Composite "Azkar KFGQPC" family — uses CSS @font-face unicode-range
+   to splice ONE codepoint (U+060C, Arabic comma) from Noto Naskh on
+   top of the full KFGQPC face.  Two @font-face declarations share
+   the same `font-family` name; the browser picks the file that
+   covers each codepoint.  Result: every glyph reads as KFGQPC except
+   the Arabic comma, which silently falls through to Noto Naskh
+   (where it's drawn correctly instead of as a dotted circle).
+   Used only by the Azkar screen; the Quran continues to use the
+   plain 'KFGQPC Uthmanic Hafs v22' family, untouched. */
+@font-face {
+  font-family: 'Azkar KFGQPC';
+  src: url('/qcf-text-fonts/UthmanicHafs_v22.woff2') format('woff2');
+  /* Cover everything EXCEPT U+060C — split the BMP into two halves
+     skipping that codepoint, then keep supplementary planes. */
+  unicode-range: U+0-060B, U+060D-FFFF, U+10000-10FFFF;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Azkar KFGQPC';
+  src: url('/azkar/fonts/NotoNaskhArabic-SemiBold.ttf') format('truetype');
+  unicode-range: U+060C;
+  font-display: swap;
+}
+
+/* Mushaf typesetting lives entirely in QCF V4 (PUA glyphs from
+   `qcf4/fonts-woff2/QCF4_Hafs_*_W.woff2`).  Each ayah uses several
+   page-specific Hafs subsets injected on demand by `useQcfFont`, so
+   no @font-face declarations for Arabic body text are needed here.
+   The legacy Uthmani / AmiriQuran / IndopakNastaleeq web-fonts were
+   removed — they belonged to the old AyahCard rendering path which
+   isn't on screen any more. */
+
+/* ─── Design tokens ─────────────────────────────────────────── */
+
+/*
+ * 6 themes total — three per mode.
+ * Light:
+ *   - light-pure    pure white #FFFFFF + true black ink
+ *   - light-paper   warm off-white #F5F5F5 + warm near-black (default)
+ *   - light-sepia   warm beige #F4ECD8 + dark cocoa
+ * Dark:
+ *   - dark-pure     OLED black #000000 + pure white
+ *   - dark-warm     warm near-black #0C0A09 + paper white (default)
+ *   - dark-soft     soft graphite #1A1A1C + soft off-white
+ *
+ * Default = light-paper (matches first-run when prefers-color-scheme: light).
+ */
+
+/* Light variants — three cohesive palettes, each tuned end-to-end so
+   switching paper colour shifts every surface (header, sheet, cards,
+   borders, ink). The trick is to keep --surface DIFFERENT from --canvas
+   per palette so cards and the header read as elevated panels rather
+   than disappearing into the page. Hairline + ink also pick up the
+   palette's warmth so the ink-tint on borders looks of-a-piece.
+
+   white      — clinical, surface == canvas, definition via hairlines
+   warm-gray  — Stone-100 paper with pure-white cards (default light)
+   cream      — warm parchment with warm-white cards, brown-toned ink */
+
+:root,
+[data-theme="light-warm-gray"] {
+  --canvas:        #f5f5f4;   /* Stone-100 — distinctly grey, not just off-white */
+  --canvas-soft:   #efeeec;
+  /* Surface used to be pure white — pulled the header out of the page
+     as a too-bright pill against the grey canvas. Now sits a hair
+     above canvas (warmer/lighter) so the translucent header blends
+     into the warm-grey tone, with the soft drop shadow alone giving
+     elevation. Cards and sheets stay readable thanks to hairlines. */
+  --surface:       #faf9f7;
+  --surface-strong:#ededeb;
+
+  --ink:           #1c1917;   /* Stone-900 — warm dark */
+  --ink-soft:      #292524;
+  --body:          #44403c;
+  --muted:         #78716c;
+  --muted-soft:    #a8a29e;
+
+  --hairline:        #d6d3d1; /* Stone-300, warm grey */
+  --hairline-soft:   #e7e5e4;
+  --hairline-strong: #b6b3b0;
+}
+
+[data-theme="light-white"] {
+  --canvas:        #ffffff;
+  --canvas-soft:   #fafafa;
+  --surface:       #ffffff;   /* same as canvas — clinical, no card tint */
+  --surface-strong:#f4f4f5;
+
+  --ink:           #000000;
+  --ink-soft:      #1f1f1f;
+  --body:          #3a3a3a;
+  --muted:         #6b6b6b;
+  --muted-soft:    #9c9c9c;
+
+  --hairline:        #e5e5e5;
+  --hairline-soft:   #f0f0f0;
+  --hairline-strong: #cfcfcf;
+}
+
+[data-theme="light-cream"] {
+  --canvas:        #faf6ee;   /* warm parchment */
+  --canvas-soft:   #f5efe4;
+  --surface:       #fffcf5;   /* warm white card — distinct from canvas, cohesive warm tone */
+  --surface-strong:#ede5d4;
+
+  --ink:           #2a1d11;   /* deep warm brown — text is noticeably warmer */
+  --ink-soft:      #3a2c1e;
+  --body:          #5b4a35;
+  --muted:         #806c52;
+  --muted-soft:    #a48a6c;
+
+  --hairline:        #e0d4b8; /* warm beige hairline — visible cream tint on borders */
+  --hairline-soft:   #ece1c4;
+  --hairline-strong: #c8b386;
+}
+
+/* light-ivory — soft warm cream (#fcf7e9) with near-black ink (#040403).
+   Cohesive warm tone like cream, but pushed brighter on the page and
+   harder on the type — text reads almost pitch-dark for max contrast on
+   the milky background. Borders pick up the cream tint so cards don't
+   feel grafted onto white. */
+[data-theme="light-ivory"] {
+  --canvas:        #fcf7e9;
+  --canvas-soft:   #f6f0dd;
+  /* Card surface — a tone DEEPER than the canvas but desaturated toward
+     warm-grey so it doesn't read as "yellow card on cream page". Two
+     earlier passes tried #fffdf3 (too white) and #f3ecd2 (too yellow).
+     Current #ebe5d3 sits in warm-tan territory: same hue family as the
+     canvas, less saturation in the yellow channel, clearly a card
+     surface against the brighter cream paper. Same recessed-card
+     convention as Kindle Sepia / Apple Books Beige. */
+  --surface:       #ebe5d3;
+  --surface-strong:#ddd5be;
+
+  --ink:           #040403;   /* near-black, slight warmth */
+  --ink-soft:      #1a1815;
+  --body:          #3a352e;
+  --muted:         #6b665d;
+  --muted-soft:    #908a7e;
+
+  --hairline:        #e6dcc2;
+  --hairline-soft:   #efe7d2;
+  --hairline-strong: #c8bc9c;
+}
+
+/* dark-slate — GitHub Dark Dimmed palette. Cool slate-blue surface,
+   distinctive against the neutral grey of dark-soft and the pitch-black
+   of dark-pure. The blue undertone reads as "engineered" rather than
+   "warm parchment" — sits well next to long arabic verses without
+   tinting them sepia.
+
+   Text-tier ramp was originally too dim — `--muted` (#768390) read as
+   "barely visible" on the slate canvas next to the brighter base text,
+   and the action-row pill / translation paragraph below each ayah
+   ended up looking washed out.  Bumped each tier one step lighter so
+   tertiary text sits at the old secondary level, secondary at the old
+   primary-soft, etc.  Hierarchy preserved, overall contrast lifted. */
+[data-theme="dark-slate"],
+[data-theme="dark"] /* legacy */ {
+  --canvas:        #22272e;
+  --canvas-soft:   #1c2026;
+  --surface:       #2d333b;
+  --surface-strong:#373e47;
+
+  --ink:           #e6edf3;   /* was #cdd9e5 — brighter primary */
+  --ink-soft:      #cdd9e5;   /* was #adbac7 — was the old ink */
+  --body:          #b1bdcb;   /* was #909dab — lifted one step */
+  --muted:         #9aa6b3;   /* was #768390 — lifted one step */
+  --muted-soft:    #6b7682;   /* was #545d68 — lifted one step */
+
+  --hairline:        #373e47;
+  --hairline-soft:   #2d333b;
+  --hairline-strong: #545d68;
+}
+
+[data-theme="dark-pure"] {
+  --canvas:        #0f0f0f;
+  --canvas-soft:   #161616;
+  --surface:       #161616;
+  --surface-strong:#1f1f1f;
+
+  --ink:           #ffffff;
+  --ink-soft:      #e5e5e5;
+  --body:          #d4d4d4;
+  --muted:         #a3a3a3;
+  --muted-soft:    #737373;
+
+  --hairline:        #1f1f1f;
+  --hairline-soft:   #141414;
+  --hairline-strong: #2e2e2e;
+}
+
+[data-theme="dark-soft"] {
+  --canvas:        #1a1a1c;
+  --canvas-soft:   #232326;
+  --surface:       #232326;
+  --surface-strong:#2c2c30;
+
+  --ink:           #ececec;
+  --ink-soft:      #d4d4d4;
+  --body:          #b5b5b5;
+  --muted:         #828287;
+  --muted-soft:    #5e5e62;
+
+  --hairline:        #2e2e32;
+  --hairline-soft:   #26262a;
+  --hairline-strong: #3a3a3f;
+}
+
+/* dark-graphite — graphite #202126 canvas with bright-but-warm-cool ink
+   #e8e9ea. A half-step lighter than dark-pure and a touch cooler than
+   dark-soft — reads as "premium graphite" rather than charcoal. Borders
+   sit close to canvas so cards lift via tone, not via a hard line. */
+[data-theme="dark-graphite"] {
+  --canvas:        #202126;
+  --canvas-soft:   #1a1b1f;
+  --surface:       #2a2b31;
+  --surface-strong:#34353b;
+
+  --ink:           #e8e9ea;
+  --ink-soft:      #d4d5d7;
+  --body:          #b5b6b9;
+  --muted:         #828287;
+  --muted-soft:    #5e5e62;
+
+  --hairline:        #2e2f34;
+  --hairline-soft:   #26272b;
+  --hairline-strong: #3a3b41;
+}
+
+/* dark-emerald — «Изумруд», по фото-референсу «Break» (presentation
+   deck).  Глубокий чистый изумруд + холодный белый-зелёный ink.
+   Цвет ровный, монохромный, как фон корпоративного слайда.
+   Signature — мягкий white spotlight в верхней-центральной части
+   экрана (см. body-правило ниже). */
+[data-theme="dark-emerald"] {
+  --canvas:        #0a3320;
+  --canvas-soft:   #072818;
+  --surface:       #0f4029;
+  --surface-strong:#154d34;
+
+  --ink:           #e8f0e8;
+  --ink-soft:      #c8d4c8;
+  --body:          #9aab9a;
+  --muted:         #6e7e6e;
+  --muted-soft:    #4a5a4a;
+
+  --hairline:        #1a4530;
+  --hairline-soft:   #143b28;
+  --hairline-strong: #205040;
+}
+
+/* dark-reverie — «Грёза», по фото-референсу «Serendipity» (mymind.com
+   hero).  Миднайт-нэйви канва + размытые синие облака в разных
+   позициях.  Signature — 4 мягких radial-gradient cloud-blob'а на
+   body (см. правило ниже). */
+[data-theme="dark-reverie"] {
+  --canvas:        #0a1428;
+  --canvas-soft:   #070f1f;
+  --surface:       #101c34;
+  --surface-strong:#16263e;
+
+  /* Палитра текста подкручена ярче по запросу пользователя — переводы
+     (русский + ингушский на --body / --lang-inh-color) сливались с
+     миднайт-канвой.  body теперь почти white, ink почти чистый white. */
+  --ink:           #f3f6fb;
+  --ink-soft:      #dde4ef;
+  --body:          #c8d4e4;
+  --muted:         #8a96a8;
+  --muted-soft:    #5e6878;
+
+  --hairline:        #1a2640;
+  --hairline-soft:   #141d34;
+  --hairline-strong: #243450;
+}
+
+/* dark-velvet — «Бархат», по фото-референсу «VIP / Welcome».  Глубокий
+   wine-бургунди + чернила в champagne-gold (как театральная VIP-ложа /
+   Cartier red + gold).  Signature — едва заметная вертикальная
+   пинстрайп-текстура «велюровый занавес» (см. body-правило ниже).
+
+   Палитра текста подкручена ярче по запросу пользователя — старая
+   была слишком muted (body #b8966a, muted #8a7048), русский/ингушский
+   почти сливался с канвой.  Теперь все три уровня заметно ярче, но
+   в той же warm-champagne hue-семье. */
+[data-theme="dark-velvet"] {
+  --canvas:        #3a1620;
+  --canvas-soft:   #2e101a;
+  --surface:       #451a26;
+  --surface-strong:#552430;
+
+  --ink:           #f3dab1;
+  --ink-soft:      #e6c89a;
+  --body:          #d4b485;
+  --muted:         #b08e60;
+  --muted-soft:    #7a5e38;
+
+  --hairline:        #501e2c;
+  --hairline-soft:   #3a1620;
+  --hairline-strong: #5e2434;
+}
+
+/* Cosmic — pure-black canvas; the actual atmospheric look (stars + aurora)
+   is painted by the <CosmicLayer> on top, behind content. We keep canvas
+   pitch-black so iOS Safari's scroll bounce reveals nothing weird beyond
+   the viewport, and so the aurora glow has a clean substrate to additively
+   blend over. Surfaces lean toward warm-grey rather than charcoal so cards
+   read crisp against the void. */
+[data-theme="cosmic-night"] {
+  --canvas:        #000000;
+  --canvas-soft:   #08080b;
+  --surface:       #131318;
+  --surface-strong:#1c1c22;
+
+  --ink:           #f4f4f5;
+  --ink-soft:      #e4e4e7;
+  --body:          #c0c0c8;
+  --muted:         #8a8a93;
+  --muted-soft:    #5a5a63;
+
+  --hairline:        #1f1f25;
+  --hairline-soft:   #16161b;
+  --hairline-strong: #34343c;
+}
+
+/* In cosmic mode the Ingush translation reads more legibly in pure
+   white than in the muted body grey — the warm sky behind washes out
+   --text-secondary. Russian stays muted as a secondary line.
+   Set as a CSS variable on the theme root (rather than a `color: #fff`
+   selector) because AyahCard's inline `color: var(--lang-inh-color,
+   var(--text-secondary))` would otherwise beat any non-inline rule. */
+[data-theme="cosmic-night"] {
+  --lang-inh-color: #ffffff;
+}
+
+/* Aliases shared by every theme — apply token names to `data-theme=*`
+   blocks via universal CSS variables on :root for any future fallback. */
+:root,
+[data-theme] {
+  --bg:             var(--canvas);
+  --bg-surface:     var(--canvas-soft);
+  --bg-card:        var(--surface);
+  --border:         var(--hairline);
+  --text-primary:   var(--ink);
+  --text-secondary: var(--body);
+  --text-tertiary:  var(--muted);
+  --text-muted:     var(--muted);
+  --arabic:         var(--ink);
+  --accent:         var(--ink-soft);
+  --accent-dim:     color-mix(in srgb, var(--ink) 16%, transparent);
+
+  /* QCF V4 Mushaf page tokens */
+  --mushaf-bg:     var(--surface);
+  --qcf-text:      var(--ink);
+  /* Active-word highlight — green on light, bright sage on dark */
+  --qcf-active:    #1a6b3c;
+}
+
+[data-theme^="dark"],
+[data-theme="cosmic-night"] {
+  --qcf-active: #4ade80;
+}
+
+/* ─── Base ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.005em;
+  min-height: 100dvh;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Light-theme paper textures ───────────────────────────────────────────
+   When a light variant is active, the body keeps the variant's --bg
+   colour and overlays an optional paper texture (grid / dots / notebook)
+   via --light-bg-image / --light-bg-size, written by lib/lightBg.ts.
+   Defaults degrade to a no-op when the user hasn't picked a pattern. */
+[data-theme^="light"] body {
+  background-image: var(--light-bg-image, none);
+  background-size:  var(--light-bg-size, auto);
+  background-repeat: repeat;
+  background-attachment: fixed;
+}
+
+/* «Сафьян» — фирменный сигнатур: inverted-triangle силуэт по центру
+   экрана, отсыл к лакированной плашке на нейлоновых сумках модного
+   дома.  CSS clip-path формирует чёткий равносторонний треугольник
+   из обычного div'а body::before — без SVG / data URI.
+
+   Position: fixed → стоит относительно окна, не уезжает при скролле.
+   Size: 38vmin × 33vmin (приблизительно равносторонний).
+   Opacity 0.05 — настолько слабый, что не борется с текстом, но при
+   беглом взгляде на пустой участок экрана узнаётся как deliberate
+   ornament, а не случайное светлое пятно.  z-index 0 +
+   pointer-events: none — между канвой и контентом, не перехватывает
+   тапы. */
+/* «Изумруд» — изюминка добавлена по запросу пользователя.  Раньше
+   было только white spotlight сверху-центра.  Теперь стек:
+     1. White spotlight у верха-центра (как от потолочного света)
+     2. Тёплый янтарный pool в правом-нижнем углу (как presenter's lamp)
+     3. Лёгкое затемнение по углам через виньетку (depth)
+     4. Очень тонкие вертикальные «лучи» от spotlight'а вниз
+   Получается слой-«сцена», а не просто плоский зелёный. */
+[data-theme="dark-emerald"] body {
+  background-image:
+    /* Тонкие вертикальные лучи от spotlight'а (alpha tiny) */
+    linear-gradient(180deg,
+      rgba(255,255,255,0.025) 0%,
+      transparent 45%),
+    /* Тёплый янтарный pool в правом-нижнем углу */
+    radial-gradient(60vw 40vh at 100% 100%,
+      rgba(255, 200, 120, 0.07) 0%,
+      rgba(255, 200, 120, 0.02) 35%,
+      transparent 65%),
+    /* Виньетка по углам (depth) */
+    radial-gradient(140vw 100vh at 50% 50%,
+      transparent 50%,
+      rgba(0, 0, 0, 0.18) 100%),
+    /* White spotlight у верха-центра */
+    radial-gradient(100vw 50vh at 50% 0%,
+      rgba(255, 255, 255, 0.10) 0%,
+      rgba(255, 255, 255, 0.04) 30%,
+      transparent 60%);
+  background-size: auto;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* «Грёза» — облачные blob'ы + edge reflections + светлячки.
+   Структура слоёв на body:
+     1. 4 cloud-blob'а (существовали)
+     2. 4 edge reflections (новое — мягкое свечение по краям внутрь)
+   Светлячки сидят на body::before и body::after — каждая группа
+   со своим тайминном drift'а и pulse'а (асинхронное мерцание для
+   «живого» ощущения). */
+[data-theme="dark-reverie"] body {
+  background-image:
+    /* Edge reflections — мягкое голубое свечение по 4 краям внутрь */
+    radial-gradient(70vw 30vh at 50% 0%,   rgba(120, 160, 220, 0.10) 0%, transparent 60%),
+    radial-gradient(70vw 30vh at 50% 100%, rgba(120, 160, 220, 0.10) 0%, transparent 60%),
+    radial-gradient(20vw 60vh at 0%   50%, rgba(120, 160, 220, 0.08) 0%, transparent 60%),
+    radial-gradient(20vw 60vh at 100% 50%, rgba(120, 160, 220, 0.08) 0%, transparent 60%),
+    /* Cloud blobs (existing) */
+    radial-gradient(circle at 22% 70%,  rgba(80, 130, 200, 0.32) 0%, transparent 30%),
+    radial-gradient(circle at 78% 28%,  rgba(110, 150, 220, 0.26) 0%, transparent 28%),
+    radial-gradient(circle at 50% 100%, rgba(70, 110, 190, 0.22) 0%, transparent 35%),
+    radial-gradient(circle at 8%  12%,  rgba(60, 100, 170, 0.18) 0%, transparent 25%);
+  background-size: auto;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Светлячки — две группы (::before и ::after) с разными тайминами
+   pulse'а и drift'а.  Каждая группа = 4 крошечных голубых точки,
+   разнесённых по экрану.  Background-position анимируется на
+   несколько процентов — глаз воспринимает как медленное случайное
+   движение.  Opacity-pulse на разных частотах между группами даёт
+   асинхронное мерцание (одни фейдят, пока другие горят). */
+[data-theme="dark-reverie"] body::before,
+[data-theme="dark-reverie"] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-repeat: no-repeat;
+}
+[data-theme="dark-reverie"] body::before {
+  background-image:
+    radial-gradient(2px   2px   at 15% 22%, rgba(200, 220, 255, 0.95), transparent 100%),
+    radial-gradient(1.5px 1.5px at 60% 18%, rgba(200, 220, 255, 0.80), transparent 100%),
+    radial-gradient(2px   2px   at 35% 75%, rgba(200, 220, 255, 0.90), transparent 100%),
+    radial-gradient(1.5px 1.5px at 88% 60%, rgba(200, 220, 255, 0.80), transparent 100%);
+  animation:
+    reverieFirefliesDriftA  22s ease-in-out infinite alternate,
+    reverieFirefliesPulseA   5s ease-in-out infinite;
+}
+[data-theme="dark-reverie"] body::after {
+  background-image:
+    radial-gradient(1.5px 1.5px at 78% 30%, rgba(200, 220, 255, 0.80), transparent 100%),
+    radial-gradient(2px   2px   at 25% 50%, rgba(200, 220, 255, 0.85), transparent 100%),
+    radial-gradient(1.5px 1.5px at 50% 90%, rgba(200, 220, 255, 0.75), transparent 100%),
+    radial-gradient(2px   2px   at 92% 82%, rgba(200, 220, 255, 0.85), transparent 100%);
+  animation:
+    reverieFirefliesDriftB  28s ease-in-out infinite alternate,
+    reverieFirefliesPulseB   7s ease-in-out infinite;
+}
+@keyframes reverieFirefliesDriftA {
+  0%   { background-position: 0% 0%, 0% 0%, 0% 0%, 0% 0%; }
+  100% { background-position: 4% 3%, -3% 4%, 5% -2%, -4% 3%; }
+}
+@keyframes reverieFirefliesDriftB {
+  0%   { background-position: 0% 0%, 0% 0%, 0% 0%, 0% 0%; }
+  100% { background-position: -4% 3%, 3% -3%, -5% 4%, 2% -4%; }
+}
+@keyframes reverieFirefliesPulseA {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.95; }
+}
+@keyframes reverieFirefliesPulseB {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.30; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="dark-reverie"] body::before,
+  [data-theme="dark-reverie"] body::after {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+/* «Бархат» — едва заметная вертикальная пинстрайп-текстура поверх
+   wine-канвы.  repeating-linear-gradient: 1-px champagne полоска,
+   3-px пустоты, opacity 0.04 — как ткань велюрового занавеса в
+   театре.  background-attachment: fixed → текстура не уезжает при
+   скролле. */
+[data-theme="dark-velvet"] body {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(232, 201, 160, 0.04) 0px,
+    rgba(232, 201, 160, 0.04) 1px,
+    transparent              1px,
+    transparent              4px
+  );
+  background-attachment: fixed;
+}
+
+/* ─── Wallpaper layer ──────────────────────────────────────────────────────
+   When a wallpaper preset is active, lib/wallpaper.ts sets a
+   `data-wallpaper="<id>"` attribute on <html> plus two CSS vars:
+     --wallpaper-image  (e.g. `url("/wallpapers/moss.jpg")`)
+     --wallpaper-scrim  (translucent overlay colour for legibility)
+   Two pseudo-elements on the root paint the layer:
+     ::before — the photo (fixed full-screen cover)
+     ::after  — a tinted scrim above the photo to lift text contrast
+   Both sit behind everything via z-index: -1 / -2; the body's own
+   solid background colour would cover them, so we force it transparent
+   while a wallpaper is active. The light-theme paper texture rule
+   (above) keeps working through the wallpaper because we paint the
+   tile pattern on body, which is now transparent — the dots/grid land
+   on the scrim, not the canvas colour. */
+html[data-wallpaper]::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: var(--wallpaper-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  pointer-events: none;
+}
+html[data-wallpaper]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--wallpaper-scrim);
+  pointer-events: none;
+}
+html[data-wallpaper] body {
+  background-color: transparent;
+}
+
+/* Wallpaper "Тучи" — base theme is dark-slate (cool slate-blue ink), but
+   the photo is moody dark navy/grey storm clouds. Slate's mid-blue ink
+   and muted body grey read as washed-out on the busy cloud texture.
+   Lift the palette to the cosmic-night brightness (high-contrast warm
+   whites, deep near-black surfaces) so body translations and hairlines
+   pop the same way they do in the Космос preset. Selector specificity
+   beats [data-theme="dark-slate"] because we match html + an attribute. */
+html[data-wallpaper="clouds"] {
+  --canvas:        #000000;
+  --canvas-soft:   #08080b;
+  --surface:       #131318;
+  --surface-strong:#1c1c22;
+
+  --ink:           #f4f4f5;
+  --ink-soft:      #e4e4e7;
+  --body:          #c0c0c8;
+  --muted:         #8a8a93;
+  --muted-soft:    #5a5a63;
+
+  --hairline:        #1f1f25;
+  --hairline-soft:   #16161b;
+  --hairline-strong: #34343c;
+
+  /* Same boost cosmic-night gives the Ingush translation line so it
+     doesn't fade against a saturated backdrop. */
+  --lang-inh-color: #ffffff;
+}
+
+/* The old `.arabic` helper class was removed alongside the legacy
+   web-fonts above — Arabic body text is now rendered exclusively
+   through QcfAyahLine + QCF V4 PUA glyphs, which inline their own
+   font-family/direction/feature-settings on each <span>. */
+
+/* Display family for editorial moments (titles, surah names) —
+   EB Garamond (variable) covers headlines, with Alice as a fallback
+   for any glyph EB Garamond happens to miss in our scripts. */
+.display-serif {
+  font-family: 'EB Garamond', 'Alice', Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+  letter-spacing: -0.018em;
+}
+
+/* ─── Skeleton loader (used while alquran.cloud fetch is in flight) ─────────
+   Shimmer is a moving gradient on top of a soft tinted base. Both colours are
+   derived from --ink so the skeleton blends with whichever theme is active. */
+@keyframes skeletonShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ink) 6%,  transparent) 0%,
+    color-mix(in srgb, var(--ink) 14%, transparent) 50%,
+    color-mix(in srgb, var(--ink) 6%,  transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* ─── Icon buttons — Lucide-grade hit + hover ────────────────── */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 12px;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.icon-btn:hover { background: var(--accent-dim); color: var(--text-primary); }
+.icon-btn:active { transform: scale(0.94); }
+.icon-btn[aria-pressed="true"], .icon-btn[data-active="true"] {
+  color: var(--text-primary);
+}
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.icon-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  background: transparent;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 9999px;
+  cursor: pointer;
+  padding: 0 14px;
+  color: var(--text-primary);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.icon-pill[data-active="true"] {
+  background: var(--ink, var(--text-primary));
+  color: var(--surface);
+  border-color: transparent;
+}
+.icon-pill:hover:not([data-active="true"]) {
+  background: var(--accent-dim);
+}
+
+/* ─── Ayah row layout ────────────────────────────────────────
+ * The active ayah is marked ONLY by the per-word karaoke highlight
+ * ([data-active-word] further below).  Earlier iterations stacked an
+ * extra block-level cue (background tint + left accent bar) on top —
+ * removed: it doubled the signal, made the page feel busy, and visually
+ * out-shouted the word marker the user actually needed to track.
+ *
+ * The .active class is still set by SurahScreen so other layers (auto-
+ * scroll target, future hover affordances) can hook into it without
+ * having to recompute "which ayah is playing" — they just don't paint
+ * anything here.
+ */
+.ayah-row {
+  position: relative;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* ─── Range slider ──────────────────────────────────────────── */
+.range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--hairline);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background: var(--ink);
+  border-radius: 50%;
+  cursor: grab;
+  border: 3px solid var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.range-slider::-webkit-slider-thumb:active { cursor: grabbing; }
+.range-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  background: var(--ink);
+  border-radius: 50%;
+  cursor: grab;
+  border: 3px solid var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 2px; }
+
+/* ─── Active-word highlight (karaoke sync with reciter) ────────────────────
+   Each Arabic word is rendered in its own <span>; the word currently being
+   recited gets [data-active-word]. We only split on whitespace, so cursive
+   Arabic shaping within each word is never broken — the CLAUDE.md rule
+   ("never split a verse into individual letters") applies to graphemes,
+   and the word boundary is already a shaping break.
+
+   Two switchable visual modes, driven by data-highlight-style on :root:
+     • "color"  (default) — repaint the active word in the user's pick.
+                Calligraphy stays crisp, just a gentle hue stress.
+     • "glow"   — keep the base text colour, add an aurora-style
+                text-shadow (vertical streaks + halo) plus a soft
+                radial-gradient "dome" under the word (rendered by the
+                AyahGlowLayer component using --ayah-glow-bg).
+
+   Both modes share the [data-active-word] DOM attribute — only the CSS
+   reaction changes. applyHighlightVars() writes the active mode to
+   :root[data-highlight-style] so the right branch wins. */
+
+/* Fallbacks for the first paint before applyHighlightVars() runs — keep
+   the active word from rendering as raw inherit before JS boots. */
+:root {
+  --ayah-glow-bg: transparent;
+  --ayah-word-shadow: none;
+}
+
+[data-active-word] {
+  /* Both transition properties listed: the active mode picks the
+     relevant one and the unused property animates against its own
+     no-op default — cheap and avoids a mode-specific transition rule. */
+  transition: color 180ms ease-out, text-shadow 220ms ease-out;
+}
+
+/* ── 'color' mode ─────────────────────────────────────────────────────────
+   Text recolour gated on data-highlight-style="color" so the rules don't
+   leak into glow mode. The light/dark/cosmic split is the same as before
+   — light themes use the deeper '-color-light' shade, dark and cosmic
+   themes use the brighter '-color-dark' so contrast holds in both. */
+[data-highlight-style="color"][data-theme^="light"] [data-active-word] {
+  color: var(--ayah-word-color-light, #2563eb) !important;
+}
+/* `cosmic-*` themes are visually dark (pitch-black canvas) but their
+   data-theme prefix isn't "dark", so they need an explicit selector —
+   without it the active-word recolour silently no-ops on cosmic-night.
+   Same pattern is used elsewhere in this file for canvas/surface vars. */
+[data-highlight-style="color"][data-theme^="dark"] [data-active-word],
+[data-highlight-style="color"][data-theme^="cosmic"] [data-active-word] {
+  color: var(--ayah-word-color-dark, #60a5fa) !important;
+}
+
+/* ── 'glow' mode ──────────────────────────────────────────────────────────
+   Five-stop text-shadow (vertical streaks + outer halo) on the active
+   word. Text colour stays at the body default — the calligraphy is
+   meant to sit inside the glow, not become the glow. The var contains
+   the full pre-baked shadow stack from AURORA_PALETTES; fallback keeps
+   the rule meaningful if applyHighlightVars() hasn't run yet. */
+[data-highlight-style="glow"] [data-active-word] {
+  text-shadow: var(--ayah-word-shadow,
+    0 -16px 36px rgba(80, 200, 140, 0.21),
+    0  16px 36px rgba(80, 200, 140, 0.21),
+    0   0px 30px rgba(80, 200, 140, 0.21),
+    0 -40px 110px rgba(50, 170, 110, 0.19),
+    0  40px 110px rgba(50, 170, 110, 0.19)
+  );
+}
+
+/* When the user disables the highlight entirely, both signals go away. */
+:root[style*="--highlight-disabled: 1"] [data-active-word] {
+  color: inherit !important;
+  text-shadow: none !important;
+}
+:root[style*="--highlight-disabled: 1"] [data-ayah-glow] {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-active-word] { transition: none; }
+}
+
+/* ── Layer 2 — radial-gradient "dome" under the active word ───────────────
+   Rendered by AyahGlowLayer as a single positioned <span data-ayah-glow>.
+   The wrapper sets size + position; this rule paints the gradient and a
+   slow "breathing" pulse (compositor-only, scales between 0.97 and 1.0
+   so the dome feels alive without nudging layout). Hidden in color mode
+   and when reduced-motion is requested. */
+[data-ayah-glow] {
+  background: var(--ayah-glow-bg, transparent);
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+}
+[data-highlight-style="color"] [data-ayah-glow] { display: none; }
+
+@keyframes ayahGlowBreathe {
+  0%, 100% { transform: scale(0.97); }
+  50%      { transform: scale(1.00); }
+}
+[data-ayah-glow] {
+  animation: ayahGlowBreathe 1600ms ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-ayah-glow] { animation: none; display: none !important; }
+}
+
+/* Global kill-switch the user can flip at the html level for any reason
+   (debugging, deliberate "quiet mode" extension, etc.). */
+[data-glow="off"] [data-ayah-glow] { display: none !important; }
+
+/* ─── Cosmic theme — ambient backdrop animations ──────────────────────────
+   Aurora.tsx renders an inner 200%-wide div with six radial-gradient
+   ellipses, then translates it -50% over 90s for a seamless drift loop.
+   Compositor-only animation (transform), zero JS per frame. */
+@keyframes auroraDrift {
+  0%   { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aurora-drift { animation: none !important; }
+}
+
+/* ─── Reading-settings bottom sheet ────────────────────────────────────────
+   Slide-in is driven by inline React state + transition (see
+   SettingsSheet in ReadingSettings.tsx). The CSS here only suppresses
+   the scrollbar — the sheet still scrolls but the vertical track on
+   the right read as a glitch against the cosmic backdrop. */
+[data-reading-sheet] { scrollbar-width: none; }
+[data-reading-sheet]::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Hide scrollbars on the azkar swipe carousel (both axes) and on every
+   inner card's vertical scroll — visible scrollbars would draw a line
+   on every card edge and break the clean "one screen, one azkar" feel.
+   Standard `scrollbar-width: none` lives in inline style on the
+   container; this complement is for WebKit/Safari which ignores it. */
+.azkar-carousel::-webkit-scrollbar,
+.azkar-carousel > article::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Brief slide-in for the transient "font name" chip under the Azkar
+   header — fires every time the user cycles the Arabic font, then the
+   element is unmounted after a short timeout (the JS handles the
+   fade-out by removal rather than animating opacity). */
+@keyframes azkarFontChipIn {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to   { opacity: 1; transform: translate(-50%, 0);    }
+}
+
+/* Collapsible "Источник и награды" disclosure: hide the default UA
+   marker triangle, rotate our chevron 180° when <details> is open. */
+.azkar-source-disclosure > summary::-webkit-details-marker { display: none; }
+.azkar-source-disclosure > summary { list-style: none; }
+.azkar-source-disclosure[open] > summary svg.chev {
+  transform: rotate(180deg);
+}
+
+/* InlinePlay state swap — мягкий fade+lift inner-контента кнопки
+   при переключении play/pause/loading.  Ключ React'а на span'е
+   меняется → старый размонтируется, новый монтируется и проигрывает
+   keyframe. Кратко и без overshoot, чтобы не отвлекать от чтения. */
+@keyframes inlinePlaySwap {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+.inline-play-swap {
+  animation: inlinePlaySwap 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
