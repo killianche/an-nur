@@ -34,3 +34,38 @@ export function globalAyahNumber(surah: number, ayah: number): number {
 export function ayahsInSurah(surah: number): number {
   return AYAHS_PER_SURAH[surah - 1] ?? 0;
 }
+
+/** Сквозной номер первого аята суры. */
+export function firstGlobalOfSurah(surah: number): number {
+  return globalAyahNumber(surah, 1);
+}
+
+/** Всего сур. */
+export const TOTAL_SURAHS = 114;
+
+/**
+ * Границы джузов по началу: [сура, аят] начала каждого из 30 джузов.
+ * Нужны, чтобы предлагать скачивание джузом — привычная для читателя
+ * единица, промежуточная между сурой и всем Кораном.
+ *
+ * Источник: стандартное деление мусхафа (King Fahd Complex), сверено
+ * с таблицей джузов на quran.com.
+ */
+const JUZ_STARTS: [number, number][] = [
+  [1, 1],    [2, 142],  [2, 253],  [3, 93],   [4, 24],
+  [4, 148],  [5, 82],   [6, 111],  [7, 88],   [8, 41],
+  [9, 93],   [11, 6],   [12, 53],  [15, 1],   [17, 1],
+  [18, 75],  [21, 1],   [23, 1],   [25, 21],  [27, 56],
+  [29, 46],  [33, 31],  [36, 28],  [39, 32],  [41, 47],
+  [46, 1],   [51, 31],  [58, 1],   [67, 1],   [78, 1],
+];
+
+/** Сквозной диапазон джуза 1..30 — [первый, последний] включительно. */
+export function juzRange(juz: number): [number, number] {
+  const i = Math.min(30, Math.max(1, Math.floor(juz))) - 1;
+  const from = globalAyahNumber(JUZ_STARTS[i][0], JUZ_STARTS[i][1]);
+  const to = i === 29
+    ? TOTAL_AYAHS
+    : globalAyahNumber(JUZ_STARTS[i + 1][0], JUZ_STARTS[i + 1][1]) - 1;
+  return [from, to];
+}

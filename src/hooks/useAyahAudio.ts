@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { ayahAudioUrl } from '../lib/quranUtils';
+import { cacheAyah } from '../lib/audioDownloads';
 import { DEFAULT_RECITER, type ReciterId } from '../lib/reciters';
 import {
   setMediaSessionMetadata, setMediaSessionPlaybackState,
@@ -273,6 +274,12 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     try {
       await audio.play();
       setAudioState('playing');
+      // Кэш по воспроизведению: аят, который только что зазвучал со
+      // стрима, тихо оседает на устройстве.  Так офлайн-библиотека
+      // растёт от обычного чтения, без единого нажатия «скачать» —
+      // включая случай «ткнул в середину Бакары».  No-op, если аят уже
+      // лежит или платформа не нативная.
+      cacheAyah(r, surah, ayah);
       // Pre-warm the next ayah so auto-advance is gap-free.  We only
       // prefetch ONE ahead — going further wastes mobile data on ayahs
       // the user might never reach (e.g. they tap a different ayah,

@@ -1,53 +1,76 @@
 /**
- * audioDownloads — менеджер офлайн-загрузки чтеца.
+ * audioDownloads — загрузка аудио на устройство.
  *
- * Качает аяты строго по возрастанию сквозного номера (1..6236) и после
- * каждой пачки двигает «планку» в audioStore.  Такой порядок — не
- * стилистика, а условие синхронной проверки в audioStore: там
- * «скачан ли аят» это сравнение `n <= upTo`, и оно верно только если
- * дырок в последовательности нет.  Отсюда же бесплатная докачка после
- * обрыва: продолжаем с `upTo + 1`.
+ * ── Модель ────────────────────────────────────────────────────────────
  *
- * Почему fetch + writeFile, а не Filesystem.downloadFile:
- * `downloadFile` помечен deprecated начиная с @capacitor/filesystem
- * 7.1.0 (рекомендуют отдельный плагин @capacitor/file-transfer).
- * Тянуть ещё одну зависимость ради того же результата смысла нет —
- * файлы маленькие (в среднем ~95 КБ), base64-конвертация одного такого
- * стоит доли миллисекунды и не держит память, потому что мы не копим
- * их в массиве.
+ * Единица работы — ЗАДАНИЕ: произвольный список аятов, которых ещё нет
+ * на устройстве.  Задание собирается из чего угодно — одной суры,
+ * джуза, всего Корана или одного аята — и выполняется пулом воркеров в
+ * любом порядке.  Никакой «планки, до которой скачано»: состояние
+ * живёт в битовой карте audioStore, где каждый аят независим.
  *
- * Параллельность = 4.  Больше не даёт выигрыша: упираемся не в
- * задержку сети, а в запись на диск через мост Capacitor, и на
- * бюджетных Android-устройствах восемь одновременных записей начинают
- * тормозить UI-поток.
+ * Порядок внутри задания всё же осмысленный — по возрастанию номера,
+ * чтобы человек, скачивающий суру и одновременно её читающий, получал
+ * аяты примерно в том порядке, в каком дойдёт до них глазами.  Но это
+ * удобство, а не требование модели: прерви и продолжи с любого места.
  *
- * Загрузка живёт в модуле, а не в компоненте: пользователь должен
- * иметь возможность закрыть попап настроек и уйти читать, пока
- * качается.
+ * ── Кэш по воспроизведению ────────────────────────────────────────────
+ *
+ * `cacheAyah()` тихо кладёт на диск аят, который только что играл со
+ * стрима.  Так библиотека растёт сама собой от обычного чтения, без
+ * единого нажатия «скачать».  Вызывается из useAyahAudio.
+ *
+ * ── Почему fetch + writeFile ──────────────────────────────────────────
+ *
+ * `Filesystem.downloadFile` помечен deprecated с @capacitor/filesystem
+ * 7.1.0 и предлагает тянуть отдельный плагин @capacitor/file-transfer.
+ * Ради того же результата новая зависимость не нужна: файлы мелкие
+ * (~60 КБ при 64 kbps), base64-конвертация одного стоит доли
+ * миллисекунды и не копится в памяти.
+ *
+ * Параллельность 4: упираемся не в сеть, а в запись через мост
+ * Capacitor, и на бюджетных Android-устройствах восемь одновременных
+ * записей начинают подъедать UI-поток.
+ *
+ * Загрузка живёт в модуле, а не в компоненте: попап настроек можно
+ * закрыть и уйти читать, задание продолжится.
  */
 
 import type { ReciterId } from './reciters';
 import { reciterById } from './reciters';
 import {
-  TOTAL_AYAHS, ayahFilePath, downloadedUpTo, setDownloadedUpTo,
-  clearDownloaded, isOfflineSupported,
+  globalAyahNumber, ayahsInSurah, firstGlobalOfSurah, juzRange,
+  TOTAL_AYAHS, TOTAL_SURAHS,
+} from './ayahNumbering';
+import {
+  hasAyah, markDownloaded, ayahFilePath, isOfflineSupported, persistNow,
 } from './audioStore';
 
 /** Сколько аятов качаем одновременно. */
 const CONCURRENCY = 4;
-/** Через сколько скачанных аятов фиксировать планку в Preferences. */
-const CHECKPOINT_EVERY = 25;
+
+/** Что именно качаем — для подписи в интерфейсе. */
+export type DownloadScope =
+  | { kind: 'surah'; surah: number }
+  | { kind: 'juz'; juz: number }
+  | { kind: 'all' };
 
 export type DownloadStatus = 'idle' | 'running' | 'paused' | 'error';
 
 export type DownloadState = {
   status: DownloadStatus;
-  /** Сколько аятов уже лежит на устройстве. */
+  scope: DownloadScope | null;
+  /** Сколько аятов задания уже на устройстве. */
   done: number;
+  /** Сколько всего в задании (только недостающие на момент старта). */
   total: number;
-  /** Реально записано байт за текущую сессию загрузки. */
+  /** Байт записано за текущее задание. */
   bytes: number;
   error: string | null;
+};
+
+const IDLE: DownloadState = {
+  status: 'idle', scope: null, done: 0, total: 0, bytes: 0, error: null,
 };
 
 const state = new Map<ReciterId, DownloadState>();
@@ -64,13 +87,7 @@ function emit() {
 }
 
 export function getDownloadState(reciter: ReciterId): DownloadState {
-  return state.get(reciter) ?? {
-    status: 'idle',
-    done: downloadedUpTo(reciter),
-    total: TOTAL_AYAHS,
-    bytes: 0,
-    error: null,
-  };
+  return state.get(reciter) ?? IDLE;
 }
 
 function patch(reciter: ReciterId, next: Partial<DownloadState>) {
@@ -78,20 +95,22 @@ function patch(reciter: ReciterId, next: Partial<DownloadState>) {
   emit();
 }
 
+// ─── Оценка размера ─────────────────────────────────────────────────────
+
 /**
- * Оценка полного размера одного чтеца.
+ * Средний вес аята при 64 kbps.
  *
- * Выведена из реально лежащих в пакете 594 mp3 Аляфаси (суры 67–114):
- * 54.2 МБ / 594 ≈ 93.5 КБ на аят при 64 kbps.  Это НИЖНЯЯ граница:
- * в джузе Амма аяты короткие, а в длинных сурах — заметно длиннее,
- * поэтому фактический размер выходит больше.  Показываем как «≈» и
- * рядом всегда даём реально скачанные байты.
+ * Замерено по 594 mp3 Аляфаси, лежащим в пакете (суры 67–114):
+ * 54.2 МБ / 594 ≈ 93.5 КБ.  Это НИЖНЯЯ оценка: в джузе Амма аяты
+ * короткие, в длинных сурах заметно длиннее.  По полной длительности
+ * чтения (29.5 ч при 64 kbps ≈ 850 МБ / 6236) выходит ~139 КБ —
+ * берём это как более честное среднее.
  * CHECK: уточнить после первой полной загрузки на устройстве.
  */
-export const AVG_AYAH_BYTES = 93.5 * 1024;
+export const AVG_AYAH_BYTES = 139 * 1024;
 
-export function estimatedTotalBytes(): number {
-  return AVG_AYAH_BYTES * TOTAL_AYAHS;
+export function estimateBytes(ayahCount: number): number {
+  return AVG_AYAH_BYTES * ayahCount;
 }
 
 export function formatBytes(n: number): string {
@@ -100,22 +119,65 @@ export function formatBytes(n: number): string {
   return `${Math.round(n / 1024)} КБ`;
 }
 
+// ─── Разворачивание scope в список аятов ────────────────────────────────
+
+/** Все пары (сура, аят) диапазона сквозных номеров. */
+function ayahsInGlobalRange(from: number, to: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let surah = 1; surah <= TOTAL_SURAHS; surah++) {
+    const first = firstGlobalOfSurah(surah);
+    const count = ayahsInSurah(surah);
+    const last = first + count - 1;
+    if (last < from || first > to) continue;
+    for (let a = 1; a <= count; a++) {
+      const g = first + a - 1;
+      if (g >= from && g <= to) out.push([surah, a]);
+    }
+  }
+  return out;
+}
+
+function expandScope(scope: DownloadScope): [number, number][] {
+  if (scope.kind === 'surah') {
+    const count = ayahsInSurah(scope.surah);
+    return Array.from({ length: count }, (_, i) => [scope.surah, i + 1] as [number, number]);
+  }
+  if (scope.kind === 'juz') {
+    const [from, to] = juzRange(scope.juz);
+    return ayahsInGlobalRange(from, to);
+  }
+  return ayahsInGlobalRange(1, TOTAL_AYAHS);
+}
+
+/** Сколько аятов в области ещё нет на устройстве. */
+export function missingCount(reciter: ReciterId, scope: DownloadScope): number {
+  let n = 0;
+  for (const [s, a] of expandScope(scope)) {
+    if (!hasAyah(reciter, globalAyahNumber(s, a))) n++;
+  }
+  return n;
+}
+
+// ─── Скачивание одного аята ─────────────────────────────────────────────
+
 /** URL аята у CDN — тот же, что использует стриминг. */
-function cdnUrl(reciter: ReciterId, globalN: number): string {
+function cdnUrl(reciter: ReciterId, surah: number, ayah: number): string {
   const r = reciterById(reciter);
   if (r.slug) {
-    return `https://cdn.islamic.network/quran/audio/64/${r.slug}/${globalN}.mp3`;
+    return `https://cdn.islamic.network/quran/audio/64/${r.slug}/${globalAyahNumber(surah, ayah)}.mp3`;
   }
-  // everyayah требует номер относительно суры, а мы идём по сквозному —
-  // такие чтецы в офлайн-загрузку пока не берём (в текущем каталоге их нет).
-  throw new Error(`нет CDN-источника по сквозному номеру для чтеца ${reciter}`);
+  if (r.everyayahDir) {
+    const p3 = (n: number) => String(n).padStart(3, '0');
+    return `https://everyayah.com/data/${r.everyayahDir}/${p3(surah)}${p3(ayah)}.mp3`;
+  }
+  throw new Error(`нет источника аудио для чтеца ${reciter}`);
 }
 
 function toBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let bin = '';
-  // Чанками, а не String.fromCharCode(...bytes): на файле в ~95 КБ
-  // спред развернулся бы в 95 000 аргументов и уронил стек.
+  // Чанками, а не String.fromCharCode(...bytes): на файле в ~140 КБ
+  // спред развернулся бы в 140 000 аргументов и уронил стек.
   const CHUNK = 0x8000;
   for (let i = 0; i < bytes.length; i += CHUNK) {
     bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
@@ -123,83 +185,83 @@ function toBase64(buf: ArrayBuffer): string {
   return btoa(bin);
 }
 
+/** Скачать и записать один аят.  Возвращает размер в байтах. */
+async function fetchAndStore(reciter: ReciterId, surah: number, ayah: number): Promise<number> {
+  const res = await fetch(cdnUrl(reciter, surah, ayah));
+  if (!res.ok) throw new Error(`${surah}:${ayah} — HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
+  const { Filesystem, Directory } = await import('@capacitor/filesystem');
+  await Filesystem.writeFile({
+    directory: Directory.LibraryNoCloud,
+    path: ayahFilePath(reciter, surah, ayah),
+    data: toBase64(buf),
+    recursive: true,
+  });
+  markDownloaded(reciter, surah, ayah);
+  return buf.byteLength;
+}
+
 /**
- * Запустить (или продолжить) загрузку чтеца.
+ * Тихо положить аят на диск, если его там ещё нет.
  *
- * Возвращает промис, который резолвится по завершении, отмене или
- * ошибке — состояние читается через getDownloadState().
+ * Вызывается после успешного воспроизведения со стрима: библиотека
+ * растёт от обычного чтения.  Ошибки проглатываются — это фоновая
+ * любезность, а не операция, о провале которой стоит сообщать.
  */
-export async function startDownload(reciter: ReciterId): Promise<void> {
+export function cacheAyah(reciter: ReciterId, surah: number, ayah: number): void {
+  if (!isOfflineSupported()) return;
+  if (hasAyah(reciter, globalAyahNumber(surah, ayah))) return;
+  void fetchAndStore(reciter, surah, ayah).catch(() => { /* не мешаем чтению */ });
+}
+
+// ─── Задания ────────────────────────────────────────────────────────────
+
+/**
+ * Запустить (или продолжить) загрузку области.
+ *
+ * Повторный вызов после паузы просто пересобирает список недостающих —
+ * поэтому докачка не требует ни курсора, ни отдельного кода
+ * возобновления.
+ */
+export async function startDownload(reciter: ReciterId, scope: DownloadScope): Promise<void> {
   if (!isOfflineSupported()) {
     patch(reciter, {
       status: 'error',
-      error: 'Офлайн-загрузка доступна только в приложении для iOS и Android.',
+      error: 'Скачивание доступно только в приложении для iOS и Android.',
     });
     return;
   }
   if (getDownloadState(reciter).status === 'running') return;
 
   cancelFlags.delete(reciter);
-  const from = downloadedUpTo(reciter) + 1;
-  patch(reciter, { status: 'running', done: from - 1, error: null, bytes: 0 });
 
-  if (from > TOTAL_AYAHS) {
-    patch(reciter, { status: 'idle', done: TOTAL_AYAHS });
+  const targets = expandScope(scope)
+    .filter(([s, a]) => !hasAyah(reciter, globalAyahNumber(s, a)));
+
+  if (targets.length === 0) {
+    patch(reciter, { ...IDLE, scope });
     return;
   }
 
-  const { Filesystem, Directory } = await import('@capacitor/filesystem');
+  patch(reciter, {
+    status: 'running', scope, done: 0, total: targets.length, bytes: 0, error: null,
+  });
 
-  // Планка двигается только по непрерывному префиксу.  При
-  // параллельности 4 аяты могут дописаться не по порядку, поэтому
-  // держим множество готовых и продвигаем планку, пока следующий
-  // номер в нём есть.
-  let frontier = from - 1;
-  const ready = new Set<number>();
+  let done = 0;
   let bytes = 0;
-  let sinceCheckpoint = 0;
   let failed: string | null = null;
+  let cursor = 0;
 
-  const advance = async () => {
-    let moved = false;
-    while (ready.has(frontier + 1)) {
-      ready.delete(frontier + 1);
-      frontier++;
-      moved = true;
-      sinceCheckpoint++;
-    }
-    if (!moved) return;
-    patch(reciter, { done: frontier, bytes });
-    if (sinceCheckpoint >= CHECKPOINT_EVERY || frontier >= TOTAL_AYAHS) {
-      sinceCheckpoint = 0;
-      await setDownloadedUpTo(reciter, frontier);
-    }
-  };
-
-  const fetchOne = async (n: number) => {
-    const res = await fetch(cdnUrl(reciter, n));
-    if (!res.ok) throw new Error(`аят ${n}: HTTP ${res.status}`);
-    const buf = await res.arrayBuffer();
-    await Filesystem.writeFile({
-      directory: Directory.Data,
-      path: ayahFilePath(reciter, n),
-      data: toBase64(buf),
-      recursive: true,
-    });
-    bytes += buf.byteLength;
-    ready.add(n);
-    await advance();
-  };
-
-  // Пул из CONCURRENCY воркеров, разбирающих общий курсор.
-  let cursor = from;
   const worker = async () => {
     for (;;) {
       if (cancelFlags.has(reciter) || failed) return;
-      const n = cursor++;
-      if (n > TOTAL_AYAHS) return;
+      const i = cursor++;
+      if (i >= targets.length) return;
+      const [surah, ayah] = targets[i];
       try {
-        await fetchOne(n);
+        bytes += await fetchAndStore(reciter, surah, ayah);
+        done++;
+        patch(reciter, { done, bytes });
       } catch (e) {
         failed = e instanceof Error ? e.message : 'ошибка загрузки';
         return;
@@ -208,29 +270,27 @@ export async function startDownload(reciter: ReciterId): Promise<void> {
   };
 
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-
-  // Планку фиксируем в любом исходе — даже при обрыве прогресс не теряется.
-  await setDownloadedUpTo(reciter, frontier);
+  await persistNow();
 
   if (cancelFlags.has(reciter)) {
     cancelFlags.delete(reciter);
-    patch(reciter, { status: 'paused', done: frontier, bytes });
+    patch(reciter, { status: 'paused', done, bytes });
   } else if (failed) {
-    patch(reciter, { status: 'error', done: frontier, bytes, error: failed });
+    patch(reciter, { status: 'error', done, bytes, error: failed });
   } else {
-    patch(reciter, { status: 'idle', done: frontier, bytes });
+    patch(reciter, { ...IDLE, scope });
   }
 }
 
-/** Остановить загрузку.  Уже скачанное остаётся, докачка продолжит с планки. */
+/** Остановить.  Скачанное остаётся, повторный запуск доберёт остальное. */
 export function pauseDownload(reciter: ReciterId): void {
   if (getDownloadState(reciter).status !== 'running') return;
   cancelFlags.add(reciter);
 }
 
-/** Удалить скачанное целиком. */
-export async function removeDownload(reciter: ReciterId): Promise<void> {
-  pauseDownload(reciter);
-  await clearDownloaded(reciter);
-  patch(reciter, { status: 'idle', done: 0, bytes: 0, error: null });
+/** Сбросить состояние задания в интерфейсе (после удаления, например). */
+export function resetDownloadState(reciter: ReciterId): void {
+  cancelFlags.delete(reciter);
+  state.set(reciter, IDLE);
+  emit();
 }

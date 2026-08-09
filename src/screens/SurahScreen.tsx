@@ -517,6 +517,7 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
       {typographyOpen && (
         <TypographySettings
           reciter={reciter} setReciter={setReciter}
+          surahNumber={surahNumber}
           showArabic={showArabic} setShowArabic={setShowArabic}
           showRu={showRu}         setShowRu={setShowRu}
           arabicScale={arabicScale} setArabicScale={setArabicScale}

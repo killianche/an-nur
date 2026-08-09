@@ -390,6 +390,9 @@ function ThemePicker({ theme, setTheme }: {
 type TypographyProps = {
   reciter: ReciterId;
   setReciter: (v: ReciterId) => void;
+  /** Открыто с экрана суры — тогда в секции «Офлайн» первой строкой
+   *  идёт именно она.  На других экранах не передаётся. */
+  surahNumber?: number;
 
   showArabic: boolean;
   setShowArabic: (v: boolean) => void;
@@ -493,7 +496,7 @@ export function TypographySettings(p: TypographyProps) {
       </section>
 
       {/* ── Офлайн-загрузка ────────────────────────────────────────── */}
-      <OfflineAudioCard />
+      <OfflineAudioCard reciter={p.reciter} surahNumber={p.surahNumber} />
 
       {/* ── Текст и шрифты ─────────────────────────────────────────── */}
       <section style={{ ...settingCard, marginTop: '10px' }}>
