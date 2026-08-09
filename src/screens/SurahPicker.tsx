@@ -3,6 +3,7 @@ import { SURAHS, SURAH_BY_NUMBER, type SurahMeta } from '../content/surahs';
 import { readRecents } from '../lib/recents';
 import { Palette, Search, Bookmark as BookmarkIcon } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
+import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
 
 // ── Juz mapping ──────────────────────────────────────────────────────────────
@@ -35,7 +36,8 @@ const SURAH_JUZ: Record<number, number> = {
 
 type Props = {
   onSelectSurah: (number: number) => void;
-  onAzkar?: () => void;
+  // onAzkar убран: раздел азкаров теперь отдельная вкладка в нижней
+  // панели, дублировать переход ссылкой в шапке незачем.
   onBookmarks?: () => void;
   theme: Theme;
   setTheme: (t: Theme) => void;
@@ -58,7 +60,7 @@ function useMediaQuery(query: string): boolean {
 }
 
 
-export function SurahPicker({ onSelectSurah, onAzkar, onBookmarks, theme, setTheme }: Props) {
+export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Props) {
   const [query, setQuery] = useState('');
   const [themeOpen, setThemeOpen] = useState(false);
   const themeBtnRef = useRef<HTMLButtonElement>(null);
@@ -146,7 +148,11 @@ export function SurahPicker({ onSelectSurah, onAzkar, onBookmarks, theme, setThe
       background: 'transparent',
       maxWidth: isDesktop ? '1200px' : '760px',
       margin: '0 auto',
-      padding: isDesktop ? '0 40px 120px' : '0 16px 96px',
+      // Нижний отступ учитывает панель вкладок: без него последняя
+      // сура уезжает под неё и её нельзя дотапать.
+      padding: isDesktop
+        ? `0 40px calc(${TAB_BAR_HEIGHT}px + 60px + env(safe-area-inset-bottom))`
+        : `0 16px calc(${TAB_BAR_HEIGHT}px + 36px + env(safe-area-inset-bottom))`,
       position: 'relative',
       overflowX: 'hidden',
     }}>
@@ -188,34 +194,6 @@ export function SurahPicker({ onSelectSurah, onAzkar, onBookmarks, theme, setThe
           Quran
         </h1>
 
-        {onAzkar && (
-          <button
-            onClick={onAzkar}
-            aria-label="Azkar"
-            className="display-serif"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'baseline',
-              gap: '8px',
-              padding: 0,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-tertiary)',
-              cursor: 'pointer',
-              fontSize: 'clamp(28px, 7vw, 56px)',
-              fontWeight: 300,
-              letterSpacing: '-0.03em',
-              lineHeight: 1,
-              flexShrink: 0,
-              transition: 'color 0.15s ease',
-            }}
-          >
-            Azkar
-            <svg width="0.55em" height="0.55em" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        )}
       </header>
 
       {/* ── Recents strip ──────────────────────────────────────────────────── */}

@@ -1,220 +1,250 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useTheme, themeMode } from './hooks/useTheme';
 import { SurahPicker } from './screens/SurahPicker';
 import { SurahScreen } from './screens/SurahScreen';
 import { AzkarScreen } from './screens/AzkarScreen';
 import { AzkarCategoryScreen } from './screens/AzkarCategoryScreen';
 import { BookmarksScreen } from './screens/BookmarksScreen';
+import { PrayerTimesScreen } from './screens/PrayerTimesScreen';
+import { QiblaScreen } from './screens/QiblaScreen';
 import { CosmicLayer } from './components/CosmicLayer';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { TabBar, type TabId } from './components/TabBar';
 import { applyHighlightVars } from './lib/audioPrefs';
 import { applyPaletteToDocument } from './lib/tajweedPalette';
 import { syncStatusBarToTheme } from './lib/nativeStatusBar';
 import type { AzkarCategoryId } from './lib/azkar';
 
+/**
+ * Навигация приложения — два уровня.
+ *
+ *   • `tabs` — корневые разделы, переключает нижняя панель.
+ *   • Экраны «поверх» (сура, закладки, лента азкаров) — панель вкладок
+ *     скрыта, назад ведёт плавающий хедер самого экрана.
+ *
+ * В QuranIng разделов было два и они жили горизонтальной слайд-парой:
+ * контейнер шириной 200% с translateX, оба экрана всегда смонтированы.
+ * С четырьмя разделами приём не масштабируется (контейнер на 400% и
+ * четыре живых дерева), поэтому активный раздел теперь ровно один.
+ * Побочный эффект — браузер не вернёт позицию прокрутки при возврате
+ * на вкладку, поэтому она сохраняется вручную (tabScrollRef ниже).
+ */
 type Screen =
-  | { name: 'picker' }
-  | { name: 'azkar' }
+  | { name: 'tabs'; tab: TabId }
   | { name: 'azkar-category'; category: AzkarCategoryId }
   | { name: 'bookmarks' }
   | { name: 'surah'; number: number; initialAyah?: number };
 
+const INITIAL_SCREEN: Screen = { name: 'tabs', tab: 'quran' };
+
 export default function App() {
   const { theme, setTheme } = useTheme();
-  const [screen, setScreen] = useState<Screen>({ name: 'picker' });
+  const [screen, setScreen] = useState<Screen>(INITIAL_SCREEN);
   const isCosmic = themeMode(theme) === 'cosmic';
 
   // ── History-API routing ──────────────────────────────────────────────────
-  // Every forward navigation pushes a `history` entry carrying the next
-  // Screen as its state.  That lets the browser's back gesture (iOS
-  // edge-swipe, Android hardware back, desktop browser-back button) feed
-  // popstate which we translate back into setScreen — no extra UI plumbing
-  // needed, and "swipe back from a surah" naturally returns to the picker
-  // (or to whatever screen the user came from, for deeper stacks like
-  // picker → bookmarks → surah).
+  // Каждый переход вперёд кладёт в history запись со следующим Screen.
+  // Системный «назад» (edge-swipe на iOS, аппаратная кнопка на Android,
+  // кнопка браузера) прилетает как popstate и превращается обратно в
+  // setScreen — отдельной проводки не нужно.  Кнопки «назад» внутри
+  // экранов зовут goBack() (= history.back()), чтобы выход был один и
+  // два пути не разъезжались.
   //
-  // Programmatic `Back` buttons inside each screen now call `goBack()`
-  // (= `history.back()`) so they share the same exit path as the gesture;
-  // there's no second code path that could drift out of sync.
+  // Переключение вкладки — тоже переход вперёд: системный «назад»
+  // возвращает на предыдущую вкладку, а не выбрасывает из приложения
+  // сразу.  На Android это ожидаемое поведение.
   const navigate = (next: Screen) => {
+    // Позицию уходящей вкладки снимаем ЗДЕСЬ, а не в эффекте: к моменту
+    // эффекта новый экран уже мог сбросить скролл (SurahScreen делает
+    // это, когда восстанавливать нечего), и мы записали бы ноль.
+    rememberTabScroll();
     setScreen(next);
     history.pushState({ screen: next }, '');
   };
-  const goBack = () => history.back();
+  const goBack = () => {
+    rememberTabScroll();
+    history.back();
+  };
 
   useEffect(() => {
-    // Anchor the current history entry to `picker` so that subsequent
-    // `history.back()` calls (from Azkar / surah / bookmarks) can never
-    // rewind into stale state left over from a prior reload or hot-
-    // reload.  Without this, the user can click "Azkar" then "← Quran"
-    // and land back on whatever screen they happened to be on before
-    // the last reload (most visibly: an open azkar-category feed).
-    history.replaceState({ screen: { name: 'picker' } }, '');
+    // Привязываем текущую запись истории к стартовому экрану, чтобы
+    // последующие history.back() не откатились в состояние, оставшееся
+    // от прошлой перезагрузки или hot-reload'а.
+    history.replaceState({ screen: INITIAL_SCREEN }, '');
     const onPop = (e: PopStateEvent) => {
-      // `state` is null on the very first history entry (the one created
-      // when the page initially loaded) — that entry corresponds to the
-      // picker, which is also our initial useState value.
-      const next = (e.state?.screen ?? { name: 'picker' }) as Screen;
-      setScreen(next);
+      // popstate прилетает ДО перерисовки, поэтому window.scrollY здесь
+      // ещё принадлежит уходящему экрану — момент снять его позицию.
+      // Нужно для системного «назад» между вкладками: программные
+      // переходы это делают в navigate()/goBack().
+      rememberTabScroll();
+      // На самой первой записи истории state пуст — она соответствует
+      // стартовому экрану.
+      setScreen((e.state?.screen ?? INITIAL_SCREEN) as Screen);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  // Inject <style id="tajweed-palette"> with one @font-palette-values
-  // block per page-scoped tajweed font family.  Re-runs on every theme
-  // change so the base-palette flips between dark (palette[0]) and
-  // light (palette[2]) — without this the tajweed mushaf would render
-  // with white base calligraphy on a light page (= invisible).
+  // Инжектим <style id="tajweed-palette"> — по одному блоку
+  // @font-palette-values на каждое постраничное семейство таджвида.
+  // Пересобирается на смену темы: базовая палитра переключается между
+  // тёмной и светлой, иначе на светлой странице каллиграфия рисовалась
+  // бы белым по белому.
   useEffect(() => { applyPaletteToDocument(); }, [theme]);
 
-  // Paint highlight CSS variables on first paint AND on every theme
-  // change. Light themes force-resolve the highlight style to 'color'
-  // regardless of the saved pref (glow on a near-white page reads as
-  // smudge, not aurora) — so the resolved style depends on `theme` and
-  // must re-run whenever it changes. applyHighlightVars(theme) writes
-  // the data-highlight-style attribute and fires audio-prefs-changed
-  // when the effective style flips, which lets useAyahGlow react.
+  // Переменные подсветки — на первый кадр и на каждую смену темы.
+  // Светлая тема принудительно сводит стиль подсветки к 'color'
+  // независимо от сохранённого выбора, поэтому результат зависит от
+  // темы и пересчитывается вместе с ней.
   useEffect(() => { applyHighlightVars(theme); }, [theme]);
 
-  // Sync native status bar (iOS + Android) к теме.  В вебе no-op.
+  // Нативный статус-бар (iOS + Android) под тему.  В вебе no-op.
   useEffect(() => { syncStatusBarToTheme(theme); }, [theme]);
 
-  // Reset window scroll on every screen change. Without this the picker
-  // (or azkar / bookmarks) opens at whatever scrollY the previous screen
-  // was parked at — exactly the "I scrolled deep into a surah, hit back,
-  // and the menu is also scrolled down" bug the user reported.
-  // We deliberately skip this when navigating *into* a surah:
-  // SurahScreen owns its own scroll position (it restores the last-read
-  // ayah or the explicit `initialAyah` from bookmarks once the QCF feed
-  // has rendered).  Letting this effect fire would race that restore.
+  // ── Позиция прокрутки вкладок ────────────────────────────────────────────
+  // Активная вкладка одна, остальные размонтированы, поэтому браузер
+  // сам позицию не вернёт.  Запоминаем scrollY уходящей вкладки и
+  // восстанавливаем при возврате — иначе список сур каждый раз
+  // открывается сверху, хотя человек читал середину.
+  //
+  // Экраны «поверх» тут не участвуют: SurahScreen сам решает, куда
+  // встать (последний прочитанный аят либо аят из закладки).
+  const tabScrollRef = useRef<Partial<Record<TabId, number>>>({});
+  const currentTab = screen.name === 'tabs' ? screen.tab : null;
+  // Держим активную вкладку в ref'е, чтобы rememberTabScroll могла
+  // работать синхронно из обработчика, не завися от замыкания рендера.
+  const currentTabRef = useRef<TabId | null>(currentTab);
+  currentTabRef.current = currentTab;
+
+  function rememberTabScroll() {
+    const t = currentTabRef.current;
+    if (t) tabScrollRef.current[t] = window.scrollY;
+  }
+
   useEffect(() => {
-    if (screen.name === 'surah') return;
+    if (!currentTab) return;
+    // Двойной rAF: первый кадр монтирует содержимое вкладки, второй
+    // получает уже разложенную страницу нужной высоты — до этого
+    // scrollTo упёрся бы в короткий документ и обрезался.
+    const saved = tabScrollRef.current[currentTab] ?? 0;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => window.scrollTo(0, saved));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [currentTab]);
+
+  // Экраны «поверх» всегда открываются с начала.  Исключение — сура:
+  // она сама восстанавливает позицию чтения, и сброс здесь гонялся бы
+  // с её эффектом.
+  useEffect(() => {
+    if (screen.name === 'tabs' || screen.name === 'surah') return;
     window.scrollTo(0, 0);
   }, [screen.name]);
 
-  // Lock body scroll while the Azkar half of the picker pair is showing.
-  // SurahPicker (the other half) renders 114 surahs and is tall enough
-  // to stretch the shared 200%-wide slider container — without this
-  // lock, the user can keep scrolling DOWN past AzkarScreen's short
-  // content into the invisible bottom slice of the picker.  Restoring
-  // overflow on cleanup keeps every other screen scrollable normally.
-  useEffect(() => {
-    if (screen.name !== 'azkar') return;
-    const html = document.documentElement;
-    const prev = html.style.overflowY;
-    html.style.overflowY = 'hidden';
-    return () => { html.style.overflowY = prev; };
-  }, [screen.name]);
-
-  // Surah reading screen opens "on top" — full-screen, no slide animation.
+  // ── Экраны «поверх» ──────────────────────────────────────────────────────
   if (screen.name === 'surah') {
     return (
-      <>
-        {isCosmic && <CosmicLayer />}
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <ErrorBoundary name="SurahScreen" onReset={goBack}>
-            <SurahScreen
-              surahNumber={screen.number}
-              initialAyah={screen.initialAyah}
-              theme={theme}
-              setTheme={setTheme}
-              onBack={goBack}
-            />
-          </ErrorBoundary>
-        </div>
-      </>
+      <Shell isCosmic={isCosmic}>
+        <ErrorBoundary name="SurahScreen" onReset={goBack}>
+          <SurahScreen
+            surahNumber={screen.number}
+            initialAyah={screen.initialAyah}
+            theme={theme}
+            setTheme={setTheme}
+            onBack={goBack}
+          />
+        </ErrorBoundary>
+      </Shell>
     );
   }
 
-  // Bookmarks list opens "on top" the same way the surah feed does.
   if (screen.name === 'bookmarks') {
     return (
-      <>
-        {isCosmic && <CosmicLayer />}
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <ErrorBoundary name="BookmarksScreen" onReset={goBack}>
-            <BookmarksScreen
-              theme={theme}
-              setTheme={setTheme}
-              onBack={goBack}
-              onOpen={(number, ayah) => navigate({ name: 'surah', number, initialAyah: ayah })}
-            />
-          </ErrorBoundary>
-        </div>
-      </>
+      <Shell isCosmic={isCosmic}>
+        <ErrorBoundary name="BookmarksScreen" onReset={goBack}>
+          <BookmarksScreen
+            theme={theme}
+            setTheme={setTheme}
+            onBack={goBack}
+            onOpen={(number, ayah) => navigate({ name: 'surah', number, initialAyah: ayah })}
+          />
+        </ErrorBoundary>
+      </Shell>
     );
   }
 
-  // Azkar category feed (Утренние / Вечерние) opens "on top" the same way
-  // surah / bookmarks do. Back from here returns to the Azkar index, NOT
-  // to the surah picker — the user is conceptually still in the Azkar tab.
   if (screen.name === 'azkar-category') {
     return (
-      <>
-        {isCosmic && <CosmicLayer />}
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <ErrorBoundary name="AzkarCategoryScreen" onReset={goBack}>
-            <AzkarCategoryScreen
-              category={screen.category}
-              theme={theme}
-              setTheme={setTheme}
-              onBack={goBack}
-            />
-          </ErrorBoundary>
-        </div>
-      </>
+      <Shell isCosmic={isCosmic}>
+        <ErrorBoundary name="AzkarCategoryScreen" onReset={goBack}>
+          <AzkarCategoryScreen
+            category={screen.category}
+            theme={theme}
+            setTheme={setTheme}
+            onBack={goBack}
+          />
+        </ErrorBoundary>
+      </Shell>
     );
   }
 
-  // Picker ↔ Azkar live as a horizontal pair with a slide transition.
-  // The Azkar half stays mounted (and visible via translateX) even when
-  // the user has navigated INTO a category — that's a separate full-screen
-  // route above. So `isAzkar` here just means "currently showing Azkar
-  // INDEX in the slide pair", which is true for both 'azkar' itself and
-  // (when we briefly transition back) for 'picker' rendered on the left.
-  const isAzkar = screen.name === 'azkar';
+  // ── Корневые вкладки ─────────────────────────────────────────────────────
+  const tab = screen.tab;
+  return (
+    <Shell isCosmic={isCosmic}>
+      {tab === 'quran' && (
+        <ErrorBoundary name="SurahPicker">
+          <SurahPicker
+            onSelectSurah={n => navigate({ name: 'surah', number: n })}
+            onBookmarks={() => navigate({ name: 'bookmarks' })}
+            theme={theme}
+            setTheme={setTheme}
+          />
+        </ErrorBoundary>
+      )}
+      {tab === 'azkar' && (
+        <ErrorBoundary name="AzkarScreen">
+          <AzkarScreen
+            theme={theme}
+            setTheme={setTheme}
+            onOpenCategory={c => navigate({ name: 'azkar-category', category: c })}
+          />
+        </ErrorBoundary>
+      )}
+      {tab === 'prayer' && (
+        <ErrorBoundary name="PrayerTimesScreen">
+          <PrayerTimesScreen />
+        </ErrorBoundary>
+      )}
+      {tab === 'qibla' && (
+        <ErrorBoundary name="QiblaScreen">
+          <QiblaScreen />
+        </ErrorBoundary>
+      )}
 
+      <TabBar
+        active={tab}
+        onSelect={next => {
+          if (next === tab) {
+            // Повторный тап по активной вкладке — «наверх», как в
+            // системных приложениях.
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+          }
+          navigate({ name: 'tabs', tab: next });
+        }}
+      />
+    </Shell>
+  );
+}
+
+/** Общая обёртка: космический фон под контентом, контент над ним. */
+function Shell({ isCosmic, children }: { isCosmic: boolean; children: ReactNode }) {
   return (
     <>
       {isCosmic && <CosmicLayer />}
-      <div style={{
-        overflowX: 'hidden',
-        minHeight: '100dvh',
-        position: 'relative',
-        zIndex: 1,
-      }}>
-        <div
-          style={{
-            display: 'flex',
-            width: '200%',
-            transform: isAzkar ? 'translateX(-50%)' : 'translateX(0)',
-            transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
-            willChange: 'transform',
-          }}
-        >
-          <div style={{ width: '50%', flexShrink: 0 }}>
-            <ErrorBoundary name="SurahPicker">
-              <SurahPicker
-                onSelectSurah={n => navigate({ name: 'surah', number: n })}
-                onAzkar={() => navigate({ name: 'azkar' })}
-                onBookmarks={() => navigate({ name: 'bookmarks' })}
-                theme={theme}
-                setTheme={setTheme}
-              />
-            </ErrorBoundary>
-          </div>
-          <div style={{ width: '50%', flexShrink: 0 }}>
-            <ErrorBoundary name="AzkarScreen">
-              <AzkarScreen
-                theme={theme}
-                setTheme={setTheme}
-                onBack={goBack}
-                onOpenCategory={(c) => navigate({ name: 'azkar-category', category: c })}
-              />
-            </ErrorBoundary>
-          </div>
-        </div>
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        {children}
       </div>
     </>
   );

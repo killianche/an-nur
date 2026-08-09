@@ -2,25 +2,27 @@ import { useEffect, useRef, useState } from 'react';
 import type { Theme } from '../hooks/useTheme';
 import { Palette } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
+import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { loadAzkarData, type AzkarCategoryId, type AzkarData } from '../lib/azkar';
 
 type Props = {
   theme: Theme;
   setTheme: (t: Theme) => void;
-  onBack: () => void;
+  // onBack убран: возврат к Корану — это переключение вкладки в
+  // нижней панели, отдельная ссылка в шапке была бы вторым путём.
   onOpenCategory: (category: AzkarCategoryId) => void;
 };
 
 /**
- * Azkar index — header with back-to-Quran link + two big category cards
- * (Утренние / Вечерние). Mirrors the visual language of SurahPicker so
- * the slide-transition between Quran and Azkar feels like one piece of
- * the same surface.
+ * Azkar index — заголовок + две большие карточки категорий
+ * (Утренние / Вечерние).  Визуальный язык повторяет SurahPicker, чтобы
+ * переключение вкладок читалось как одна поверхность, а не как два
+ * разных приложения.
  *
  * Order shown to the user is `categories[]` from azkar.json, filtered to
  * those with at least one entry. "intro" is hidden until it has content.
  */
-export function AzkarScreen({ theme, setTheme, onBack, onOpenCategory }: Props) {
+export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
   const [data, setData] = useState<AzkarData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -45,7 +47,8 @@ export function AzkarScreen({ theme, setTheme, onBack, onOpenCategory }: Props) 
       background: 'transparent',
       maxWidth: 'min(100%, 760px)',
       margin: '0 auto',
-      padding: '0 16px 96px',
+      // Нижний отступ учитывает панель вкладок.
+      padding: `0 16px calc(${TAB_BAR_HEIGHT}px + 36px + env(safe-area-inset-bottom))`,
       position: 'relative',
     }}>
       {themeOpen && (
@@ -57,44 +60,17 @@ export function AzkarScreen({ theme, setTheme, onBack, onOpenCategory }: Props) 
         />
       )}
 
-      {/* ── Title row — mirrors SurahPicker (left back-link, right wordmark) */}
+      {/* ── Title row — как в SurahPicker: крупный вордмарк справа */}
       <header style={{
         display: 'flex',
         alignItems: 'baseline',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         gap: '16px',
         paddingTop: '64px',
         paddingBottom: '32px',
         position: 'relative',
         zIndex: 1,
       }}>
-        <button
-          onClick={onBack}
-          aria-label="Back to Quran"
-          className="display-serif"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'baseline',
-            gap: '8px',
-            padding: 0,
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--text-tertiary)',
-            cursor: 'pointer',
-            fontSize: 'clamp(28px, 7vw, 56px)',
-            fontWeight: 300,
-            letterSpacing: '-0.03em',
-            lineHeight: 1,
-            flexShrink: 0,
-            transition: 'color 0.15s ease',
-          }}
-        >
-          <svg width="0.55em" height="0.55em" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Quran
-        </button>
-
         <h1
           className="display-serif"
           style={{
