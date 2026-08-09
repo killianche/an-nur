@@ -23,11 +23,30 @@ const AYAHS_PER_SURAH = [
 /** Всего аятов в Коране. */
 export const TOTAL_AYAHS = 6236;
 
-/** «сура:аят» → сквозной номер 1..6236. */
+/**
+ * Префиксные суммы: FIRST_GLOBAL[s] — сквозной номер первого аята
+ * суры s (1-based, индекс 0 не используется).
+ *
+ * Раньше globalAyahNumber складывал длины сур циклом — до 113
+ * итераций на вызов.  Само по себе дёшево, но функция оказалась в
+ * горячем пути: сортировка списка загрузки звала её десятки тысяч раз
+ * за один рендер, и это выливалось в 50-200 мс фриза на телефоне.
+ * Таблица считается один раз при загрузке модуля.
+ */
+const FIRST_GLOBAL: number[] = (() => {
+  const out = new Array<number>(AYAHS_PER_SURAH.length + 2);
+  let acc = 1;
+  for (let s = 1; s <= AYAHS_PER_SURAH.length; s++) {
+    out[s] = acc;
+    acc += AYAHS_PER_SURAH[s - 1];
+  }
+  out[AYAHS_PER_SURAH.length + 1] = acc;   // страж = TOTAL_AYAHS + 1
+  return out;
+})();
+
+/** «сура:аят» → сквозной номер 1..6236.  O(1). */
 export function globalAyahNumber(surah: number, ayah: number): number {
-  let g = ayah;
-  for (let i = 1; i < surah; i++) g += AYAHS_PER_SURAH[i - 1];
-  return g;
+  return (FIRST_GLOBAL[surah] ?? 1) + ayah - 1;
 }
 
 /** Сколько аятов в суре (0 для номера вне 1..114). */
@@ -35,9 +54,9 @@ export function ayahsInSurah(surah: number): number {
   return AYAHS_PER_SURAH[surah - 1] ?? 0;
 }
 
-/** Сквозной номер первого аята суры. */
+/** Сквозной номер первого аята суры.  O(1). */
 export function firstGlobalOfSurah(surah: number): number {
-  return globalAyahNumber(surah, 1);
+  return FIRST_GLOBAL[surah] ?? 1;
 }
 
 /** Всего сур. */

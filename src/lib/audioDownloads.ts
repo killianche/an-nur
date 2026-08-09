@@ -44,6 +44,7 @@ import {
 } from './ayahNumbering';
 import {
   hasAyah, markDownloaded, ayahFilePath, isOfflineSupported, persistNow,
+  downloadedCount, downloadedInSurah,
 } from './audioStore';
 
 /** Сколько аятов качаем одновременно. */
@@ -137,6 +138,23 @@ function ayahsInGlobalRange(from: number, to: number): [number, number][] {
   return out;
 }
 
+/**
+ * Развёрнутый список всех аятов в приоритетном порядке.
+ *
+ * Список статичен, а строился он заново на каждый вызов expandScope —
+ * включая вызовы из рендера карточки загрузок.  Сортировка 6236
+ * элементов компаратором со сквозной нумерацией стоила ~9 мс на
+ * ноутбуке и в разы больше на телефоне; при активной загрузке это
+ * складывалось в постоянный фриз интерфейса.  Считаем один раз.
+ */
+let cachedAll: [number, number][] | null = null;
+function allAyahsPrioritised(): [number, number][] {
+  if (!cachedAll) {
+    cachedAll = prioritiseForFullDownload(ayahsInGlobalRange(1, TOTAL_AYAHS));
+  }
+  return cachedAll;
+}
+
 function expandScope(scope: DownloadScope): [number, number][] {
   if (scope.kind === 'surah') {
     const count = ayahsInSurah(scope.surah);
@@ -146,7 +164,7 @@ function expandScope(scope: DownloadScope): [number, number][] {
     const [from, to] = juzRange(scope.juz);
     return ayahsInGlobalRange(from, to);
   }
-  return prioritiseForFullDownload(ayahsInGlobalRange(1, TOTAL_AYAHS));
+  return allAyahsPrioritised();
 }
 
 /**
@@ -178,8 +196,20 @@ function prioritiseForFullDownload(all: [number, number][]): [number, number][] 
   });
 }
 
-/** Сколько аятов в области ещё нет на устройстве. */
+/**
+ * Сколько аятов области ещё нет на устройстве.
+ *
+ * Для всего Корана и для суры считаем по счётчикам битовой карты, не
+ * разворачивая список: функция зовётся из рендера, а разворачивание
+ * 6236 пар там обходилось дороже самой отрисовки.
+ */
 export function missingCount(reciter: ReciterId, scope: DownloadScope): number {
+  if (scope.kind === 'all') {
+    return TOTAL_AYAHS - downloadedCount(reciter);
+  }
+  if (scope.kind === 'surah') {
+    return ayahsInSurah(scope.surah) - downloadedInSurah(reciter, scope.surah);
+  }
   let n = 0;
   for (const [s, a] of expandScope(scope)) {
     if (!hasAyah(reciter, globalAyahNumber(s, a))) n++;

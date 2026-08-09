@@ -3,12 +3,18 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
 import { initSentry } from './lib/sentry';
+import { initGlobalErrorHandlers } from './lib/globalErrors';
 import { initAudioStore } from './lib/audioStore';
 import { armAutoDownload } from './lib/audioAutoDownload';
 
 // Sentry init — no-op без VITE_SENTRY_DSN.  На прод DSN передаётся
 // через .env.production.local (см. lib/sentry.ts header).
 initSentry();
+
+// Перехват всего, что проходит мимо ErrorBoundary: ошибок в
+// обработчиках событий и отвалившихся промисов.  Ставим ПЕРВЫМ, до
+// любого нашего кода, чтобы поймать в том числе падение на старте.
+initGlobalErrorHandlers();
 
 // Реестр скачанного аудио.  Стартуем до рендера, чтобы к первому
 // нажатию play() путь к локальному файлу уже резолвился синхронно;

@@ -86,6 +86,23 @@ function emit() {
   listeners.forEach(fn => fn());
 }
 
+/**
+ * Оповещение с коалесцированием в один кадр.
+ *
+ * Загрузчик отмечает аяты десятками в секунду, и каждый emit тянет за
+ * собой перерисовку карточки загрузок.  Через rAF все отметки, попавшие
+ * в один кадр, сливаются в одно оповещение — интерфейс обновляется не
+ * реже, чем его вообще способен увидеть глаз, и не чаще.
+ */
+let emitScheduled = false;
+function emitCoalesced() {
+  if (emitScheduled) return;
+  emitScheduled = true;
+  const run = () => { emitScheduled = false; emit(); };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+  else setTimeout(run, 16);
+}
+
 /** Работает ли офлайн-хранилище на текущей платформе. */
 export function isOfflineSupported(): boolean {
   return native;
@@ -287,7 +304,7 @@ export async function persistNow(): Promise<void> {
 /** Отметить аят как лежащий на устройстве. */
 export function markDownloaded(reciter: ReciterId, surah: number, ayah: number): void {
   setBit(reciter, globalAyahNumber(surah, ayah), true);
-  emit();
+  emitCoalesced();
   schedulePersist();
 }
 

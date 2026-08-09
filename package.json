@@ -8,7 +8,9 @@
     "build": "NODE_OPTIONS='--max-old-space-size=4096' tsc -b && NODE_OPTIONS='--max-old-space-size=4096' vite build",
     "preview": "vite preview",
     "check:sacred": "node scripts/check-sacred-text.mjs",
-    "sync": "npm run build && npx cap sync"
+    "sync": "npm run build && npx cap sync",
+    "test": "node --experimental-strip-types --no-warnings scripts/test-audio-model.mjs",
+    "check": "npm run test && npm run check:sacred && npm run build"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
