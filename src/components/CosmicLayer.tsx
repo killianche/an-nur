@@ -1,9 +1,14 @@
 /**
  * CosmicLayer — фон темы «Аврора».
  *
- * Два слоя в одном full-screen `aria-hidden` контейнере:
- *   1. Звёзды — <CosmicWarp>, 3D-пролёт на canvas.
- *   2. Сияние — <Aurora>, один DOM-слой с медленным дрифтом.
+ * Один слой: <Aurora> в режиме рамки — мягкое свечение по краям
+ * экрана, чистый центр, ничего не движется.
+ *
+ * Звёздное поле (<CosmicWarp>, 3D-пролёт на canvas) было убрано:
+ * в кадре постоянно шло движение, а тут подолгу читают длинные
+ * тексты, и мельтешение на периферии зрения мешает.  Заодно ушёл
+ * canvas с rAF-циклом — минус постоянная нагрузка на слабых
+ * телефонах и минус расход батареи при чтении.
  *
  * `isolation: isolate` + `contain: paint` держат дерево композитинга
  * внутри этого слоя — без них iOS Safari перекомпоновывает страницу на
@@ -23,7 +28,6 @@
 
 import { useEffect } from 'react';
 import { Aurora } from './Aurora';
-import { CosmicWarp } from './CosmicWarp';
 import { AURORA_ICE, AURORA_SCENE } from '../lib/cosmic';
 
 export function CosmicLayer() {
@@ -57,7 +61,6 @@ export function CosmicLayer() {
         background: '#000',
       }}
     >
-      <CosmicWarp speed={AURORA_SCENE.starsSpeed} />
       <Aurora
         brightness={AURORA_SCENE.auroraBrightness}
         direction={AURORA_SCENE.auroraDirection}

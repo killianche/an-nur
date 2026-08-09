@@ -37,9 +37,10 @@ import { loadArabicEditions } from '../lib/arabicEditions';
 import { ThemeSettings, TypographySettings } from '../components/ReadingSettings';
 import { BottomDock } from '../components/BottomDock';
 import {
-  ChevronLeft, SquareBracketsLetterA, Palette,
+  SquareBracketsLetterA, Palette,
   ArrowChevronRight, Bookmark as BookmarkIcon, Play, Pause,
 } from '../components/icons';
+import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { type Theme } from '../hooks/useTheme';
 import { getAutoScroll, subscribeAudioPrefs } from '../lib/audioPrefs';
 import { pushRecent, updateRecentAyah, readRecents } from '../lib/recents';
@@ -415,88 +416,47 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ background: 'transparent', minHeight: '100dvh', position: 'relative' }}>
-      {/* ── Floating header pill ─────────────────────────────────────────── */}
-      <header
-        role="banner"
-        style={{
-          position: 'fixed',
-          top: 'max(12px, env(safe-area-inset-top))',
-          left: '50%',
-          transform: chromeVisible ? 'translateX(-50%)' : 'translate(-50%, -160%)',
-          transition: 'transform 0.25s ease',
-          zIndex: 30,
-          height: '52px',
-          maxWidth: 'min(96vw, 460px)',
-          width: 'fit-content',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          padding: '0 6px',
-          background: 'color-mix(in srgb, var(--surface) 94%, transparent)',
-          border: '1px solid var(--hairline)',
-          borderRadius: '9999px',
-          boxShadow: 'rgba(0,0,0,0.04) 0 1px 2px, rgba(0,0,0,0.12) 0 14px 36px',
-          backdropFilter: 'saturate(160%) blur(20px)',
-          WebkitBackdropFilter: 'saturate(160%) blur(20px)',
-        }}
-      >
-        <button
-          onClick={onBack}
-          aria-label="Back"
-          className="icon-btn"
-          style={{ width: '40px', height: '40px', color: 'var(--text-tertiary)', flexShrink: 0 }}
-        >
-          <ChevronLeft size={20} />
-        </button>
-
-        <div style={{ minWidth: 0, flex: '0 1 auto', padding: '0 6px' }}>
-          <div
-            className="display-serif"
-            style={{
-              fontSize: '16px', fontWeight: 500,
-              color: 'var(--text-primary)', letterSpacing: '-0.012em',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              lineHeight: 1, maxWidth: '180px',
-            }}
-          >
-            {meta?.transliteration ?? `Surah ${surahNumber}`}
-          </div>
-        </div>
-
-        {meta && meta.ayahs > 10 && (
-          <button
-            onClick={() => { setJumpOpen(v => !v); setThemeOpen(false); setTypographyOpen(false); }}
-            aria-label="Jump to ayah"
-            className="icon-btn"
-            data-active={jumpOpen}
-            style={{ width: '40px', height: '40px', flexShrink: 0, color: jumpOpen ? 'var(--text-primary)' : 'var(--text-tertiary)' }}
-          >
-            <ArrowChevronRight size={20} />
-          </button>
-        )}
-
-        <button
-          ref={typographyBtnRef}
-          onClick={() => { setTypographyOpen(v => !v); setJumpOpen(false); setThemeOpen(false); }}
-          aria-label="Typography settings"
-          className="icon-btn"
-          data-active={typographyOpen}
-          style={{ width: '40px', height: '40px', flexShrink: 0, color: typographyOpen ? 'var(--text-primary)' : 'var(--text-tertiary)' }}
-        >
-          <SquareBracketsLetterA size={20} />
-        </button>
-
-        <button
-          ref={themeBtnRef}
-          onClick={() => { setThemeOpen(v => !v); setJumpOpen(false); setTypographyOpen(false); }}
-          aria-label="Theme settings"
-          className="icon-btn"
-          data-active={themeOpen}
-          style={{ width: '40px', height: '40px', flexShrink: 0, color: themeOpen ? 'var(--text-primary)' : 'var(--text-tertiary)' }}
-        >
-          <Palette size={20} />
-        </button>
-      </header>
+      {/* ── Верхняя панель ───────────────────────────────────────────────
+          Обычная панель во всю ширину вместо плавающей пилюли — см.
+          шапку components/ScreenHeader.tsx.  Скрытие по скроллу
+          сохранено: при чтении длинной суры лишние 52 px экрана
+          заметны, а панель возвращается от малейшего движения вверх. */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30,
+        transform: chromeVisible ? 'translateY(0)' : 'translateY(-100%)',
+        transition: 'transform 0.25s ease',
+      }}>
+        <ScreenHeader
+          title={meta?.transliteration ?? `Сура ${surahNumber}`}
+          subtitle={meta ? `${meta.russian} · ${meta.ayahs} аят${meta.ayahs === 1 ? '' : (meta.ayahs < 5 ? 'а' : 'ов')}` : undefined}
+          onBack={onBack}
+          actions={[
+            ...(meta && meta.ayahs > 10 ? [{
+              key: 'jump',
+              label: 'Перейти к аяту',
+              icon: <ArrowChevronRight size={20} />,
+              active: jumpOpen,
+              onClick: () => { setJumpOpen(v => !v); setThemeOpen(false); setTypographyOpen(false); },
+            }] : []),
+            {
+              key: 'type',
+              label: 'Текст и шрифты',
+              icon: <SquareBracketsLetterA size={20} />,
+              active: typographyOpen,
+              ref: typographyBtnRef,
+              onClick: () => { setTypographyOpen(v => !v); setJumpOpen(false); setThemeOpen(false); },
+            },
+            {
+              key: 'theme',
+              label: 'Оформление',
+              icon: <Palette size={20} />,
+              active: themeOpen,
+              ref: themeBtnRef,
+              onClick: () => { setThemeOpen(v => !v); setJumpOpen(false); setTypographyOpen(false); },
+            },
+          ]}
+        />
+      </div>
 
       {/* ── Popovers ──────────────────────────────────────────────────────── */}
       {jumpOpen && meta && (
@@ -534,12 +494,14 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
         style={{
           maxWidth: isDesktop ? '1200px' : '700px',
           margin: '0 auto',
-          // Mobile top padding bumped 88 → 112 px: на iPhone 12 пилюля
-          // header'а сидит у top: max(12, safe-area), занимает 52 px,
-          // итого ≈64 px от верха.  С 88 px оставалось только ~24 px
-          // breathing room до названия суры — сплющено.  112 px даёт
-          // ~48 px — комфортный отступ.
-          padding: isDesktop ? '88px 48px 160px' : '112px 18px 140px',
+          // Верхний отступ = высота панели + safe-area + воздух.
+          // Раньше тут стояли «магические» 88/112 px под плавающую
+          // пилюлю; теперь высота панели импортируется из самого
+          // компонента и не может разъехаться с ним.
+          paddingTop: screenHeaderOffset(28),
+          paddingLeft: isDesktop ? '48px' : '18px',
+          paddingRight: isDesktop ? '48px' : '18px',
+          paddingBottom: isDesktop ? '160px' : '140px',
           position: 'relative', zIndex: 1,
         }}
       >
@@ -604,7 +566,7 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
                   key={entry.verseKey}
                   data-ayah-anchor={entry.ayah}
                   className={`ayah-row${isActiveAyah ? ' active' : ''}`}
-                  style={{ scrollMarginTop: '88px' }}
+                  style={{ scrollMarginTop: screenHeaderOffset(12) }}
                 >
                   {/* Arabic — QCF V4 default; ArabicAyahRouter switches
                       to V1 or Уthmani rendering based on the reader's

@@ -17,12 +17,13 @@ import { useState, useEffect } from 'react';
 
 export type ThemeMode = 'light' | 'dark' | 'cosmic';
 
-export type Theme = 'light' | 'dark' | 'aurora';
+export type Theme = 'light' | 'mushaf' | 'dark' | 'aurora';
 
-export const ALL_THEMES: Theme[] = ['light', 'dark', 'aurora'];
+export const ALL_THEMES: Theme[] = ['light', 'mushaf', 'dark', 'aurora'];
 
 export const THEME_LABELS: Record<Theme, string> = {
   light:  'Светлая',
+  mushaf: 'Мусхаф',
   dark:   'Тёмная',
   aurora: 'Аврора',
 };
@@ -43,16 +44,27 @@ const STORAGE_KEY = 'theme';
  */
 function migrateLegacy(v: string): Theme | null {
   if (v.startsWith('cosmic')) return 'aurora';
+  // Кремовые светлые темы QuranIng ближе всего к «Мусхафу».
+  if (v === 'light-cream' || v === 'light-ivory') return 'mushaf';
   if (v.startsWith('light'))  return 'light';
   if (v.startsWith('dark'))   return 'dark';
   // Совсем древние значения без префикса.
-  if (v === 'parchment' || v === 'sepia') return 'light';
+  if (v === 'parchment' || v === 'sepia') return 'mushaf';
   return null;
 }
 
 export function themeMode(t: Theme): ThemeMode {
   if (t === 'aurora') return 'cosmic';
+  if (t === 'mushaf') return 'light';   // тёплая бумага — светлый режим
   return t;
+}
+
+/** Светлая ли тема по существу.  Отдельная функция, потому что
+ *  светлых тем теперь две и сравнение `t === 'light'` то и дело
+ *  оказывалось бы неполным — именно так и появлялись бы баги вида
+ *  «на Мусхафе подсветка ведёт себя как на тёмной». */
+export function isLightTheme(t: Theme): boolean {
+  return themeMode(t) === 'light';
 }
 
 function readStoredTheme(): Theme {

@@ -268,6 +268,13 @@ export function ThemeSettings(p: ThemeProps) {
  */
 const THEME_PREVIEW: Record<Theme, { canvas: string; ink: string; glow?: string }> = {
   light:  { canvas: '#ffffff', ink: '#111111' },
+  mushaf: {
+    canvas: '#f5efe1',
+    ink: '#2b2118',
+    // Та же виньетка, что у самой темы, только сильнее: на карточке
+    // 96×64 еле заметная тень по краям вообще не читалась бы.
+    glow: 'radial-gradient(120% 100% at 50% 50%, transparent 45%, rgba(90,70,45,0.22) 100%)',
+  },
   dark:   { canvas: '#1a1a1c', ink: '#ececec' },
   aurora: {
     canvas: '#000000',
@@ -285,10 +292,13 @@ function ThemePicker({ theme, setTheme }: {
   return (
     <section>
       <p style={sectionTitle}>Оформление</p>
+      {/* 2×2, а не четыре колонки в ряд: на 380-px попапе колонка
+          шириной 86 px превращает превью в марку, и отличить кремовую
+          бумагу от белой становится невозможно. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '8px',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '10px',
       }}>
         {ALL_THEMES.map(id => {
           const preview = THEME_PREVIEW[id];

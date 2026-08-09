@@ -45,8 +45,9 @@ import {
 import { ThemeSettings } from '../components/ReadingSettings';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
 import {
-  ChevronLeft, Palette, Play, Pause, SquareBracketsLetterA,
+  Palette, Play, Pause, SquareBracketsLetterA,
 } from '../components/icons';
+import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 
 type Props = {
   category: AzkarCategoryId;
@@ -341,108 +342,36 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* ── Floating pill header ───────────────────────────────────────
-          Rounded "island" floating near the top of the screen, fully
-          backdrop-blurred so the wallpaper behind shows through.
-          Centred horizontally; contains back / title / [A] / palette.
-          The carousel progress bar lives just below as a separate
-          floating bar (also blurred so it reads as the same chrome
-          unit when content scrolls under it). */}
-      <header
-        role="banner"
-        style={{
-          position: 'fixed',
-          top: 'max(12px, env(safe-area-inset-top))',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 30,
-          height: '52px',
-          maxWidth: 'min(96vw, 520px)',
-          width: 'fit-content',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          padding: '0 6px',
-          background: 'color-mix(in srgb, var(--surface) 94%, transparent)',
-          border: '1px solid var(--hairline)',
-          borderRadius: '9999px',
-          // Тень снова ×2 слабее: было 0.02 / 0.06 → стало 0.01 / 0.03.
-          boxShadow: 'rgba(0,0,0,0.01) 0 1px 2px, rgba(0,0,0,0.03) 0 14px 36px',
-          backdropFilter: 'saturate(160%) blur(20px)',
-          WebkitBackdropFilter: 'saturate(160%) blur(20px)',
-        }}
-      >
-        <button
-          onClick={onBack}
-          aria-label="Back"
-          className="icon-btn"
-          style={{ width: '40px', height: '40px', color: 'var(--text-tertiary)', flexShrink: 0 }}
-        >
-          <ChevronLeft size={20} />
-        </button>
-
-        <div style={{
-          minWidth: 0, flex: '0 1 auto', padding: '0 10px',
-          display: 'inline-flex', alignItems: 'baseline', gap: '8px',
-        }}>
-          <span
-            className="display-serif"
-            style={{
-              fontSize: '16px', fontWeight: 500,
-              color: 'var(--text-primary)', letterSpacing: '-0.012em',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              lineHeight: 1, maxWidth: '180px',
-            }}
-          >
-            {titleRu}
-          </span>
-          {entries.length > 0 && (
-            <span
-              aria-label={`Карточка ${currentIndex + 1} из ${entries.length}`}
-              style={{
-                fontSize: '12px',
-                fontWeight: 500,
-                color: 'var(--text-tertiary)',
-                letterSpacing: '0.04em',
-                fontVariantNumeric: 'tabular-nums',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              }}
-            >
-              {currentIndex + 1} / {entries.length}
-            </span>
-          )}
-        </div>
-
-        <button
-          ref={typoBtnRef}
-          onClick={() => setTypoOpen(v => !v)}
-          aria-label="Настройки текста"
-          title="Настройки текста"
-          className="icon-btn"
-          data-active={typoOpen}
-          style={{
-            width: '40px', height: '40px', flexShrink: 0,
-            color: typoOpen ? 'var(--text-primary)' : 'var(--text-tertiary)',
-          }}
-        >
-          <SquareBracketsLetterA size={20} />
-        </button>
-
-        <button
-          ref={themeBtnRef}
-          onClick={() => setThemeOpen(v => !v)}
-          aria-label="Theme settings"
-          className="icon-btn"
-          data-active={themeOpen}
-          style={{
-            width: '40px', height: '40px', flexShrink: 0,
-            color: themeOpen ? 'var(--text-primary)' : 'var(--text-tertiary)',
-          }}
-        >
-          <Palette size={20} />
-        </button>
-      </header>
+      {/* ── Верхняя панель ───────────────────────────────────────────────
+          Обычная панель во всю ширину, как в чтении суры и как нижние
+          вкладки — см. шапку components/ScreenHeader.tsx.  Номер
+          карточки ушёл в подзаголовок, а прогресс по ленте рисуется
+          полосой по нижней кромке самой панели: раньше это была
+          отдельная плавающая плашка, второй кусок chrome без нужды. */}
+      <ScreenHeader
+        title={titleRu}
+        subtitle={entries.length > 0 ? `${currentIndex + 1} из ${entries.length}` : undefined}
+        onBack={onBack}
+        progress={entries.length > 0 ? (currentIndex + 1) / entries.length : undefined}
+        actions={[
+          {
+            key: 'type',
+            label: 'Настройки текста',
+            icon: <SquareBracketsLetterA size={20} />,
+            active: typoOpen,
+            ref: typoBtnRef,
+            onClick: () => setTypoOpen(v => !v),
+          },
+          {
+            key: 'theme',
+            label: 'Оформление',
+            icon: <Palette size={20} />,
+            active: themeOpen,
+            ref: themeBtnRef,
+            onClick: () => setThemeOpen(v => !v),
+          },
+        ]}
+      />
 
       {themeOpen && (
         <ThemeSettings
@@ -586,12 +515,16 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                   // this handles vertical.
                   overflowY: 'auto',
                   overflowX: 'hidden',
-                  // Top app bar is 56 px + safe-area-inset-top → clear
-                  // that plus ~24 px breathing room.  BottomDock is
-                  // 76 px + 16 px → 120 px at the bottom (only when
-                  // playing, but keep the room regardless so layout
-                  // doesn't jump).
-                  padding: 'calc(env(safe-area-inset-top) + 56px + 56px) 22px 120px',
+                  // Сверху — высота панели из самого компонента плюс
+                  // воздух; раньше тут складывались вручную «56 + 56»
+                  // под плавающую пилюлю и её отдельную плашку
+                  // прогресса, и при правке высоты числа разъезжались.
+                  // Снизу 120 px под BottomDock — держим место всегда,
+                  // чтобы вёрстка не прыгала при старте аудио.
+                  paddingTop: screenHeaderOffset(28),
+                  paddingLeft: '22px',
+                  paddingRight: '22px',
+                  paddingBottom: '120px',
                   boxSizing: 'border-box',
                   // Tasbih press-feedback: card content slightly
                   // squishes and dims while the finger is held, then

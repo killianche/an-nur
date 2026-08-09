@@ -260,6 +260,33 @@
   --hairline-strong: #34343c;
 }
 
+/* «Мусхаф» — разворот печатного Корана.
+   Кремовая бумага и тёмно-коричневые чернила вместо чёрных: в
+   типографском мусхафе краска именно тёплая, чистый #000 на кремовой
+   бумаге выглядит как лазерная распечатка поверх пергамента.
+
+   Signature темы — виньетка по краям (body-правило ниже): у раскрытой
+   книги страница к сгибу и к обрезу уходит в тень.  Это единственное
+   украшение; орнаментальную рамку мусхафа не рисуем — на экране
+   телефона она съела бы половину ширины, а ради неё пришлось бы
+   ломать вёрстку ленты аятов. */
+[data-theme="mushaf"] {
+  --canvas:        #f5efe1;   /* кремовая бумага */
+  --canvas-soft:   #efe8d8;
+  --surface:       #fbf7ec;   /* карточка — на тон светлее страницы */
+  --surface-strong:#e8dfc9;
+
+  --ink:           #2b2118;   /* тёплая тёмно-коричневая краска */
+  --ink-soft:      #3d3025;
+  --body:          #574636;
+  --muted:         #8a7660;
+  --muted-soft:    #ab9a80;
+
+  --hairline:        #ded0b4;
+  --hairline-soft:   #e9dfc8;
+  --hairline-strong: #c4b28d;
+}
+
 /* Алиасы — семантические имена поверх палитры активной темы. */
 :root,
 [data-theme] {
@@ -338,6 +365,25 @@ body {
   font-family: 'EB Garamond', 'Alice', Georgia, 'Times New Roman', serif;
   font-weight: 500;
   letter-spacing: -0.018em;
+}
+
+/* Виньетка «Мусхафа» — мягкая тень по краям страницы.  Даёт ощущение
+   раскрытой книги: у сгиба и у обреза бумага всегда чуть темнее.
+   Один слой на body, fixed — не уезжает при прокрутке и ничего не
+   стоит на перерисовку. */
+[data-theme="mushaf"] body {
+  background-image:
+    radial-gradient(140vw 100vh at 50% 50%,
+      transparent 55%,
+      rgba(90, 70, 45, 0.10) 100%),
+    linear-gradient(to right,
+      rgba(90, 70, 45, 0.07) 0%,
+      transparent 7%,
+      transparent 93%,
+      rgba(90, 70, 45, 0.07) 100%);
+  background-size: auto;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 /* ─── Skeleton loader (used while alquran.cloud fetch is in flight) ─────────
@@ -500,7 +546,8 @@ body {
    тёмная и аврора — более яркий '-color-dark', чтобы контраст держался
    на обоих типах канвы.  «Аврора» перечислена явно: её имя не
    начинается на "dark", хотя визуально она тёмная. */
-[data-highlight-style="color"][data-theme="light"] [data-active-word] {
+[data-highlight-style="color"][data-theme="light"] [data-active-word],
+[data-highlight-style="color"][data-theme="mushaf"] [data-active-word] {
   color: var(--ayah-word-color-light, #2563eb) !important;
 }
 [data-highlight-style="color"][data-theme="dark"] [data-active-word],

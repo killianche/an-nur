@@ -113,7 +113,7 @@ type Mode = 'light' | 'dark';
 function detectMode(): Mode {
   if (typeof document === 'undefined') return 'dark';
   const theme = document.documentElement.getAttribute('data-theme') ?? '';
-  return theme === 'light' ? 'light' : 'dark';
+  return (theme === 'light' || theme === 'mushaf') ? 'light' : 'dark';
 }
 
 // ── CSS generation ───────────────────────────────────────────────────────────

@@ -259,7 +259,9 @@ export function getHighlightStyle(): HighlightStyle {
  */
 export function getEffectiveHighlightStyle(theme?: string | null): HighlightStyle {
   const t = theme ?? document.documentElement.getAttribute('data-theme') ?? '';
-  if (t === 'light') return 'color';
+  // Светлых тем две — «Светлая» и «Мусхаф»; на обеих свечение читается
+  // как грязное пятно, поэтому обе сводятся к 'color'.
+  if (t === 'light' || t === 'mushaf') return 'color';
   return getHighlightStyle();
 }
 export function setHighlightStylePref(s: HighlightStyle) {
