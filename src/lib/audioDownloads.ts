@@ -146,7 +146,36 @@ function expandScope(scope: DownloadScope): [number, number][] {
     const [from, to] = juzRange(scope.juz);
     return ayahsInGlobalRange(from, to);
   }
-  return ayahsInGlobalRange(1, TOTAL_AYAHS);
+  return prioritiseForFullDownload(ayahsInGlobalRange(1, TOTAL_AYAHS));
+}
+
+/**
+ * Порядок для загрузки всего Корана.
+ *
+ * Полный чтец при 64 kbps весит ~850 МБ и качается десятки минут.
+ * Качать его подряд с Аль-Фатихи и Бакары значит, что первые полчаса
+ * офлайн не работает ровно то, что читают чаще всего: короткие суры
+ * джуза Амма и Аль-Фатиха в намазе.
+ *
+ * Поэтому впереди Аль-Фатиха и весь 30-й джуз — это ~10 % объёма,
+ * приезжает за пару минут и закрывает большинство повседневных
+ * сценариев.  Остальное подтягивается следом обычным порядком.
+ *
+ * На саму модель это не влияет: очередь — просто список, порядок в
+ * ней вопрос удобства, а не корректности.
+ */
+function prioritiseForFullDownload(all: [number, number][]): [number, number][] {
+  const [juz30From] = juzRange(30);
+  const rank = ([surah, ayah]: [number, number]): number => {
+    if (surah === 1) return 0;                                   // Аль-Фатиха
+    if (globalAyahNumber(surah, ayah) >= juz30From) return 1;    // джуз Амма
+    return 2;                                                    // всё прочее
+  };
+  return [...all].sort((a, b) => {
+    const d = rank(a) - rank(b);
+    if (d !== 0) return d;
+    return globalAyahNumber(a[0], a[1]) - globalAyahNumber(b[0], b[1]);
+  });
 }
 
 /** Сколько аятов в области ещё нет на устройстве. */
