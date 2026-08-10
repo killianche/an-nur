@@ -36,3 +36,6 @@ android/app/src/main/assets/capacitor.config.json
 
 # Gradle/Kotlin служебный кэш нативного проекта
 android/.kotlin/
+
+# архив веб-сборки для заливки на хостинг — артефакт, не исходник
+quranru-web.tar.gz
