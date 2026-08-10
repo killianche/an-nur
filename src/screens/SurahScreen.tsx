@@ -343,29 +343,44 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
   }, [surahNumber]);
   const closeJump = useCallback(() => setJumpOpen(false), []);
 
-  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  // ── Клавиатура ─────────────────────────────────────────────────────────────
+  //
+  // Железное правило: экран НЕ забирает клавиши, которыми прокручивают
+  // страницу.  Пробел, стрелки вверх/вниз, PageUp/PageDown остаются
+  // браузеру всегда.
+  //
+  // Так было не сразу.  Пробел перехватывался безусловно — `preventDefault`
+  // стоял до всяких проверок, — и на экране чтения он вообще перестал
+  // прокручивать: на длинной суре человек жмёт пробел, а вместо
+  // страницы вниз включается чтение с первого аята.  Стрелки вверх/вниз
+  // отбирались, пока в очереди есть аят, а очередь после ПАУЗЫ не
+  // очищается (это правильно — из паузы надо уметь продолжить), и
+  // прокрутка стрелками оставалась мёртвой до перезагрузки страницы.
+  // Ровно это и поймал владелец: «включил аят, выключил — прокрутка
+  // перестала работать».
+  //
+  // Что осталось: горизонтальные стрелки листают аяты (по вертикали они
+  // не прокручивают, отбирать их не жалко) и Escape останавливает
+  // чтение.  Обе — только когда аудио реально в работе.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      // Комбинации с модификаторами — не наши: Cmd+стрелка это «в начало
+      // документа», Alt+стрелка — навигация по истории.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const audioActive = !!(audio.currentSurah && audio.currentAyah);
+      if (!audioActive) return;
 
-      if (e.code === 'Space') {
+      if (e.key === 'ArrowRight') {
         e.preventDefault();
-        if (audio.audioState === 'playing') {
-          audio.pause();
-        } else if (audioActive) {
-          audio.playFrom(audio.currentSurah!, audio.currentAyah!, meta?.ayahs ?? 9999);
-        } else {
-          audio.playFrom(surahNumber, 1, meta?.ayahs ?? 9999);
-        }
-      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        if (audioActive) { e.preventDefault(); audio.next(); }
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        if (audioActive) { e.preventDefault(); audio.prev(); }
+        audio.next();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        audio.prev();
       } else if (e.key === 'Escape') {
-        if (audioActive) audio.stopAll();
+        audio.stopAll();
       }
     };
     window.addEventListener('keydown', onKey);
