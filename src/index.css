@@ -271,20 +271,24 @@
    телефона она съела бы половину ширины, а ради неё пришлось бы
    ломать вёрстку ленты аятов. */
 [data-theme="mushaf"] {
-  --canvas:        #f5efe1;   /* кремовая бумага */
-  --canvas-soft:   #efe8d8;
-  --surface:       #fbf7ec;   /* карточка — на тон светлее страницы */
-  --surface-strong:#e8dfc9;
+  /* Тон canvas обязан совпадать с тоном, запечённым в
+     /textures/paper-mushaf.webp (см. components/PaperLayer.tsx): на
+     широком экране картинка не покрывает всё поле, и разошедшиеся
+     тона дали бы видимый шов. */
+  --canvas:        #f9f2e2;   /* яркая светло-бежевая бумага */
+  --canvas-soft:   #f4ecd9;
+  --surface:       #fdfaf2;   /* карточка — лист посветлее сверху */
+  --surface-strong:#efe4cd;
 
-  --ink:           #2b2118;   /* тёплая тёмно-коричневая краска */
-  --ink-soft:      #3d3025;
-  --body:          #574636;
-  --muted:         #8a7660;
-  --muted-soft:    #ab9a80;
+  --ink:           #2a2016;   /* тёплая тёмно-коричневая краска */
+  --ink-soft:      #3b2e22;
+  --body:          #55442f;
+  --muted:         #8a7454;
+  --muted-soft:    #ab9673;
 
-  --hairline:        #ded0b4;
-  --hairline-soft:   #e9dfc8;
-  --hairline-strong: #c4b28d;
+  --hairline:        #e2d5b8;
+  --hairline-soft:   #ede3cd;
+  --hairline-strong: #cbb890;
 }
 
 /* Алиасы — семантические имена поверх палитры активной темы. */
@@ -382,24 +386,11 @@ body {
   letter-spacing: -0.018em;
 }
 
-/* Виньетка «Мусхафа» — мягкая тень по краям страницы.  Даёт ощущение
-   раскрытой книги: у сгиба и у обреза бумага всегда чуть темнее.
-   Один слой на body, fixed — не уезжает при прокрутке и ничего не
-   стоит на перерисовку. */
-[data-theme="mushaf"] body {
-  background-image:
-    radial-gradient(140vw 100vh at 50% 50%,
-      transparent 55%,
-      rgba(90, 70, 45, 0.10) 100%),
-    linear-gradient(to right,
-      rgba(90, 70, 45, 0.07) 0%,
-      transparent 7%,
-      transparent 93%,
-      rgba(90, 70, 45, 0.07) 100%);
-  background-size: auto;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-}
+/* Виньетка «Мусхафа» переехала в components/PaperLayer.tsx — она
+   рисуется поверх фотографии бумаги, а не под ней, иначе фактура
+   ложилась бы на тень и края выглядели грязными.  Заодно ушёл
+   `background-attachment: fixed`, который на iOS Safari работает
+   через раз и стоит перерисовки на прокрутке. */
 
 /* ─── Skeleton loader (used while alquran.cloud fetch is in flight) ─────────
    Shimmer is a moving gradient on top of a soft tinted base. Both colours are

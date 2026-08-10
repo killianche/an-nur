@@ -8,6 +8,8 @@ import { BookmarksScreen } from './screens/BookmarksScreen';
 import { PrayerTimesScreen } from './screens/PrayerTimesScreen';
 import { QiblaScreen } from './screens/QiblaScreen';
 import { CosmicLayer } from './components/CosmicLayer';
+import { PaperLayer } from './components/PaperLayer';
+import { StatusBarScrim } from './components/StatusBarScrim';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TabBar, type TabId } from './components/TabBar';
 import { applyHighlightVars } from './lib/audioPrefs';
@@ -43,6 +45,7 @@ export default function App() {
   const { theme, setTheme } = useTheme();
   const [screen, setScreen] = useState<Screen>(INITIAL_SCREEN);
   const isCosmic = themeMode(theme) === 'cosmic';
+  const isPaper = theme === 'mushaf';
 
   // ── History-API routing ──────────────────────────────────────────────────
   // Каждый переход вперёд кладёт в history запись со следующим Screen.
@@ -159,7 +162,7 @@ export default function App() {
   // ── Экраны «поверх» ──────────────────────────────────────────────────────
   if (screen.name === 'surah') {
     return (
-      <Shell isCosmic={isCosmic}>
+      <Shell isCosmic={isCosmic} isPaper={isPaper}>
         <ErrorBoundary name="SurahScreen" onReset={goBack}>
           <SurahScreen
             surahNumber={screen.number}
@@ -175,7 +178,7 @@ export default function App() {
 
   if (screen.name === 'bookmarks') {
     return (
-      <Shell isCosmic={isCosmic}>
+      <Shell isCosmic={isCosmic} isPaper={isPaper}>
         <ErrorBoundary name="BookmarksScreen" onReset={goBack}>
           <BookmarksScreen
             theme={theme}
@@ -190,7 +193,7 @@ export default function App() {
 
   if (screen.name === 'azkar-category') {
     return (
-      <Shell isCosmic={isCosmic}>
+      <Shell isCosmic={isCosmic} isPaper={isPaper}>
         <ErrorBoundary name="AzkarCategoryScreen" onReset={goBack}>
           <AzkarCategoryScreen
             category={screen.category}
@@ -206,7 +209,7 @@ export default function App() {
   // ── Корневые вкладки ─────────────────────────────────────────────────────
   const tab = screen.tab;
   return (
-    <Shell isCosmic={isCosmic}>
+    <Shell isCosmic={isCosmic} isPaper={isPaper}>
       {tab === 'quran' && (
         <ErrorBoundary name="SurahPicker">
           <SurahPicker
@@ -253,14 +256,25 @@ export default function App() {
   );
 }
 
-/** Общая обёртка: космический фон под контентом, контент над ним. */
-function Shell({ isCosmic, children }: { isCosmic: boolean; children: ReactNode }) {
+/** Общая обёртка: фон темы под контентом, контент над ним.
+ *  Космос и бумага взаимоисключающи — это разные темы, — но проверки
+ *  независимы, чтобы добавление третьего фона не требовало правки
+ *  условий. */
+function Shell({ isCosmic, isPaper, children }: {
+  isCosmic: boolean;
+  isPaper: boolean;
+  children: ReactNode;
+}) {
   return (
     <>
       {isCosmic && <CosmicLayer />}
+      {isPaper && <PaperLayer />}
       <div style={{ position: 'relative', zIndex: 1 }}>
         {children}
       </div>
+      {/* Крышка под системной строкой — последней в дереве, чтобы
+          лежать поверх контента любого экрана. */}
+      <StatusBarScrim />
     </>
   );
 }

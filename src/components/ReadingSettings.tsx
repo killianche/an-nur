@@ -411,24 +411,70 @@ export function SettingsSheet({
             }}>
               {title}
             </span>
-            <button
-              onClick={onClose}
-              aria-label="Закрыть"
-              className="icon-btn"
-              style={{
-                width: '32px', height: '32px', flexShrink: 0,
-                borderRadius: '9px',
-                color: 'var(--text-tertiary)',
-              }}
-            >
-              <Close size={16} />
-            </button>
+            <SheetCloseButton onClose={onClose} />
           </div>
         )}
         {children}
       </div>
     </>,
     document.body,
+  );
+}
+
+/**
+ * Кнопка закрытия панели.
+ *
+ * Была квадратом 32×32 без фона — почти невидимая и мимо неё легко
+ * промахнуться.  Apple просит минимум 44×44 pt на касание, и это не
+ * придирка: палец накрывает пятно около 9 мм, а 32 px — это 8.5 мм,
+ * то есть попадание «впритык» даже когда целишься.
+ *
+ * Разведены зона нажатия и вид: кликается весь квадрат 44×44, а рисуется
+ * круг 34×34 с мягкой подложкой — так кнопка читается как кнопка, но не
+ * перетягивает внимание с заголовка.  Круг, а не скруглённый квадрат:
+ * это стандартная форма закрытия в системных панелях iOS, глаз узнаёт
+ * её без чтения.
+ */
+function SheetCloseButton({ onClose }: { onClose: () => void }) {
+  const [pressed, setPressed] = useState(false);
+  return (
+    <button
+      onClick={onClose}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
+      onPointerLeave={() => setPressed(false)}
+      onPointerCancel={() => setPressed(false)}
+      aria-label="Закрыть"
+      title="Закрыть"
+      style={{
+        // Зона нажатия — вся кнопка; отрицательный правый отступ
+        // возвращает круг на оптическую границу панели, чтобы
+        // увеличенная зона не сдвинула его внутрь.
+        width: '44px', height: '44px', flexShrink: 0,
+        marginRight: '-6px',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        border: 'none', background: 'transparent', padding: 0,
+        cursor: 'pointer',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: '34px', height: '34px',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '9999px',
+          background: pressed
+            ? 'color-mix(in srgb, var(--ink) 16%, transparent)'
+            : 'color-mix(in srgb, var(--ink) 8%, transparent)',
+          color: pressed ? 'var(--text-primary)' : 'var(--text-secondary)',
+          transform: pressed ? 'scale(0.92)' : 'scale(1)',
+          transition: 'background 140ms ease, transform 140ms ease, color 140ms ease',
+        }}
+      >
+        <Close size={17} />
+      </span>
+    </button>
   );
 }
 
@@ -571,14 +617,22 @@ const motionLabel: CSSProperties = {
  * отдельной функцией-диорамой на каждый; теперь тем три, и превью
  * описывается одной таблицей.
  */
-const THEME_PREVIEW: Record<Theme, { canvas: string; ink: string; glow?: string }> = {
+const THEME_PREVIEW: Record<Theme,
+  { canvas: string; ink: string; glow?: string; glowSize?: string }> = {
   light:  { canvas: '#ffffff', ink: '#111111' },
   mushaf: {
-    canvas: '#f5efe1',
-    ink: '#2b2118',
-    // Та же виньетка, что у самой темы, только сильнее: на карточке
-    // 96×64 еле заметная тень по краям вообще не читалась бы.
-    glow: 'radial-gradient(120% 100% at 50% 50%, transparent 45%, rgba(90,70,45,0.22) 100%)',
+    canvas: '#f9f2e2',
+    ink: '#2a2016',
+    // Превью показывает ту же фотографию бумаги, что и сама тема, —
+    // иначе на карточке ровная заливка, а на экране фактура, и выбор
+    // делается вслепую.  Виньетка сверху усилена: на 96×64 еле
+    // заметная тень по краям не читалась бы совсем.
+    glow:
+      'radial-gradient(120% 100% at 50% 50%, transparent 45%, rgba(120,96,58,0.24) 100%),' +
+      ' url(/textures/paper-mushaf.webp)',
+    // Без cover картинка 1240×1860 легла бы в карточку 96×64 своим
+    // натуральным размером — вместо бумаги был бы её случайный угол.
+    glowSize: 'auto, cover',
   },
   dark:   { canvas: '#1a1a1c', ink: '#ececec' },
   aurora: {
@@ -647,6 +701,8 @@ function ThemePicker({ theme, setTheme }: {
                   <span style={{
                     position: 'absolute', inset: 0,
                     background: preview.glow,
+                    backgroundSize: preview.glowSize,
+                    backgroundPosition: 'center',
                   }} />
                 )}
                 {id === 'aurora' && (
