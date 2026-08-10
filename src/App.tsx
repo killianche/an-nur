@@ -238,7 +238,7 @@ export default function App() {
       )}
       {tab === 'qibla' && (
         <ErrorBoundary name="QiblaScreen">
-          <QiblaScreen />
+          <QiblaScreen theme={theme} setTheme={setTheme} />
         </ErrorBoundary>
       )}
 

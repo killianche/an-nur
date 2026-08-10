@@ -58,4 +58,6 @@
     <!-- Android 13+ требует явного разрешения, чтобы показать
          уведомление-плеер (и любые будущие напоминания о намазе). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>

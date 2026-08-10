@@ -84,5 +84,7 @@
 	     про шифрование при каждой отправке сборки. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Координаты нужны, чтобы рассчитать направление на Каабу и время намаза. Никуда не передаются.</string>
 </dict>
 </plist>
