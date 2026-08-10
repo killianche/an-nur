@@ -19,7 +19,7 @@ import {
 // проверки `!!QURAN_SEGMENTS[reciter]`.  Заменено на сет-константу
 // в reciters.ts — тот же sync-чек, ноль bundle-overhead.
 import { RECITERS_WITH_SEGMENTS } from '../lib/reciters';
-import { Microphone } from './icons';
+import { Microphone, Close } from './icons';
 import { OfflineAudioCard } from './OfflineAudioCard';
 
 const sectionTitle: CSSProperties = {
@@ -44,11 +44,17 @@ type SheetPlacement = 'bottom-sheet' | 'top-popover';
 export function SettingsSheet({
   onClose,
   children,
+  title,
   placement = 'bottom-sheet',
   anchorEl,
 }: {
   onClose: () => void;
   children: ReactNode;
+  /** Заголовок панели.  Раньше попап открывался вовсе без подписи, и
+   *  единственным способом его закрыть был тап по невидимой подложке
+   *  или повторный тап по той же кнопке в шапке — этого никто не
+   *  угадывает.  Теперь у панели есть строка «название + ✕». */
+  title?: string;
   /** 'bottom-sheet' (default) — full-width pull-up on the bottom edge.
    *  'top-popover' — anchored top-right under the chrome, narrow card.
    *   Use top-popover when the trigger lives in the header (palette icon)
@@ -78,6 +84,34 @@ export function SettingsSheet({
     // never plays.
     const id = requestAnimationFrame(() => setOpen(true));
     return () => cancelAnimationFrame(id);
+  }, []);
+
+  // Системный «назад» (edge-swipe на iOS, аппаратная кнопка на Android)
+  // должен закрывать панель, а не уводить с экрана.  Кладём в историю
+  // фиктивную запись и снимаем её при закрытии — так жест «назад»
+  // тратится на попап, как и ожидает человек.
+  //
+  // Флаг closedByPop нужен, чтобы не вызвать history.back() второй раз
+  // уже после того, как запись сняли самим жестом: иначе закрытие
+  // попапа заодно уводило бы на предыдущий экран.
+  const closedByPop = useRef(false);
+  useEffect(() => {
+    history.pushState({ sheet: true }, '');
+    const onPop = () => { closedByPop.current = true; onClose(); };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (!closedByPop.current && history.state?.sheet) history.back();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Esc — для десктопа и внешней клавиатуры.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -187,9 +221,22 @@ export function SettingsSheet({
   // positioning resolves against the viewport as expected.
   return createPortal(
     <>
-      {/* Click-catcher — fully transparent so the user can preview every
-          setting change against the actual surah behind. */}
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 39 }} />
+      {/* Подложка.  Раньше была полностью прозрачной — «чтобы видеть
+          изменения на живом тексте».  Идея верная, но невидимая
+          подложка не подсказывает, что тап мимо панели её закроет, и
+          вообще не отделяет панель от страницы.  Компромисс: едва
+          заметное затемнение — текст под ней по-прежнему читается и
+          смена шрифта видна, но панель теперь явно «поверх». */}
+      <div
+        onClick={onClose}
+        aria-hidden
+        style={{
+          position: 'fixed', inset: 0, zIndex: 39,
+          background: 'rgba(0,0,0,0.18)',
+          opacity: open ? 1 : 0,
+          transition: 'opacity 200ms ease',
+        }}
+      />
 
       <div
         data-reading-sheet=""
@@ -212,6 +259,34 @@ export function SettingsSheet({
           ...positionStyles,
         }}
       >
+        {title && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            marginBottom: '12px',
+          }}>
+            <span style={{
+              flex: 1, minWidth: 0,
+              fontSize: '13px', fontWeight: 600,
+              color: 'var(--text-primary)',
+              letterSpacing: '0.005em',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {title}
+            </span>
+            <button
+              onClick={onClose}
+              aria-label="Закрыть"
+              className="icon-btn"
+              style={{
+                width: '32px', height: '32px', flexShrink: 0,
+                borderRadius: '9px',
+                color: 'var(--text-tertiary)',
+              }}
+            >
+              <Close size={16} />
+            </button>
+          </div>
+        )}
         {children}
       </div>
     </>,
@@ -245,7 +320,7 @@ type ThemeProps = {
 
 export function ThemeSettings(p: ThemeProps) {
   return (
-    <SettingsSheet onClose={p.onClose} placement="top-popover" anchorEl={p.anchorEl}>
+    <SettingsSheet onClose={p.onClose} title="Оформление" placement="top-popover" anchorEl={p.anchorEl}>
       <div style={{ display: 'grid', gap: '10px' }}>
         <ThemePicker theme={p.theme} setTheme={p.setTheme} />
         {p.reciter && <HighlightCard reciter={p.reciter} />}
@@ -454,7 +529,7 @@ export function TypographySettings(p: TypographyProps) {
     // типографикой на 4.7" экране.  Чтецов теперь два — они занимают
     // одну строку, и весь попап снова читается одним куском без
     // переключения вкладок.
-    <SettingsSheet onClose={p.onClose} placement="top-popover" anchorEl={p.anchorEl}>
+    <SettingsSheet onClose={p.onClose} title="Чтение" placement="top-popover" anchorEl={p.anchorEl}>
       {/* ── Чтец ───────────────────────────────────────────────────── */}
       <section style={settingCard}>
         <p style={{ ...cardTitle, display: 'flex', alignItems: 'center', gap: '6px' }}>

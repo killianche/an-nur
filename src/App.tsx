@@ -202,7 +202,7 @@ export default function App() {
       {tab === 'quran' && (
         <ErrorBoundary name="SurahPicker">
           <SurahPicker
-            onSelectSurah={n => navigate({ name: 'surah', number: n })}
+            onSelectSurah={(n, ayah) => navigate({ name: 'surah', number: n, initialAyah: ayah })}
             onBookmarks={() => navigate({ name: 'bookmarks' })}
             theme={theme}
             setTheme={setTheme}

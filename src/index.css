@@ -338,6 +338,21 @@ body {
   max-width: 100%;
 }
 
+/* Запрет «резинки» на границах документа.
+   Проверено на устройстве: без этого, если оттянуть страницу вниз у
+   самого верха, вместе с содержимым уезжает и фиксированная верхняя
+   панель — WebKit двигает position:fixed вместе с overscroll-bounce, —
+   и над панелью открывается пустая полоса.
+   overscroll-behavior работает и как запрет pull-to-refresh, и как
+   барьер для scroll chaining: прокрутка внутри попапа настроек больше
+   не «протекает» на страницу под ним, дойдя до его края. */
+html {
+  overscroll-behavior: none;
+}
+body {
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   background-color: var(--bg);

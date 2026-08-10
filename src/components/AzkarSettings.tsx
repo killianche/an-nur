@@ -78,7 +78,7 @@ export function AzkarTypographySettings(p: AzkarTypographyProps) {
   const setTab = (v: AzkarLangTab) => { setTabS(v); writeLangTab(v); };
 
   return (
-    <SettingsSheet onClose={p.onClose} placement="top-popover" anchorEl={p.anchorEl}>
+    <SettingsSheet onClose={p.onClose} title="Текст азкара" placement="top-popover" anchorEl={p.anchorEl}>
       <section style={settingCard}>
         <p style={cardTitle}>Текст и шрифты</p>
 
