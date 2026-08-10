@@ -20,44 +20,38 @@
  * Поиск по переводу считается в `useDeferredValue`: набор текста
  * остаётся отзывчивым, а тяжёлый проход по 6236 аятам React выполняет
  * в фоне и не блокирует ввод.
+ *
+ * ── Почему «Суры» и «Джузы» — два разреза, а не заголовки в одном ──────
+ *
+ * Первая версия ставила подписи «Джуз N» прямо между строками сур.
+ * На экране это выглядело сломанным: 1 → 3 → 4 → 6.  И это не
+ * опечатка, а свойство деления — джузы 2 и 5 начинаются в середине
+ * Аль-Бакары и Ан-Нисы, и ни одна сура в них не начинается, поэтому
+ * подписи для них в списке сур просто негде поставить.
+ *
+ * Врать («Джуз 1–2») тоже нельзя: Аль-Бакара захватывает и джуз 3.
+ * Поэтому разрезы разделены, как это сделано в мусхафе и на
+ * quran.com: список сур остаётся чистым, а джузы — отдельный список
+ * из 30 частей, где у каждой видно, с какого аята она начинается.
  */
 
 import { useState, useMemo, useRef, useDeferredValue } from 'react';
 import { SURAHS, SURAH_BY_NUMBER, type SurahMeta } from '../content/surahs';
 import { readRecents } from '../lib/recents';
 import { search, snippet, type AyahHit } from '../lib/search';
+import { JUZ_SECTIONS } from '../lib/juz';
 import { Palette, Search, Close, Bookmark as BookmarkIcon } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
 
-// ── Juz mapping ──────────────────────────────────────────────────────────────
-// Каждой суре сопоставлен джуз, в котором она НАЧИНАЕТСЯ (стандартное
-// деление на 30 частей).  Джузы 2 и 5 не начинают ни одной суры и
-// поэтому в заголовках не появляются.
-const SURAH_JUZ: Record<number, number> = {
-  1: 1,  2: 1,
-  3: 3,  4: 4,
-  5: 6,  6: 7,  7: 8,  8: 9,  9: 10,
-  10: 11, 11: 11, 12: 12, 13: 13, 14: 13,
-  15: 14, 16: 14, 17: 15, 18: 15,
-  19: 16, 20: 16, 21: 17, 22: 17,
-  23: 18, 24: 18, 25: 18,
-  26: 19, 27: 19, 28: 20, 29: 20,
-  30: 21, 31: 21, 32: 21, 33: 21,
-  34: 22, 35: 22, 36: 22,
-  37: 23, 38: 23, 39: 23,
-  40: 24, 41: 24,
-  42: 25, 43: 25, 44: 25, 45: 25,
-  46: 26, 47: 26, 48: 26, 49: 26, 50: 26, 51: 26,
-  52: 27, 53: 27, 54: 27, 55: 27, 56: 27, 57: 27,
-  58: 28, 59: 28, 60: 28, 61: 28, 62: 28, 63: 28, 64: 28, 65: 28, 66: 28,
-  67: 29, 68: 29, 69: 29, 70: 29, 71: 29, 72: 29, 73: 29, 74: 29, 75: 29, 76: 29, 77: 29,
-  78: 30, 79: 30, 80: 30, 81: 30, 82: 30, 83: 30, 84: 30, 85: 30, 86: 30, 87: 30,
-  88: 30, 89: 30, 90: 30, 91: 30, 92: 30, 93: 30, 94: 30, 95: 30, 96: 30, 97: 30,
-  98: 30, 99: 30, 100: 30, 101: 30, 102: 30, 103: 30, 104: 30, 105: 30, 106: 30,
-  107: 30, 108: 30, 109: 30, 110: 30, 111: 30, 112: 30, 113: 30, 114: 30,
-};
+type Cut = 'surahs' | 'juz';
+const KEY_CUT = 'picker.cut';
+
+function readCut(): Cut {
+  if (typeof window === 'undefined') return 'surahs';
+  return window.localStorage.getItem(KEY_CUT) === 'juz' ? 'juz' : 'surahs';
+}
 
 type Props = {
   onSelectSurah: (number: number, ayah?: number) => void;
@@ -78,8 +72,14 @@ function ayahWord(n: number): string {
 export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Props) {
   const [query, setQuery] = useState('');
   const [themeOpen, setThemeOpen] = useState(false);
+  const [cut, setCutS] = useState<Cut>(readCut);
   const themeBtnRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const setCut = (v: Cut) => {
+    setCutS(v);
+    if (typeof window !== 'undefined') window.localStorage.setItem(KEY_CUT, v);
+  };
 
   // Поиск по 6236 переводам — работа заметная.  useDeferredValue
   // отдаёт вводу приоритет: буквы появляются сразу, список
@@ -203,7 +203,12 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
                 onClick={() => onSelectSurah(lastRead.surah, lastRead.ayah)}
               />
             )}
-            <SurahList surahs={SURAHS} onSelect={onSelectSurah} withJuzHeadings />
+
+            <CutSwitch value={cut} onChange={setCut} />
+
+            {cut === 'surahs'
+              ? <SurahList surahs={SURAHS} onSelect={onSelectSurah} />
+              : <JuzList onSelect={onSelectSurah} />}
           </>
         )}
     </div>
@@ -301,24 +306,114 @@ function ContinueCard({ title, ayah, total, onClick }: {
   );
 }
 
+// ─── Переключатель разреза ───────────────────────────────────────────────
+
+/** Две вкладки с «плиткой», которая переезжает под активную.  Переезд —
+ *  не украшение: он показывает, что это один и тот же список, поданный
+ *  иначе, а не переход на другой экран. */
+function CutSwitch({ value, onChange }: { value: Cut; onChange: (v: Cut) => void }) {
+  const tabs: { id: Cut; label: string }[] = [
+    { id: 'surahs', label: 'Суры' },
+    { id: 'juz', label: 'Джузы' },
+  ];
+  const index = tabs.findIndex(t => t.id === value);
+  return (
+    <div
+      role="tablist"
+      aria-label="Как показывать Коран"
+      style={{
+        position: 'relative',
+        display: 'grid', gridTemplateColumns: '1fr 1fr',
+        gap: '4px', padding: '3px',
+        borderRadius: '12px',
+        background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+        border: '1px solid var(--hairline)',
+        marginBottom: '10px',
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: '3px', bottom: '3px', left: '3px',
+          width: 'calc(50% - 5px)',
+          transform: `translateX(${index * 100}%) translateX(${index * 4}px)`,
+          borderRadius: '9px',
+          background: 'var(--surface)',
+          border: '1px solid var(--hairline)',
+          transition: 'transform 220ms cubic-bezier(0.4,0,0.2,1)',
+        }}
+      />
+      {tabs.map(t => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={value === t.id}
+          onClick={() => onChange(t.id)}
+          style={{
+            position: 'relative',
+            minHeight: '34px',
+            border: 'none', background: 'transparent',
+            borderRadius: '9px',
+            cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: '13px',
+            fontWeight: value === t.id ? 600 : 500,
+            color: value === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+            transition: 'color 160ms ease',
+          }}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Список сур ──────────────────────────────────────────────────────────
 
-function SurahList({ surahs, onSelect, withJuzHeadings }: {
+function SurahList({ surahs, onSelect }: {
   surahs: SurahMeta[];
   onSelect: (n: number) => void;
-  withJuzHeadings?: boolean;
 }) {
-  let lastJuz = 0;
   return (
     <div>
-      {surahs.map(s => {
-        const juz = SURAH_JUZ[s.number];
-        const heading = withJuzHeadings && juz !== lastJuz ? juz : null;
-        if (heading) lastJuz = juz;
+      {surahs.map(s => (
+        <SurahRow key={s.number} meta={s} onClick={() => onSelect(s.number)} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Список джузов ───────────────────────────────────────────────────────
+
+function JuzList({ onSelect }: { onSelect: (n: number, ayah?: number) => void }) {
+  return (
+    <div>
+      {JUZ_SECTIONS.map(({ juz, rows }) => {
+        const first = rows[0];
+        const last = rows[rows.length - 1];
         return (
-          <div key={s.number}>
-            {heading && <SectionHeading text={`Джуз ${heading}`} />}
-            <SurahRow meta={s} onClick={() => onSelect(s.number)} />
+          <div key={juz}>
+            <SectionHeading
+              text={`Джуз ${juz}`}
+              trailing={
+                `${first.meta.number}:${first.from} – ${last.meta.number}:${last.to}`
+              }
+            />
+            {rows.map(r => (
+              <SurahRow
+                key={`${juz}-${r.meta.number}`}
+                meta={r.meta}
+                // Внутри джуза подпись важнее перевода названия: человек
+                // пришёл сюда за границами части, а не за смыслом имени.
+                subtitle={
+                  r.whole
+                    ? `${r.meta.russian} · ${r.meta.ayahs} ${ayahWord(r.meta.ayahs)}`
+                    : `Аяты ${r.from}–${r.to}`
+                }
+                onClick={() => onSelect(r.meta.number, r.from > 1 ? r.from : undefined)}
+              />
+            ))}
           </div>
         );
       })}
@@ -326,7 +421,7 @@ function SurahList({ surahs, onSelect, withJuzHeadings }: {
   );
 }
 
-function SectionHeading({ text }: { text: string }) {
+function SectionHeading({ text, trailing }: { text: string; trailing?: string }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: '12px',
@@ -340,11 +435,23 @@ function SectionHeading({ text }: { text: string }) {
         {text}
       </span>
       <span aria-hidden style={{ flex: 1, height: '1px', background: 'var(--hairline)' }} />
+      {trailing && (
+        <span style={{
+          fontSize: '11px', color: 'var(--text-tertiary)',
+          fontVariantNumeric: 'tabular-nums', flexShrink: 0,
+        }}>
+          {trailing}
+        </span>
+      )}
     </div>
   );
 }
 
-function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
+function SurahRow({ meta, onClick, subtitle }: {
+  meta: SurahMeta;
+  onClick: () => void;
+  subtitle?: string;
+}) {
   const [pressed, setPressed] = useState(false);
   return (
     <button
@@ -404,7 +511,7 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
           fontSize: '12px', color: 'var(--text-tertiary)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
-          {meta.russian} · {meta.ayahs} {ayahWord(meta.ayahs)}
+          {subtitle ?? `${meta.russian} · ${meta.ayahs} ${ayahWord(meta.ayahs)}`}
         </span>
       </span>
 

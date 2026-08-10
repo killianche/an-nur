@@ -41,6 +41,25 @@ const sectionTitle: CSSProperties = {
 
 type SheetPlacement = 'bottom-sheet' | 'top-popover';
 
+/**
+ * Узкий экран — телефон.  Граница 640 px: до неё «привязанная к кнопке
+ * карточка» занимает почти весь экран и перестаёт быть карточкой.
+ */
+function useNarrowViewport(): boolean {
+  const query = '(max-width: 639px)';
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = () => setNarrow(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return narrow;
+}
+
 export function SettingsSheet({
   onClose,
   children,
@@ -69,14 +88,20 @@ export function SettingsSheet({
   anchorEl?: HTMLElement | null;
 }) {
   // Both placements share the same React-state-driven entrance animation;
-  // bottom-sheet additionally supports swipe-down dismissal. Top-popover
-  // closes via backdrop tap only — drag-to-dismiss makes no sense for an
-  // anchored card.
+  // bottom-sheet additionally supports swipe-down dismissal.
   const [open, setOpen]         = useState(false);
   const [dragging, setDragging] = useState(false);
   const [dragY, setDragY]       = useState(0);
   const dragStartY              = useRef<number | null>(null);
-  const isBottom = placement === 'bottom-sheet';
+
+  // На телефоне «привязанная к кнопке карточка» вырождается: панель
+  // занимает почти весь экран, и закрыть её можно только крестиком или
+  // тапом по узкой полоске подложки.  Системный «назад» тут не помогает
+  // — WKWebView гасит edge-swipe, — поэтому на узком экране показываем
+  // нижний шит: у него есть хваталка и привычный смах вниз.  На широком
+  // карточка остаётся карточкой.
+  const narrow = useNarrowViewport();
+  const isBottom = placement === 'bottom-sheet' || narrow;
 
   useEffect(() => {
     // rAF so the first paint commits the offscreen position before we
@@ -114,27 +139,108 @@ export function SettingsSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Скорость последнего движения — чтобы короткий резкий смах закрывал
+  // панель так же, как медленное протягивание на треть экрана.  Без
+  // этого быстрый флик «не считается», и жест ощущается тугим.
+  const lastMove = useRef<{ y: number; t: number } | null>(null);
+  const velocity = useRef(0);
+
+  const sheetRef = useRef<HTMLDivElement>(null);
+  // dragY нужен и в обработчике конца жеста, и в нативном touchmove —
+  // держим копию в ref, чтобы не пересоздавать слушатель на каждый кадр.
+  const dragYRef = useRef(0);
+
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (!isBottom) return;
     if (e.currentTarget.scrollTop > 0) return;
-    dragStartY.current = e.touches[0].clientY;
+    const y = e.touches[0].clientY;
+    dragStartY.current = y;
+    lastMove.current = { y, t: e.timeStamp };
+    velocity.current = 0;
     setDragging(true);
   };
 
-  const onTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!isBottom || dragStartY.current == null) return;
-    const dy = e.touches[0].clientY - dragStartY.current;
-    setDragY(Math.max(0, dy));
+  /**
+   * touchmove вешаем вручную с `passive: false`.
+   *
+   * Почему не onTouchMove у React: React подписывается пассивно, а
+   * панель — сама скролл-контейнер.  WebKit, увидев вертикальный жест,
+   * решает, что это прокрутка (точнее — оверскролл, ведь мы уже
+   * наверху), забирает касание себе и присылает touchcancel.  Смах
+   * вниз просто не срабатывал: тапы внутри панели проходили, а
+   * перетаскивание — нет.  Проверено на симуляторе.
+   *
+   * preventDefault на движении вниз оставляет жест нам.  Вверх не
+   * перехватываем — там начинается обычная прокрутка содержимого.
+   */
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el || !isBottom) return;
+
+    const onMove = (e: TouchEvent) => {
+      if (dragStartY.current == null) return;
+      const y = e.touches[0].clientY;
+      const dy = y - dragStartY.current;
+
+      if (dy <= 0) {
+        // Палец пошёл вверх — отдаём жест прокрутке и забываем drag.
+        if (dragYRef.current === 0) {
+          dragStartY.current = null;
+          setDragging(false);
+        }
+        return;
+      }
+      if (e.cancelable) e.preventDefault();
+
+      const prev = lastMove.current;
+      if (prev) {
+        const dt = e.timeStamp - prev.t;
+        if (dt > 0) velocity.current = (y - prev.y) / dt;   // px/ms, вниз > 0
+      }
+      lastMove.current = { y, t: e.timeStamp };
+      dragYRef.current = dy;
+      setDragY(dy);
+    };
+
+    el.addEventListener('touchmove', onMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onMove);
+  }, [isBottom]);
+
+  /**
+   * Проглотить один клик после перетаскивания.
+   *
+   * WebKit после touchend с preventDefault всё равно синтезирует клик по
+   * элементу под пальцем.  Поймано на симуляторе: смах вниз закрывал
+   * панель и заодно переключал тему на ту карточку, над которой палец
+   * оторвался.  Жест не должен ничего нажимать.
+   *
+   * Слушатель на фазе перехвата и одноразовый; таймер снимает его, если
+   * клика так и не пришло (палец оторвали вне интерактивного элемента).
+   */
+  const swallowNextClick = () => {
+    const swallow = (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      window.clearTimeout(timer);
+    };
+    const timer = window.setTimeout(() => {
+      document.removeEventListener('click', swallow, true);
+    }, 400);
+    document.addEventListener('click', swallow, { capture: true, once: true });
   };
 
   const onTouchEnd = () => {
     if (!isBottom || dragStartY.current == null) return;
-    if (dragY > 100) {
+    const dy = dragYRef.current;
+    if (dy > 6) swallowNextClick();
+    if (dy > 100 || (velocity.current > 0.5 && dy > 12)) {
       onClose();
     } else {
       setDragY(0);
     }
+    dragYRef.current = 0;
     dragStartY.current = null;
+    lastMove.current = null;
     setDragging(false);
   };
 
@@ -167,10 +273,14 @@ export function SettingsSheet({
         bottom: '0',
         transform: `translate(-50%, ${!open ? '100%' : `${dragY}px`})`,
         width: 'min(480px, 100vw)',
-        maxHeight: '70vh',
+        // 86dvh, а не 70vh: в панели чтения живут чтец, офлайн-загрузки
+        // и шрифты — на 70 % экрана из них видно полтора блока, и панель
+        // читается как «обрезанная».  dvh, чтобы адресная строка и
+        // системные панели не отрезали низ.
+        maxHeight: '86dvh',
         borderTop: '1px solid var(--hairline)',
         borderRadius: '20px 20px 0 0',
-        padding: '16px 16px max(12px, env(safe-area-inset-bottom)) 16px',
+        padding: '8px 16px max(12px, env(safe-area-inset-bottom)) 16px',
         boxShadow: 'rgba(0,0,0,0.08) 0 -2px 12px, rgba(0,0,0,0.18) 0 -16px 48px',
       }
     : anchorRect
@@ -233,16 +343,18 @@ export function SettingsSheet({
         style={{
           position: 'fixed', inset: 0, zIndex: 39,
           background: 'rgba(0,0,0,0.18)',
-          opacity: open ? 1 : 0,
-          transition: 'opacity 200ms ease',
+          // Пока шит тянут вниз, подложка светлеет: движение пальца
+          // сразу видно на всём экране, и понятно, что жест «сработает».
+          opacity: open ? Math.max(0, 1 - dragY / 240) : 0,
+          transition: dragging ? 'none' : 'opacity 200ms ease',
         }}
       />
 
       <div
+        ref={sheetRef}
         data-reading-sheet=""
         onClick={e => e.stopPropagation()}
         onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         onTouchCancel={onTouchEnd}
         style={{
@@ -259,6 +371,27 @@ export function SettingsSheet({
           ...positionStyles,
         }}
       >
+        {/* Хваталка.  Без неё смах вниз — тайное знание: человек видит
+            панель, но не видит, что её можно стянуть.  Полоска и есть
+            подсказка, поэтому она рисуется только там, где жест
+            работает. */}
+        {isBottom && (
+          <div
+            aria-hidden
+            style={{
+              display: 'flex', justifyContent: 'center',
+              padding: '2px 0 10px',
+            }}
+          >
+            <span style={{
+              width: '38px', height: '5px', borderRadius: '3px',
+              background: 'var(--hairline-strong, var(--hairline))',
+              opacity: dragging ? 1 : 0.75,
+              transition: 'opacity 140ms ease',
+            }} />
+          </div>
+        )}
+
         {title && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: '8px',
@@ -266,9 +399,10 @@ export function SettingsSheet({
           }}>
             <span style={{
               flex: 1, minWidth: 0,
-              fontSize: '13px', fontWeight: 600,
+              fontSize: isBottom ? '17px' : '13px',
+              fontWeight: 600,
               color: 'var(--text-primary)',
-              letterSpacing: '0.005em',
+              letterSpacing: isBottom ? '-0.01em' : '0.005em',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {title}
