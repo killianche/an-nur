@@ -45,6 +45,7 @@ export default function App() {
   const { theme, setTheme } = useTheme();
   const [screen, setScreen] = useState<Screen>(INITIAL_SCREEN);
   const isCosmic = themeMode(theme) === 'cosmic';
+  const cosmicVariant = theme === 'aurora2' ? 'aurora2' as const : 'aurora' as const;
   const isPaper = theme === 'mushaf';
 
   // ── History-API routing ──────────────────────────────────────────────────
@@ -162,7 +163,7 @@ export default function App() {
   // ── Экраны «поверх» ──────────────────────────────────────────────────────
   if (screen.name === 'surah') {
     return (
-      <Shell isCosmic={isCosmic} isPaper={isPaper}>
+      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
         <ErrorBoundary name="SurahScreen" onReset={goBack}>
           <SurahScreen
             surahNumber={screen.number}
@@ -178,7 +179,7 @@ export default function App() {
 
   if (screen.name === 'bookmarks') {
     return (
-      <Shell isCosmic={isCosmic} isPaper={isPaper}>
+      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
         <ErrorBoundary name="BookmarksScreen" onReset={goBack}>
           <BookmarksScreen
             theme={theme}
@@ -193,7 +194,7 @@ export default function App() {
 
   if (screen.name === 'azkar-category') {
     return (
-      <Shell isCosmic={isCosmic} isPaper={isPaper}>
+      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
         <ErrorBoundary name="AzkarCategoryScreen" onReset={goBack}>
           <AzkarCategoryScreen
             category={screen.category}
@@ -209,7 +210,7 @@ export default function App() {
   // ── Корневые вкладки ─────────────────────────────────────────────────────
   const tab = screen.tab;
   return (
-    <Shell isCosmic={isCosmic} isPaper={isPaper}>
+    <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
       {tab === 'quran' && (
         <ErrorBoundary name="SurahPicker">
           <SurahPicker
@@ -260,14 +261,15 @@ export default function App() {
  *  Космос и бумага взаимоисключающи — это разные темы, — но проверки
  *  независимы, чтобы добавление третьего фона не требовало правки
  *  условий. */
-function Shell({ isCosmic, isPaper, children }: {
+function Shell({ isCosmic, isPaper, cosmicVariant, children }: {
   isCosmic: boolean;
   isPaper: boolean;
+  cosmicVariant: 'aurora' | 'aurora2';
   children: ReactNode;
 }) {
   return (
     <>
-      {isCosmic && <CosmicLayer />}
+      {isCosmic && <CosmicLayer variant={cosmicVariant} />}
       {isPaper && <PaperLayer />}
       <div style={{ position: 'relative', zIndex: 1 }}>
         {children}

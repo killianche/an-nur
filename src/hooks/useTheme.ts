@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 
 /**
- * Три темы — по одной на режим.
+ * Пять тем.
  *
  *   light   — белая бумага, чёрные чернила
+ *   mushaf  — та же белая, но с фактурой настоящей бумаги
  *   dark    — мягкий графит #1a1a1c
- *   aurora  — чёрная канва + звёзды и полярное сияние (<CosmicLayer>)
+ *   aurora  — чёрная канва + ледяное свечение по краям
+ *   aurora2 — чёрная канва + зелёное свечение, растекающееся из центра
  *
  * В QuranIng было двенадцать тем и одиннадцать пресетов поверх них,
  * плюс бумажные паттерны и фото-обои.  Здесь модель плоская: id темы
@@ -17,15 +19,16 @@ import { useState, useEffect } from 'react';
 
 export type ThemeMode = 'light' | 'dark' | 'cosmic';
 
-export type Theme = 'light' | 'mushaf' | 'dark' | 'aurora';
+export type Theme = 'light' | 'mushaf' | 'dark' | 'aurora' | 'aurora2';
 
-export const ALL_THEMES: Theme[] = ['light', 'mushaf', 'dark', 'aurora'];
+export const ALL_THEMES: Theme[] = ['light', 'mushaf', 'dark', 'aurora', 'aurora2'];
 
 export const THEME_LABELS: Record<Theme, string> = {
   light:  'Светлая',
   mushaf: 'Мусхаф',
   dark:   'Тёмная',
   aurora: 'Аврора',
+  aurora2: 'Аврора 2',
 };
 
 /** Первый запуск открывается на «Авроре» — это визуальная подпись
@@ -54,7 +57,7 @@ function migrateLegacy(v: string): Theme | null {
 }
 
 export function themeMode(t: Theme): ThemeMode {
-  if (t === 'aurora') return 'cosmic';
+  if (t === 'aurora' || t === 'aurora2') return 'cosmic';
   if (t === 'mushaf') return 'light';   // тёплая бумага — светлый режим
   return t;
 }

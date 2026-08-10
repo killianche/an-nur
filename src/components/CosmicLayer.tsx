@@ -30,9 +30,16 @@
 
 import { useEffect } from 'react';
 import { Aurora } from './Aurora';
-import { AURORA_ICE, AURORA_SCENE } from '../lib/cosmic';
+import { AURORA_ICE, AURORA_MOSS, AURORA_SCENE, AURORA2_SCENE } from '../lib/cosmic';
 
-export function CosmicLayer() {
+export function CosmicLayer({ variant = 'aurora' }: { variant?: 'aurora' | 'aurora2' }) {
+  // Какая из двух космических тем сейчас: ледяная рамка по краям или
+  // зелёное пятно из центра.  Всё различие сводится к палитре и сцене —
+  // сам слой один и тот же.
+  const second = variant === 'aurora2';
+  const palette = second ? AURORA_MOSS : AURORA_ICE;
+  const scene = second ? AURORA2_SCENE : AURORA_SCENE;
+
   // Проецируем палитру сияния на CSS-переменную караоке-подсветки,
   // чтобы активное слово загоралось тем же цветом, что и небо.
   // Правило в index.css падает на нейтральное свечение, когда
@@ -41,12 +48,12 @@ export function CosmicLayer() {
   useEffect(() => {
     document.documentElement.style.setProperty(
       '--ayah-word-shadow',
-      AURORA_ICE.wordShadow,
+      palette.wordShadow,
     );
     return () => {
       document.documentElement.style.removeProperty('--ayah-word-shadow');
     };
-  }, []);
+  }, [palette]);
 
   return (
     <div
@@ -64,8 +71,9 @@ export function CosmicLayer() {
       }}
     >
       <Aurora
-        brightness={AURORA_SCENE.auroraBrightness}
-        direction={AURORA_SCENE.auroraDirection}
+        brightness={scene.auroraBrightness}
+        direction={scene.auroraDirection}
+        palette={palette}
       />
     </div>
   );

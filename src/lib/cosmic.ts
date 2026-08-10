@@ -15,7 +15,7 @@
  * в CosmicLayer.
  */
 
-export type AuroraDirection = 'top' | 'bottom' | 'frame';
+export type AuroraDirection = 'top' | 'bottom' | 'frame' | 'center';
 
 export type AuroraPaletteSpec = {
   label: string;
@@ -68,7 +68,45 @@ export const AURORA_ICE: AuroraPaletteSpec = {
  * brightness 0.42 — выше прежних 0.30, потому что рамка узкая: на
  * 0.30 ободок почти не читался.
  */
+/**
+ * Палитра «Мох» — вторая «Аврора».
+ *
+ * Тот же приём, что у ледяной, но зелёный тон и свечение не от краёв,
+ * а из центра экрана.  Значения alpha ниже, чем у AURORA_ICE: пятно в
+ * центре лежит прямо под текстом, и то, что у кромки читается как
+ * далёкое сияние, посреди страницы превратилось бы в подсветку из-под
+ * букв.  Подобрано так, чтобы свечение угадывалось, а не светило.
+ *
+ * rgba развёрнуты заранее, без color-mix(), по той же причине, что и
+ * у AURORA_ICE: iOS Safari < 16.4 молча выбрасывает такой стоп.
+ */
+export const AURORA_MOSS: AuroraPaletteSpec = {
+  label: 'Мох',
+  layer1: 'rgba(90,210,150,0.38)',
+  layer2: 'rgba(150,225,175,0.30)',
+  ayahGlow:
+    'radial-gradient(ellipse at 50% 50%, rgba(90,210,150,0.44) 0%, ' +
+    'rgba(90,210,150,0.18) 30%, rgba(90,210,150,0.05) 55%, transparent 80%)',
+  wordShadow:
+    '0 -16px 36px rgba(120,225,170,0.80), 0 16px 36px rgba(120,225,170,0.80), ' +
+    '0 0 30px rgba(120,225,170,0.80), 0 -40px 110px rgba(80,190,140,0.72), ' +
+    '0 40px 110px rgba(80,190,140,0.72)',
+};
+
 export const AURORA_SCENE = {
   auroraBrightness: 0.42,
   auroraDirection: 'frame' as AuroraDirection,
+} as const;
+
+/**
+ * Сцена второй «Авроры».
+ *
+ * direction 'center' — мягкое пятно посреди экрана, растекающееся к
+ * краям и тающее задолго до них.  Яркость ниже, чем у рамочной: там
+ * свечение по периферии и текста под ним нет, здесь оно лежит ровно
+ * под строками, и та же величина мешала бы читать.
+ */
+export const AURORA2_SCENE = {
+  auroraBrightness: 0.34,
+  auroraDirection: 'center' as AuroraDirection,
 } as const;

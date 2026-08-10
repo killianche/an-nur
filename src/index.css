@@ -247,7 +247,8 @@
    scroll-bounce в iOS Safari — за краем вьюпорта не мелькает полоса
    другого цвета.  Поверхности карточек уводим в тёплый графит, чтобы
    они читались как панели над пустотой. */
-[data-theme="aurora"] {
+[data-theme="aurora"],
+[data-theme="aurora2"] {
   --canvas:        #000000;
   --canvas-soft:   #08080b;
   --surface:       #131318;
@@ -319,7 +320,8 @@
 }
 
 [data-theme="dark"],
-[data-theme="aurora"] {
+[data-theme="aurora"],
+[data-theme="aurora2"] {
   --qcf-active: #4ade80;
 }
 
@@ -583,7 +585,8 @@ body {
   color: var(--ayah-word-color-light, #2563eb) !important;
 }
 [data-highlight-style="color"][data-theme="dark"] [data-active-word],
-[data-highlight-style="color"][data-theme="aurora"] [data-active-word] {
+[data-highlight-style="color"][data-theme="aurora"] [data-active-word],
+[data-highlight-style="color"][data-theme="aurora2"] [data-active-word] {
   color: var(--ayah-word-color-dark, #60a5fa) !important;
 }
 

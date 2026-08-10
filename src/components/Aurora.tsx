@@ -76,12 +76,14 @@
  */
 
 import { memo, useEffect, useState } from 'react';
-import { AURORA_ICE, type AuroraDirection } from '../lib/cosmic';
+import { AURORA_ICE, type AuroraDirection, type AuroraPaletteSpec } from '../lib/cosmic';
 
 type Props = {
   brightness?: number;         // 0.1 – 1.0
   speed?: number;              // deprecated — дрифт фиксирован, не используется
-  direction?: AuroraDirection; // 'top' (по умолч.) | 'bottom' | 'frame'
+  direction?: AuroraDirection; // 'top' (по умолч.) | 'bottom' | 'frame' | 'center'
+  /** Палитра свечения.  По умолчанию ледяная — та, что у «Авроры». */
+  palette?: AuroraPaletteSpec;
 };
 
 // Заменяет alpha в строке rgba(r,g,b,a) на новое значение.
@@ -138,8 +140,12 @@ const AURORA_INNER_STYLE_BASE = {
   backfaceVisibility: 'hidden',
 } as const;
 
-function AuroraImpl({ brightness = 0.45, direction = 'top' }: Props) {
-  const colors = AURORA_ICE;
+function AuroraImpl({
+  brightness = 0.45,
+  direction = 'top',
+  palette,
+}: Props) {
+  const colors = palette ?? AURORA_ICE;
 
   // SSR-безопасно: на сервере — без редукции, на клиенте — детектируем
   // после монтирования (matchMedia/navigator недоступны во время SSR).
@@ -193,6 +199,55 @@ function AuroraImpl({ brightness = 0.45, direction = 'top' }: Props) {
   //  - без движения.  Дыхание рамки и бегущая по периметру волна были
   //    сделаны и сняты по решению владельца: в читалке любое движение
   //    на периферии через полчаса начинает мешать.  Код — в истории git.
+  // ── Свечение из центра ──────────────────────────────────────────────
+  //
+  // Вторая «Аврора»: мягкое пятно посреди экрана, растекающееся к краям
+  // и тающее задолго до них.  Три вложенных эллипса разного размера
+  // вместо одного: у одиночного градиента виден ровный круглый ореол,
+  // а наложение с разными пропорциями даёт неровное, живое пятно —
+  // при том, что ничего не движется.
+  //
+  // Размеры в vmax, а не в процентах: пятно должно быть одинаковым по
+  // ощущению и на узком телефоне, и на широком экране, а проценты
+  // растянули бы его вслед за пропорциями окна.
+  if (direction === 'center') {
+    const core = withAlpha(colors.layer1, 0.30);
+    const mid = withAlpha(colors.layer1, 0.13);
+    const accent = withAlpha(colors.layer2, 0.18);
+    const accentSoft = withAlpha(colors.layer2, 0.07);
+
+    return (
+      <div
+        className="fixed inset-0 z-0 pointer-events-none overflow-hidden"
+        aria-hidden="true"
+        style={{ opacity: brightness, ...AURORA_CONTAINER_STYLE_BASE }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: `
+              radial-gradient(ellipse 70vmax 52vmax at 50% 46%,
+                ${core} 0%,
+                ${mid} 26%,
+                ${withAlpha(colors.layer1, 0.04)} 48%,
+                transparent 70%),
+              radial-gradient(ellipse 46vmax 62vmax at 46% 54%,
+                ${accent} 0%,
+                ${accentSoft} 30%,
+                transparent 62%),
+              radial-gradient(ellipse 96vmax 70vmax at 54% 50%,
+                ${withAlpha(colors.layer1, 0.09)} 0%,
+                ${withAlpha(colors.layer1, 0.03)} 40%,
+                transparent 72%)
+            `,
+            ...AURORA_INNER_STYLE_BASE,
+          }}
+        />
+      </div>
+    );
+  }
+
   if (direction === 'frame') {
     // Для дымки берём более слабый alpha чем core — конденсат светится
     // мягко, не светит как лампа.

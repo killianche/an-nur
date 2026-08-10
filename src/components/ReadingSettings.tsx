@@ -547,6 +547,15 @@ const THEME_PREVIEW: Record<Theme,
     // на карточке 96×64 полноценная яркость смотрелась бы кричаще.
     glow: 'radial-gradient(120% 80% at 50% 0%, rgba(120,200,240,0.55) 0%, rgba(120,200,240,0.16) 45%, transparent 75%)',
   },
+  aurora2: {
+    canvas: '#000000',
+    ink: '#f4f4f5',
+    // Пятно в центре, а не сияние сверху: превью должно показывать
+    // именно то, чем эта тема отличается от первой «Авроры».
+    glow:
+      'radial-gradient(ellipse 70% 80% at 50% 50%, rgba(90,210,150,0.42) 0%,' +
+      ' rgba(90,210,150,0.14) 40%, transparent 75%)',
+  },
 };
 
 function ThemePicker({ theme, setTheme }: {
@@ -556,9 +565,11 @@ function ThemePicker({ theme, setTheme }: {
   return (
     <section>
       <p style={sectionTitle}>Оформление</p>
-      {/* 2×2, а не четыре колонки в ряд: на 380-px попапе колонка
-          шириной 86 px превращает превью в марку, и отличить кремовую
-          бумагу от белой становится невозможно. */}
+      {/* Две колонки, а не пять в ряд: на 380-px попапе колонка
+          шириной 70 px превращает превью в марку, и отличить белую
+          бумагу от белой с фактурой становится невозможно.  Пятая
+          тема просто уходит на третий ряд в одиночку — это честнее,
+          чем ужимать все ради симметрии. */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
@@ -788,6 +799,7 @@ export function TypographySettings(p: TypographyProps) {
           {([
             { id: 'arabic',  label: 'Арабский' },
             { id: 'russian', label: 'Русский'  },
+
           ] as const).map(t => (
             <button
               key={t.id}
