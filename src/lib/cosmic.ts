@@ -15,7 +15,7 @@
  * в CosmicLayer.
  */
 
-export type AuroraDirection = 'top' | 'bottom' | 'frame' | 'center';
+export type AuroraDirection = 'top' | 'bottom' | 'frame' | 'rays';
 
 export type AuroraPaletteSpec = {
   label: string;
@@ -101,12 +101,16 @@ export const AURORA_SCENE = {
 /**
  * Сцена второй «Авроры».
  *
- * direction 'center' — мягкое пятно посреди экрана, растекающееся к
- * краям и тающее задолго до них.  Яркость ниже, чем у рамочной: там
- * свечение по периферии и текста под ним нет, здесь оно лежит ровно
- * под строками, и та же величина мешала бы читать.
+ * direction 'rays' — занавес снизу вверх: свет поднимается от нижней
+ * кромки, лучи доходят почти до верха и там гаснут.
+ *
+ * Была промежуточная версия со свечением из центра — заменена по
+ * решению владельца.  Яркость чуть выше рамочной (0.38 против 0.42
+ * у ледяной — сопоставимо), потому что верхняя половина у занавеса
+ * слабая по построению: под текстом света почти нет, вся плотность
+ * собрана у нижней кромки.
  */
 export const AURORA2_SCENE = {
-  auroraBrightness: 0.34,
-  auroraDirection: 'center' as AuroraDirection,
+  auroraBrightness: 0.38,
+  auroraDirection: 'rays' as AuroraDirection,
 } as const;
