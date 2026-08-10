@@ -37,7 +37,7 @@ import { loadArabicEditions } from '../lib/arabicEditions';
 import { ThemeSettings, TypographySettings } from '../components/ReadingSettings';
 import { BottomDock } from '../components/BottomDock';
 import {
-  SquareBracketsLetterA, Palette,
+  Typography, Appearance,
   ArrowChevronRight, Bookmark as BookmarkIcon, Play, Pause,
 } from '../components/icons';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
@@ -443,7 +443,7 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
             {
               key: 'type',
               label: 'Текст и шрифты',
-              icon: <SquareBracketsLetterA size={20} />,
+              icon: <Typography size={20} />,
               active: typographyOpen,
               ref: typographyBtnRef,
               onClick: () => { setTypographyOpen(v => !v); setJumpOpen(false); setThemeOpen(false); },
@@ -451,7 +451,7 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
             {
               key: 'theme',
               label: 'Оформление',
-              icon: <Palette size={20} />,
+              icon: <Appearance size={20} />,
               active: themeOpen,
               ref: themeBtnRef,
               onClick: () => { setThemeOpen(v => !v); setJumpOpen(false); setTypographyOpen(false); },

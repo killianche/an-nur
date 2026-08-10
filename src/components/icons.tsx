@@ -79,21 +79,18 @@ export const MoreVertical = ({ size = 22 }: Props) => (
 );
 
 /** Sparkle — 4-point star + 2 small dots. Used for the "design / reading" entry. */
+/**
+ * Звезда азкаров — четыре луча с вогнутыми сторонами плюс малая
+ * рядом.  Прежняя была почти правильным ромбом и на 21 px читалась
+ * как «крестик»; вогнутые стороны дают узнаваемый силуэт вспышки.
+ */
 export const Sparkle = ({ size = 22 }: Props) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <path
-      d="M11.256 3.567c.266-.675 1.222-.675 1.488 0l2.047 5.19a.8.8 0 0 0 .451.452l5.191 2.047c.675.266.675 1.222 0 1.488l-5.19 2.047a.8.8 0 0 0-.452.451l-2.047 5.191c-.266.675-1.222.675-1.488 0l-2.047-5.19a.8.8 0 0 0-.451-.452l-5.191-2.047c-.675-.266-.675-1.222 0-1.488l5.19-2.047a.8.8 0 0 0 .452-.451z"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <circle cx="5.25" cy="5.25" r="1.25" fill="currentColor" />
-    <circle cx="19"   cy="19"   r="1"    fill="currentColor" />
+  <svg {...stroke(size)}>
+    <path d="M11 3.4c.45 3.9 1.7 5.9 4.6 6.7-2.9.8-4.15 2.8-4.6 6.7-.45-3.9-1.7-5.9-4.6-6.7 2.9-.8 4.15-2.8 4.6-6.7Z" />
+    <path d="M17.8 14.2c.2 1.75.75 2.65 2.05 3-1.3.35-1.85 1.25-2.05 3-.2-1.75-.75-2.65-2.05-3 1.3-.35 1.85-1.25 2.05-3Z" />
   </svg>
 );
 
-/** TextLetterSpacing — used for "Jump to ayah" / typographic position. */
 export const TextLetterSpacing = ({ size = 22 }: Props) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
     <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -142,21 +139,20 @@ export const ListOrdered = ({ size = 20 }: Props) => (
 /** Bookmark — outlined ribbon by default (Bookmark — копия.svg).
  *  isFilled=true switches the fill-rule to nonzero so the inner cutout
  *  fills in, making the same path read as a solid bookmark. */
+/**
+ * Закладка.  Переписана на тот же 24-й viewBox и ту же толщину, что и
+ * весь набор: прежняя приезжала из другого семейства (16×16, сплошная
+ * заливка) и рядом с соседними иконками выглядела жирнее и мельче.
+ */
 export const Bookmark = ({ size = 18, isFilled = false }: Props & { isFilled?: boolean }) => (
   <svg
-    width={size}
-    height={size}
-    viewBox="0 0 16 16"
-    fill="currentColor"
-    fillRule={isFilled ? 'nonzero' : 'evenodd'}
-    clipRule="evenodd"
-    aria-hidden
+    {...stroke(size)}
+    fill={isFilled ? 'currentColor' : 'none'}
   >
-    <path d="m8 9.524l.976.837l2.988 2.56a.325.325 0 0 0 .536-.246V4.5A1.5 1.5 0 0 0 11 3H5a1.5 1.5 0 0 0-1.5 1.5v8.175a.325.325 0 0 0 .536.247l2.988-2.56zM14 4.5a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3v8.175a1.825 1.825 0 0 0 3.013 1.386L8 11.5l2.987 2.56A1.825 1.825 0 0 0 14 12.676z" />
+    <path d="M6.75 4.75h10.5a1 1 0 0 1 1 1v13.42a.6.6 0 0 1-.95.49L12 15.9l-5.3 3.76a.6.6 0 0 1-.95-.49V5.75a1 1 0 0 1 1-1Z" />
   </svg>
 );
 
-/** ForwardStep — wedge with end-bar on the right (ForwardStep.svg). */
 export const SkipForward = ({ size = 20 }: Props) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
     <path d="M13.75 2a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-1.5 0V2.75a.75.75 0 0 1 .75-.75M1.505 3.632C1.597 2.32 3.079 1.56 4.206 2.295l6.498 4.24a1.75 1.75 0 0 1 0 2.93l-6.498 4.24l-.11.066c-1.111.62-2.502-.134-2.591-1.404l-.005-.129V3.761zM3 12.238c0 .199.22.319.387.21L9.884 8.21a.25.25 0 0 0 0-.419L3.387 3.552A.25.25 0 0 0 3 3.76z" />
@@ -185,23 +181,36 @@ export const Search = ({ size = 18 }: Props) => (
 );
 
 /** SquareBracketsLetterA — outlined "[A]" letter selector for jump-by-position. */
-export const SquareBracketsLetterA = ({ size = 22 }: Props) => (
+/**
+ * Текст и шрифты — большая и малая «A».
+ *
+ * Были квадратные скобки вокруг буквы: скобки съедали половину поля,
+ * буква внутри получалась крошечной, и знак читался как «поле ввода».
+ * Пара букв разного кегля — устоявшийся знак размера текста, и на
+ * 19 px он остаётся разборчивым, потому что состоит из четырёх линий.
+ */
+export const Typography = ({ size = 22 }: Props) => (
   <svg {...stroke(size)}>
-    <path d="M7 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h2" />
-    <path d="M17 4h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-2" />
-    <path d="m9.25 15 2.75-7 2.75 7" />
-    <path d="M10.1 12.5h3.8" />
+    <path d="m3.4 18 4.1-11.4L11.6 18" />
+    <path d="M4.9 14.3h5.2" />
+    <path d="m14.3 18 2.6-7.2L19.5 18" />
+    <path d="M15.2 15.7h3.4" />
   </svg>
 );
 
-/** Palette — outlined artist palette (Lucide-style). */
-export const Palette = ({ size = 22 }: Props) => (
+/**
+ * Оформление темы — круг, наполовину залитый.
+ *
+ * Была палитра художника с четырьмя точками краски. На 19 px точки
+ * сливались в кашу, а сам силуэт читался как «клякса». Полукруг —
+ * общепринятый знак «внешний вид / контраст» (так это выглядит в
+ * системных настройках iOS и Android), узнаётся мгновенно и не
+ * разваливается на мелком размере.
+ */
+export const Appearance = ({ size = 22 }: Props) => (
   <svg {...stroke(size)}>
-    <path d="M12 22a9.96 9.96 0 0 1-7.07-2.93 9.96 9.96 0 0 1 0-14.14A9.96 9.96 0 0 1 12 2a9.96 9.96 0 0 1 7.07 2.93 9.96 9.96 0 0 1 0 14.14C18 21 15 21.5 13 21.5c-1 0-1.5-.5-1.5-1.5 0-1 .5-1.5 1.5-1.5 1 0 1.5-.5 1.5-1.5 0-1-.5-1.5-1.5-1.5z" />
-    <circle cx="7"  cy="13" r="1.25" fill="currentColor" stroke="none" />
-    <circle cx="9"  cy="7"  r="1.25" fill="currentColor" stroke="none" />
-    <circle cx="15" cy="7"  r="1.25" fill="currentColor" stroke="none" />
-    <circle cx="17" cy="13" r="1.25" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none" />
   </svg>
 );
 
@@ -216,11 +225,10 @@ export const RotateLeft = ({ size = 20 }: Props) => (
  *  tab pair reads as Text-vs-Voice rather than two equally generic
  *  word labels. */
 export const Microphone = ({ size = 16 }: Props) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <rect x="9" y="2" width="6" height="12" rx="3" />
-    <path d="M5 10a7 7 0 0 0 14 0" />
-    <line x1="12" y1="19" x2="12" y2="22" />
-    <line x1="8" y1="22" x2="16" y2="22" />
+  <svg {...stroke(size)}>
+    <rect x="9.25" y="2.75" width="5.5" height="10.5" rx="2.75" />
+    <path d="M5.75 11.25a6.25 6.25 0 0 0 12.5 0" />
+    <path d="M12 17.5v3.4" />
   </svg>
 );
 
@@ -268,10 +276,16 @@ export const Clock = ({ size = 22 }: Props) => (
   </svg>
 );
 
-/** Компас со стрелкой — вкладка «Кибла». */
+/**
+ * Компас киблы.  Стрелка стала настоящей: залитая половина указывает
+ * направление, пустая — хвост.  Прежний ромбик из четырёх линий на
+ * 21 px превращался в пятно и не давал понять, куда он смотрит, — а
+ * это единственное, ради чего иконка тут стоит.
+ */
 export const Compass = ({ size = 22 }: Props) => (
   <svg {...stroke(size)}>
-    <circle cx="12" cy="12" r="8.25" />
-    <path d="m14.9 9.1-1.35 4.45-4.45 1.35 1.35-4.45z" />
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M15.4 8.6 13.1 13.1 8.6 15.4l2.3-4.5z" fill="currentColor" stroke="none" />
+    <path d="M15.4 8.6 13.1 13.1 8.6 15.4l2.3-4.5z" />
   </svg>
 );

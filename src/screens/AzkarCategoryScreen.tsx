@@ -45,7 +45,7 @@ import {
 import { ThemeSettings } from '../components/ReadingSettings';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
 import {
-  Palette, Play, Pause, SquareBracketsLetterA,
+  Appearance, Play, Pause, Typography,
 } from '../components/icons';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 
@@ -357,7 +357,7 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
           {
             key: 'type',
             label: 'Настройки текста',
-            icon: <SquareBracketsLetterA size={20} />,
+            icon: <Typography size={20} />,
             active: typoOpen,
             ref: typoBtnRef,
             onClick: () => setTypoOpen(v => !v),
@@ -365,7 +365,7 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
           {
             key: 'theme',
             label: 'Оформление',
-            icon: <Palette size={20} />,
+            icon: <Appearance size={20} />,
             active: themeOpen,
             ref: themeBtnRef,
             onClick: () => setThemeOpen(v => !v),

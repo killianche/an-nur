@@ -35,7 +35,7 @@ import { useState, useMemo, useRef, useDeferredValue } from 'react';
 import { SURAHS, SURAH_BY_NUMBER, type SurahMeta } from '../content/surahs';
 import { readRecents } from '../lib/recents';
 import { search, snippet, type AyahHit } from '../lib/search';
-import { Palette, Search, Close, Bookmark as BookmarkIcon } from '../components/icons';
+import { Appearance, Search, Close, Bookmark as BookmarkIcon } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
@@ -129,7 +129,7 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
           active={themeOpen}
           btnRef={themeBtnRef}
         >
-          <Palette size={19} />
+          <Appearance size={19} />
         </IconAction>
       </header>
 

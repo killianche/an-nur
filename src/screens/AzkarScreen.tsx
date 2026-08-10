@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Theme } from '../hooks/useTheme';
-import { Palette } from '../components/icons';
+import { Appearance } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { loadAzkarData, type AzkarCategoryId, type AzkarData } from '../lib/azkar';
@@ -116,7 +116,7 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
             justifyContent: 'center',
           }}
         >
-          <Palette size={20} />
+          <Appearance size={20} />
         </button>
       </div>
 
