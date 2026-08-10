@@ -1,6 +1,37 @@
+/**
+ * AzkarScreen — главный экран раздела «Азкары».
+ *
+ * Шапка — как на главной Корана: то же название раздела тем же кеглем,
+ * та же кнопка оформления справа. Переключение вкладки должно читаться
+ * как переход внутри одного продукта, а не в другое приложение (раньше
+ * тут был вордмарк «Azkar» латиницей высотой до 88 px).
+ *
+ * А вот список — намеренно НЕ как у сур.
+ *
+ * У Корана 114 строк, и там строка правильная: помещается много,
+ * сканируется за взгляд. Здесь пунктов ровно два, и список из двух
+ * строк у самого верха — худшее, что можно сделать на телефоне: экран
+ * пустой на девять десятых, а тянуться пальцем надо в самый верх.
+ *
+ * Поэтому две большие карточки, поделившие свободную высоту и прижатые
+ * к НИЗУ экрана — туда, куда большой палец дотягивается не глядя.
+ * Промах по такой карточке невозможен.
+ *
+ * Иконка вместо номера: у категорий нет порядкового номера, которым бы
+ * кто-то пользовался. Восход и закат различимы с одного взгляда и сразу
+ * говорят, когда это читают.
+ *
+ * Арабских названий категорий в azkar.json нет, и придумывать их —
+ * ровно то, чего нельзя делать с сакральным текстом. Поэтому правая
+ * колонка, где у сур стоит арабское начертание, здесь пустая.
+ *
+ * Порядок категорий — как в azkar.json, показываются только те, где
+ * есть хотя бы одна запись («Вступительные» пока пусты и скрыты).
+ */
+
 import { useEffect, useRef, useState } from 'react';
 import type { Theme } from '../hooks/useTheme';
-import { Appearance } from '../components/icons';
+import { Appearance, Sunrise, Sunset } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { loadAzkarData, type AzkarCategoryId, type AzkarData } from '../lib/azkar';
@@ -13,15 +44,15 @@ type Props = {
   onOpenCategory: (category: AzkarCategoryId) => void;
 };
 
-/**
- * Azkar index — заголовок + две большие карточки категорий
- * (Утренние / Вечерние).  Визуальный язык повторяет SurahPicker, чтобы
- * переключение вкладок читалось как одна поверхность, а не как два
- * разных приложения.
- *
- * Order shown to the user is `categories[]` from azkar.json, filtered to
- * those with at least one entry. "intro" is hidden until it has content.
- */
+/** Склонение слова «азкар». */
+function azkarWord(n: number): string {
+  const two = n % 100, one = n % 10;
+  if (two >= 11 && two <= 14) return 'азкаров';
+  if (one === 1) return 'азкар';
+  if (one >= 2 && one <= 4) return 'азкара';
+  return 'азкаров';
+}
+
 export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
   const [data, setData] = useState<AzkarData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +67,6 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
     return () => { alive = false; };
   }, []);
 
-  // Categories with at least one entry, in the source-defined order.
   const visibleCats = (data?.categories ?? []).filter(
     c => (data?.by_category[c.id] ?? 0) > 0,
   );
@@ -44,12 +74,15 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
   return (
     <div style={{
       minHeight: '100dvh',
-      background: 'transparent',
-      maxWidth: 'min(100%, 760px)',
+      maxWidth: 'min(100%, 720px)',
       margin: '0 auto',
-      // Нижний отступ учитывает панель вкладок.
-      padding: `0 16px calc(${TAB_BAR_HEIGHT}px + 36px + env(safe-area-inset-bottom))`,
+      padding: `0 16px calc(${TAB_BAR_HEIGHT}px + 28px + env(safe-area-inset-bottom))`,
       position: 'relative',
+      zIndex: 1,
+      // Колонка на всю высоту: свободное место достаётся карточкам,
+      // и они опускаются к нижней кромке.
+      display: 'flex',
+      flexDirection: 'column',
     }}>
       {themeOpen && (
         <ThemeSettings
@@ -60,73 +93,53 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
         />
       )}
 
-      {/* ── Title row — как в SurahPicker: крупный вордмарк справа */}
+      {/* Шапка — один в один с главной Корана. */}
       <header style={{
         display: 'flex',
-        alignItems: 'baseline',
-        justifyContent: 'flex-end',
-        gap: '16px',
-        paddingTop: '64px',
-        paddingBottom: '32px',
-        position: 'relative',
-        zIndex: 1,
+        alignItems: 'center',
+        gap: '10px',
+        paddingTop: 'calc(env(safe-area-inset-top) + 18px)',
+        paddingBottom: '16px',
       }}>
         <h1
           className="display-serif"
           style={{
-            margin: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '14px',
-            fontSize: 'clamp(44px, 12vw, 88px)',
-            fontWeight: 300,
-            letterSpacing: '-0.04em',
+            margin: 0, flex: 1, minWidth: 0,
+            fontSize: 'clamp(30px, 8vw, 40px)',
+            fontWeight: 400,
+            letterSpacing: '-0.03em',
             color: 'var(--text-primary)',
-            lineHeight: 1,
-            flexShrink: 0,
+            lineHeight: 1.05,
           }}
         >
-          Azkar
+          Азкары
         </h1>
-      </header>
 
-      {/* ── Theme button — pinned right of the title, like SurahPicker's */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'flex-end',
-        marginBottom: '24px',
-        position: 'relative',
-        zIndex: 1,
-      }}>
         <button
           ref={themeBtnRef}
-          onClick={() => setThemeOpen(true)}
-          aria-label="Theme settings"
+          onClick={() => setThemeOpen(v => !v)}
+          aria-label="Оформление"
+          title="Оформление"
           className="icon-btn"
+          data-active={themeOpen}
           style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
+            width: '42px', height: '42px', flexShrink: 0,
+            borderRadius: '12px',
             border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            color: themeOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
-          <Appearance size={20} />
+          <Appearance size={19} />
         </button>
-      </div>
+      </header>
 
-      {/* ── States: loading / error / data ─────────────────────────────── */}
       {!data && !error && <CategorySkeleton />}
 
       {error && (
         <div style={{
           textAlign: 'center', padding: '60px 16px',
-          fontSize: '14px', color: 'var(--text-tertiary)',
+          fontSize: '14px', color: 'var(--text-tertiary)', lineHeight: 1.6,
         }}>
           Не удалось загрузить азкары<br />
           <span style={{ fontSize: '12px', opacity: 0.7 }}>{error}</span>
@@ -134,27 +147,30 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
       )}
 
       {data && visibleCats.length > 0 && (
-        <>
-          <section
-            style={{
-              display: 'grid',
-              gap: '14px',
-              position: 'relative',
-              zIndex: 1,
-            }}
-          >
-            {visibleCats.map(cat => (
-              <CategoryCard
-                key={cat.id}
-                id={cat.id}
-                titleRu={cat.title_ru}
-                count={data.by_category[cat.id] ?? 0}
-                onClick={() => onOpenCategory(cat.id)}
-              />
-            ))}
-          </section>
-
-        </>
+        <div style={{
+          flex: 1,
+          display: 'grid',
+          // Строк ровно столько, сколько категорий: две — значит по
+          // половине свободной высоты каждой.
+          gridTemplateRows: `repeat(${visibleCats.length}, minmax(120px, 1fr))`,
+          // Потолок нужен на планшете и в альбомной ориентации: без
+          // него карточка растянулась бы на пол-экрана и превратилась
+          // в баннер.
+          gridAutoRows: 'minmax(120px, 1fr)',
+          gap: '14px',
+          alignContent: 'end',
+          paddingTop: '8px',
+        }}>
+          {visibleCats.map(cat => (
+            <CategoryCard
+              key={cat.id}
+              id={cat.id}
+              title={cat.title_ru || (cat.id === 'morning' ? 'Утренние азкары' : 'Вечерние азкары')}
+              count={data.by_category[cat.id] ?? 0}
+              onClick={() => onOpenCategory(cat.id)}
+            />
+          ))}
+        </div>
       )}
 
       {data && visibleCats.length === 0 && (
@@ -169,41 +185,30 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
   );
 }
 
-/** Feature category card — "Утренние" / "Вечерние" entry buttons.
- *  Visual language mirrors the "Continue Reading" recents card in
- *  SurahPicker: flat surface, hairline border, no shadow, no ornament.
- *  Three-row stack — uppercase eyebrow, display-serif title, small
- *  meta line with the azkar count.
+/**
+ * Крупная карточка категории.
  *
- *  В QuranIng крупным заголовком шло ингушское название, а русское
- *  было надстрочной подписью.  Здесь ингушского нет, поэтому русское
- *  название поднято в заголовок, а eyebrow стал нейтральным «АЗКАРЫ». */
+ * Занимает половину свободной высоты — на телефоне это примерно
+ * 250–300 px, то есть промахнуться невозможно даже на ходу.  Внутри
+ * ничего лишнего: иконка времени суток, название и счётчик.
+ *
+ * Композиция диагональная: иконка в левом верхнем углу, подпись — в
+ * левом нижнем.  Сначала содержимое стояло по центру, и карточка
+ * высотой 300 px выглядела пустой: текст висел в середине, а сверху и
+ * снизу оставались широкие поля ни с чем.  Разнеся два элемента по
+ * углам, мы заполняем ту же площадь, ничего в неё не добавляя.
+ */
 function CategoryCard({
-  id, titleRu, count, onClick,
+  id, title, count, onClick,
 }: {
   id: AzkarCategoryId;
-  titleRu: string;
+  title: string;
   count: number;
   onClick: () => void;
 }) {
-  // `title_ru` из azkar.json — «Утренние азкары» / «Вечерние азкары».
-  // Фолбэк на случай, если категория придёт без названия.
-  const title = titleRu || (id === 'morning' ? 'Утренние азкары' : 'Вечерние азкары');
-  const eyebrow = 'Азкары';
-
-  // Russian count pluralisation for "азкар".
-  const lastTwo = count % 100;
-  const last = count % 10;
-  const noun =
-    (lastTwo >= 11 && lastTwo <= 14) ? 'азкаров'
-    : last === 1 ? 'азкар'
-    : last >= 2 && last <= 4 ? 'азкара'
-    : 'азкаров';
-
-  // Press-effect state — light squish, no brightness change to match
-  // the quieter visual weight of the recents-card style.
   const [pressed, setPressed] = useState(false);
   const release = () => setPressed(false);
+  const Icon = id === 'evening' ? Sunset : Sunrise;
 
   return (
     <button
@@ -213,70 +218,82 @@ function CategoryCard({
       onPointerLeave={release}
       onPointerCancel={release}
       style={{
-        display: 'block',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: '18px',
         width: '100%',
-        padding: '20px 22px 18px',
-        background: 'var(--surface)',
+        height: '100%',
+        padding: '24px 26px',
+        borderRadius: '20px',
         border: '1px solid var(--hairline)',
-        borderRadius: '18px',
+        background: 'var(--surface)',
         cursor: 'pointer',
         textAlign: 'left',
         fontFamily: 'inherit',
         color: 'inherit',
         transform: pressed ? 'scale(0.985)' : 'scale(1)',
-        transition: 'transform 180ms cubic-bezier(0.4, 0, 0.2, 1)',
-        willChange: 'transform',
+        transition: 'transform 180ms cubic-bezier(0.4,0,0.2,1), background 140ms ease',
+        WebkitTapHighlightColor: 'transparent',
       }}
     >
-      <div style={{
-        fontSize: '10.5px',
-        fontWeight: 600,
-        color: 'var(--text-tertiary)',
-        letterSpacing: '0.14em',
-        textTransform: 'uppercase',
-      }}>
-        {eyebrow}
-      </div>
-      <div
-        className="display-serif"
+      <span
+        aria-hidden
         style={{
-          marginTop: '10px',
-          fontSize: 'clamp(24px, 5.8vw, 28px)',
-          color: 'var(--text-primary)',
-          fontWeight: 400,
-          letterSpacing: '-0.015em',
-          lineHeight: 1.15,
+          flexShrink: 0,
+          width: '56px', height: '56px',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '9999px',
+          background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
+          border: '1px solid var(--hairline)',
+          color: 'var(--text-secondary)',
         }}
       >
-        {title}
-      </div>
-      <div style={{
-        marginTop: '12px',
-        fontSize: '12px',
-        fontWeight: 500,
-        letterSpacing: '0.005em',
-        color: 'var(--text-secondary)',
-        fontVariantNumeric: 'tabular-nums',
-      }}>
-        {count} {noun}
-      </div>
+        <Icon size={26} />
+      </span>
+
+      <span style={{ minWidth: 0 }}>
+        <span
+          className="display-serif"
+          style={{
+            display: 'block',
+            fontSize: 'clamp(22px, 6vw, 27px)',
+            fontWeight: 400,
+            letterSpacing: '-0.015em',
+            color: 'var(--text-primary)',
+            lineHeight: 1.15,
+          }}
+        >
+          {title}
+        </span>
+        <span style={{
+          display: 'block', marginTop: '7px',
+          fontSize: '13px',
+          color: 'var(--text-tertiary)',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {count} {azkarWord(count)}
+        </span>
+      </span>
     </button>
   );
 }
 
-/** Skeleton placeholder while azkar.json loads. */
+/** Заглушка на время загрузки azkar.json.  Повторяет и геометрию, и
+ *  положение карточек, чтобы при появлении данных ничего не прыгнуло. */
 function CategorySkeleton() {
   return (
-    <div style={{ display: 'grid', gap: '14px' }}>
+    <div style={{
+      flex: 1,
+      display: 'grid',
+      gridTemplateRows: 'repeat(2, minmax(120px, 1fr))',
+      gap: '14px',
+      alignContent: 'end',
+      paddingTop: '8px',
+    }}>
       {Array.from({ length: 2 }).map((_, i) => (
-        <div
-          key={i}
-          className="skeleton"
-          style={{
-            height: '140px',
-            borderRadius: '22px',
-          }}
-        />
+        <div key={i} className="skeleton" style={{ borderRadius: '20px' }} />
       ))}
     </div>
   );
