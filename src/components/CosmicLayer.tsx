@@ -2,7 +2,11 @@
  * CosmicLayer — фон темы «Аврора».
  *
  * Один слой: <Aurora> в режиме рамки — мягкое свечение по краям
- * экрана, чистый центр, ничего не движется.
+ * экрана и чистый центр.  Рамка медленно дышит, и по ней волной
+ * обходит светлая зона: сверху вниз по одному краю и обратно вверх
+ * по другому.  Движение намеренно на грани заметности — читают тут
+ * подолгу, и всё, что глаз ловит как «шевелится», через полчаса
+ * начинает мешать.
  *
  * Звёздное поле (<CosmicWarp>, 3D-пролёт на canvas) было убрано:
  * в кадре постоянно шло движение, а тут подолгу читают длинные
@@ -20,17 +24,32 @@
  *
  * Отличие от QuranIng: там сцена собиралась из восьми localStorage-
  * префов (режим звёзд, скорость, плотность, палитра, направление,
- * яркость…) и слушала событие `cosmic-changed`, чтобы подхватывать
- * правки из панели настроек.  Здесь «Аврора» — одна тема с
- * фиксированным видом, поэтому ни состояния, ни подписок нет:
- * константы приезжают из AURORA_SCENE.
+ * яркость…).  Здесь настраиваются только две вещи — скорость дыхания
+ * и скорость течения рамки (lib/auroraPrefs.ts); остальное зашито
+ * в AURORA_SCENE.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Aurora } from './Aurora';
 import { AURORA_ICE, AURORA_SCENE } from '../lib/cosmic';
+import {
+  getAuroraPulse, getAuroraFlow, onAuroraPrefsChange,
+  PULSE_SECONDS, FLOW_SECONDS,
+} from '../lib/auroraPrefs';
 
 export function CosmicLayer() {
+  // Скорость дыхания и течения рамки.  Читаем при монтировании и
+  // пересчитываем по событию из попапа оформления — иначе смена
+  // настройки была бы видна только после перезапуска.
+  const [speeds, setSpeeds] = useState(() => ({
+    pulse: PULSE_SECONDS[getAuroraPulse()],
+    flow: FLOW_SECONDS[getAuroraFlow()],
+  }));
+  useEffect(() => onAuroraPrefsChange(() => setSpeeds({
+    pulse: PULSE_SECONDS[getAuroraPulse()],
+    flow: FLOW_SECONDS[getAuroraFlow()],
+  })), []);
+
   // Проецируем палитру сияния на CSS-переменную караоке-подсветки,
   // чтобы активное слово загоралось тем же цветом, что и небо.
   // Правило в index.css падает на нейтральное свечение, когда
@@ -64,6 +83,8 @@ export function CosmicLayer() {
       <Aurora
         brightness={AURORA_SCENE.auroraBrightness}
         direction={AURORA_SCENE.auroraDirection}
+        pulseSeconds={speeds.pulse}
+        flowSeconds={speeds.flow}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 /**
- * Aurora — полярное сияние сверху экрана с медленным дрифтом.
+ * Aurora — полярное сияние: свечение сверху экрана либо мягкая живая
+ * рамка по краям (direction: 'frame' — то, что использует QuranRu).
  *
  * Один DOM-слой свечения, ноль JS/RAF, GPU-only анимация. Имитирует
  * настоящее полярное сияние: мягкий цветной свет в верхней части
@@ -81,7 +82,44 @@ type Props = {
   brightness?: number;         // 0.1 – 1.0
   speed?: number;              // deprecated — дрифт фиксирован, не используется
   direction?: AuroraDirection; // 'top' (по умолч.) | 'bottom' | 'frame'
+  /** Полный цикл дыхания рамки, секунды.  0 — рамка не дышит. */
+  pulseSeconds?: number;
+  /** Полный обход свечения вокруг экрана, секунды.  0 — не течёт. */
+  flowSeconds?: number;
 };
+
+/**
+ * Шесть точек на периметре, по которым идёт волна.  Каждая дуга — свой
+ * небольшой слой, а не кусок общего полноэкранного фона: анимированный
+ * элемент браузер уводит в отдельную текстуру, и шесть маленьких
+ * текстур дешевле по видеопамяти, чем шесть полноэкранных.
+ *
+ * x/y — точка на краю в процентах вьюпорта, w/h — размер пятна.  Бокс
+ * центрируется на этой точке, поэтому половина пятна уходит за экран:
+ * ядро светится ровно на кромке, а внутрь идёт только мягкий спад.
+ *
+ * Порядок обхода — по часовой стрелке от верха: волна уходит вниз по
+ * правому краю, проходит низ и поднимается по левому.
+ */
+const ARCS = [
+  { x: 26,  y: 0,   w: 68, h: 40, accent: false },
+  { x: 74,  y: 0,   w: 62, h: 36, accent: true  },
+  { x: 100, y: 42,  w: 44, h: 64, accent: false },
+  { x: 70,  y: 100, w: 66, h: 38, accent: true  },
+  { x: 28,  y: 100, w: 64, h: 40, accent: false },
+  { x: 0,   y: 60,  w: 42, h: 60, accent: true  },
+] as const;
+
+/**
+ * Два больших мягких пятна у боковых кромок — то самое «перетекание
+ * сверху вниз».  Периоды заданы долями от цикла течения и подобраны
+ * так, чтобы не делиться нацело друг на друга: 0.44 и 0.61 совпадут
+ * снова только через сотни оборотов, и глаз не поймает повтор.
+ */
+const SINKS = [
+  { x: 8,  w: 62, h: 66, accent: true,  factor: 0.44 },
+  { x: 92, w: 58, h: 62, accent: false, factor: 0.61 },
+] as const;
 
 // Заменяет alpha в строке rgba(r,g,b,a) на новое значение.
 // Палитра в unlocks.ts хранит готовые rgba-строки без color-mix(),
@@ -137,7 +175,12 @@ const AURORA_INNER_STYLE_BASE = {
   backfaceVisibility: 'hidden',
 } as const;
 
-function AuroraImpl({ brightness = 0.45, direction = 'top' }: Props) {
+function AuroraImpl({
+  brightness = 0.45,
+  direction = 'top',
+  pulseSeconds = 0,
+  flowSeconds = 0,
+}: Props) {
   const colors = AURORA_ICE;
 
   // SSR-безопасно: на сервере — без редукции, на клиенте — детектируем
@@ -189,8 +232,11 @@ function AuroraImpl({ brightness = 0.45, direction = 'top' }: Props) {
   //    быстрое затухание (~14-20% от viewport) → transparent;
   //  - 4 малых радиальных «пятнышка» по серединам краёв для лёгкой
   //    органической неравномерности (фог не идеально ровный);
-  //  - без drift-анимации (рамка стоит на месте — реалистично для
-  //    эффекта конденсата).
+  //  - поверх ободка — «жизнь»: медленное дыхание всей рамки и волна,
+  //    обходящая экран по кругу (ARCS), плюс два пятна, протекающих
+  //    сверху вниз у боковых кромок (SINKS).  Ободок при этом остаётся
+  //    самостоятельным: выключи движение — вид вернётся к прежнему
+  //    статичному конденсату, а не к пустому экрану.
   if (direction === 'frame') {
     // Для дымки берём более слабый alpha чем core — конденсат светится
     // мягко, не светит как лампа.
@@ -228,13 +274,37 @@ function AuroraImpl({ brightness = 0.45, direction = 'top' }: Props) {
         ${color} 0%,
         transparent 70%)`;
 
+    // Тона движущейся волны.  Ярче дымки, но ненамного: волна должна
+    // читаться как «в этом месте сияние сейчас сильнее», а не как
+    // отдельный источник света, ползущий по экрану.
+    const waveCore = withAlpha(colors.layer1, 0.30);
+    const waveCoreMid = withAlpha(colors.layer1, 0.12);
+    const waveAccent = withAlpha(colors.layer2, 0.26);
+    const waveAccentMid = withAlpha(colors.layer2, 0.10);
+
+    const blob = (accent: boolean) =>
+      `radial-gradient(ellipse 50% 50% at 50% 50%,
+        ${accent ? waveAccent : waveCore} 0%,
+        ${accent ? waveAccentMid : waveCoreMid} 34%,
+        transparent 72%)`;
+
+    // Анимации включаются только если движение вообще разрешено и
+    // пользователь не поставил «Выкл».
+    const alive = !reduced;
+    const breathing = alive && pulseSeconds > 0;
+    const flowing = alive && flowSeconds > 0;
+
     return (
       <div
         className="fixed inset-0 z-0 pointer-events-none overflow-hidden"
         aria-hidden="true"
         style={{ opacity: brightness, ...AURORA_CONTAINER_STYLE_BASE }}
       >
+        {/* Ободок.  Он и есть рамка: волна только подсвечивает то, что
+            уже нарисовано, поэтому свечение никогда не пропадает
+            целиком, даже когда движение выключено. */}
         <div
+          className="aurora-rim"
           style={{
             position: 'absolute',
             inset: 0,
@@ -250,9 +320,57 @@ function AuroraImpl({ brightness = 0.45, direction = 'top' }: Props) {
               ${leftMist},
               ${rightMist}
             `,
+            animation: breathing
+              ? `auroraBreath ${pulseSeconds}s ease-in-out infinite`
+              : undefined,
             ...AURORA_INNER_STYLE_BASE,
           }}
         />
+
+        {/* Волна: шесть дуг с одним кадром и разными фазами.
+            Отрицательная задержка сдвигает дугу вперёд по циклу — к
+            моменту первого кадра каждая уже стоит на своём месте, без
+            «разгона» в начале. */}
+        {flowing && ARCS.map((a, i) => (
+          <div
+            key={`arc-${i}`}
+            className="aurora-arc"
+            style={{
+              position: 'absolute',
+              left: `${a.x - a.w / 2}%`,
+              top: `${a.y - a.h / 2}%`,
+              width: `${a.w}%`,
+              height: `${a.h}%`,
+              background: blob(a.accent),
+              opacity: 0,
+              animation: `auroraWave ${flowSeconds}s linear infinite`,
+              animationDelay: `${-(i / ARCS.length) * flowSeconds}s`,
+              willChange: 'opacity, transform',
+              backfaceVisibility: 'hidden',
+            }}
+          />
+        ))}
+
+        {/* Протекание сверху вниз у боковых кромок. */}
+        {flowing && SINKS.map((b, i) => (
+          <div
+            key={`sink-${i}`}
+            className="aurora-sink"
+            style={{
+              position: 'absolute',
+              left: `${b.x - b.w / 2}%`,
+              top: `${50 - b.h / 2}%`,
+              width: `${b.w}%`,
+              height: `${b.h}%`,
+              background: blob(b.accent),
+              opacity: 0,
+              animation: `auroraSink ${Math.round(flowSeconds * b.factor)}s ease-in-out infinite`,
+              animationDelay: `${-i * 7}s`,
+              willChange: 'opacity, transform',
+              backfaceVisibility: 'hidden',
+            }}
+          />
+        ))}
       </div>
     );
   }
