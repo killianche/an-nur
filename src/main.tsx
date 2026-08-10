@@ -6,6 +6,18 @@ import { initSentry } from './lib/sentry';
 import { initGlobalErrorHandlers } from './lib/globalErrors';
 import { initAudioStore } from './lib/audioStore';
 import { armAutoDownload } from './lib/audioAutoDownload';
+import { Capacitor } from '@capacitor/core';
+
+// Отметка «мы внутри нативной обёртки» на <html>.
+//
+// Нужна, чтобы правила, придуманные для приложения, не портили жизнь
+// веб-версии.  Первый такой случай — запрет «резинки» прокрутки:
+// в приложении он обязателен (без него уезжает закреплённая шапка),
+// а на сайте это лишнее ограничение поведения, которое человек ждёт
+// от обычной страницы.
+if (Capacitor.isNativePlatform()) {
+  document.documentElement.setAttribute('data-native', '');
+}
 
 // Sentry init — no-op без VITE_SENTRY_DSN.  На прод DSN передаётся
 // через .env.production.local (см. lib/sentry.ts header).
