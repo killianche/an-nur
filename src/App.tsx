@@ -14,6 +14,7 @@ import { applyHighlightVars } from './lib/audioPrefs';
 import { applyPaletteToDocument } from './lib/tajweedPalette';
 import { syncStatusBarToTheme } from './lib/nativeStatusBar';
 import { hideSplashAfterFirstPaint } from './lib/nativeSplash';
+import { wireAndroidBackButton } from './lib/androidBack';
 import type { AzkarCategoryId } from './lib/azkar';
 
 /**
@@ -71,7 +72,10 @@ export default function App() {
     // Привязываем текущую запись истории к стартовому экрану, чтобы
     // последующие history.back() не откатились в состояние, оставшееся
     // от прошлой перезагрузки или hot-reload'а.
-    history.replaceState({ screen: INITIAL_SCREEN }, '');
+    // `root: true` помечает самую первую запись истории.  По ней
+    // обработчик аппаратной «назад» на Android отличает «мы в корне,
+    // выходить» от «есть куда возвращаться» — см. lib/androidBack.ts.
+    history.replaceState({ screen: INITIAL_SCREEN, root: true }, '');
     const onPop = (e: PopStateEvent) => {
       // popstate прилетает ДО перерисовки, поэтому window.scrollY здесь
       // ещё принадлежит уходящему экрану — момент снять его позицию.
@@ -83,7 +87,11 @@ export default function App() {
       setScreen((e.state?.screen ?? INITIAL_SCREEN) as Screen);
     };
     window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    const unwireBack = wireAndroidBackButton();
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      unwireBack();
+    };
   }, []);
 
   // Инжектим <style id="tajweed-palette"> — по одному блоку
