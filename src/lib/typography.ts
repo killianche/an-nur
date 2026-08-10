@@ -92,7 +92,26 @@ export type ArabicFont = {
   endMarkerScale?: number;
 };
 
-export const ARABIC_FONTS: ArabicFont[] = [
+/**
+ * Цветной таджвид временно снят с витрины.
+ *
+ * Почему не удалён: режим рабочий, но его 604 постраничных шрифта
+ * весят 158 МБ и обязаны лежать в пакете — цвет на iPhone берётся из
+ * SVG-таблицы, а публичный CDN отдаёт только COLRv1, который Safari
+ * не умеет.  Решение владельца: пока спрятать, вернуться позже.
+ *
+ * Как вернуть (три шага, всё лежит в git):
+ *   1. TAJWEED_ENABLED = true;
+ *   2. вернуть `assets-optional/fonts` в `public/fonts`;
+ *   3. раскомментировать @import "./styles/tajweed-fonts.css" в index.css.
+ *
+ * Сохранённый у пользователя выбор мигрирует сам: readPref сверяется
+ * со списком разрешённых id, а 'qpc-v4-tajweed' в него больше не
+ * попадает — человек молча оказывается на «Усмани».
+ */
+export const TAJWEED_ENABLED = false;
+
+const ALL_ARABIC_FONTS: ArabicFont[] = [
   {
     // Uthmani — Unicode Uthmani text in KFGQPC Uthmanic Hafs v22.
     // First in the list AND first-run default: clean Unicode rendering
@@ -137,6 +156,10 @@ export const ARABIC_FONTS: ArabicFont[] = [
     fontPxOffset: 13,
   },
 ];
+
+export const ARABIC_FONTS: ArabicFont[] = ALL_ARABIC_FONTS.filter(
+  f => TAJWEED_ENABLED || f.kind !== 'tajweed',
+);
 
 export const ARABIC_FONT_IDS: ArabicFontId[] = ARABIC_FONTS.map(f => f.id);
 

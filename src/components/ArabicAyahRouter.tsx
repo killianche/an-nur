@@ -62,7 +62,7 @@ export function ArabicAyahRouter({
   const ed = useEdition(verseKey);
   const pxOffset = cfg.fontPxOffset ?? 0;
   // Tajweed data — lazy-loaded async; null пока грузится / нет данных.
-  const tajweedData = useTajweedAyah(verseKey);
+  const tajweedData = useTajweedAyah(verseKey, cfg.kind === 'tajweed');
 
   // V4 mushaf default — already in `words` from the QCF feed.
   if (cfg.kind === 'qcf-v4') {

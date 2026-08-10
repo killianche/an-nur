@@ -36,11 +36,24 @@ export function loadTajweedModule(): Promise<GlyphsModule> {
  * не resolved — возвращает null (вызывающий компонент должен показать
  * fallback, обычно обычный QcfAyahLine).
  */
-export function useTajweedAyah(verseKey: string): TajweedAyahData | null {
+export function useTajweedAyah(
+  verseKey: string,
+  /**
+   * Включён ли режим таджвида прямо сейчас.
+   *
+   * Без этого флага было тихо плохо: хук вызывается из
+   * ArabicAyahRouter безусловно (React запрещает условные хуки), а его
+   * эффект дёргал loadTajweedModule() при первом же аяте — то есть
+   * словарь на 3 МБ приезжал КАЖДОМУ, включая тех, кто таджвид ни разу
+   * не открывал.  Ленивое разбиение существовало, но не работало.
+   */
+  enabled: boolean,
+): TajweedAyahData | null {
   const [data, setData] = useState<TajweedAyahData | null>(() => {
-    return cached ? cached.getTajweedAyah(verseKey) : null;
+    return enabled && cached ? cached.getTajweedAyah(verseKey) : null;
   });
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     if (cached) {
       setData(cached.getTajweedAyah(verseKey));
@@ -50,6 +63,6 @@ export function useTajweedAyah(verseKey: string): TajweedAyahData | null {
       });
     }
     return () => { alive = false; };
-  }, [verseKey]);
+  }, [verseKey, enabled]);
   return data;
 }

@@ -17,7 +17,11 @@
    разворачиваются в правила прямо на месте. */
 
 @import "tailwindcss";
-@import "./styles/tajweed-fonts.css";
+/* @import "./styles/tajweed-fonts.css";  ← 604 @font-face цветного
+   таджвида.  Режим временно скрыт (см. TAJWEED_ENABLED в
+   lib/typography.ts); правила занимали ~120 КБ из 126 КБ всего CSS и
+   ссылались на шрифты, которых в сборке больше нет.  Вернуть вместе
+   с флагом. */
 
 /* Inter — локальные подсеты вместо @import с fonts.googleapis.com.
    Скачано с fonts.gstatic.com (v20), лицензия OFL.  Оставлены только
