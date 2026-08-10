@@ -24,7 +24,6 @@ const ROOT = resolve(__dirname, '..');
 
 const mod = await import(pathToFileURL(resolve(ROOT, 'src/lib/ayahNumbering.ts')).href);
 const searchMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/search.ts')).href);
-const { JUZ_SECTIONS } = await import(pathToFileURL(resolve(ROOT, 'src/lib/juz.ts')).href);
 const {
   globalAyahNumber, ayahsInSurah, firstGlobalOfSurah, juzRange,
   TOTAL_AYAHS, TOTAL_SURAHS,
@@ -172,59 +171,6 @@ group('Определение «сура скачана целиком»', () =>
   for (let a = 1; a <= ayahsInSurah(114); a++) set(globalAyahNumber(114, a));
   check('Ан-Нас целиком у границы', inSurah(114) === ayahsInSurah(114), true);
   check('предыдущая сура не задета', inSurah(113), 0);
-});
-
-// ─── Разрез по джузам ─────────────────────────────────────────────────
-// Отдельно от juzRange: там сквозные номера, здесь — пары «сура, аят»,
-// которые видит человек на экране. Сдвиг на единицу выглядит
-// правдоподобно и глазами не ловится.
-group('Разрез по джузам для экрана', () => {
-  check('джузов ровно 30', JUZ_SECTIONS.length, 30);
-
-  const first = JUZ_SECTIONS[0].rows[0];
-  check('джуз 1 начинается с 1:1',
-    [first.meta.number, first.from], [1, 1]);
-
-  const j30 = JUZ_SECTIONS[29].rows;
-  const lastRow = j30[j30.length - 1];
-  check('джуз 30 кончается на 114:6',
-    [lastRow.meta.number, lastRow.to], [114, 6]);
-
-  const j2 = JUZ_SECTIONS[1].rows;
-  check('джуз 2 — это середина Аль-Бакары, 2:142',
-    [j2.length, j2[0].meta.number, j2[0].from], [1, 2, 142]);
-  check('и он не сура целиком', j2[0].whole, false);
-
-  // Главная проверка: отрезки идут встык и покрывают все 6236 аятов
-  // ровно по разу.
-  const seen = new Uint8Array(TOTAL_AYAHS + 1);
-  let prev = 0, broken = 0;
-  for (const { rows } of JUZ_SECTIONS) {
-    for (const r of rows) {
-      if (r.to < r.from) broken++;
-      const from = globalAyahNumber(r.meta.number, r.from);
-      if (from !== prev + 1) broken++;
-      for (let n = from; n <= from + (r.to - r.from); n++) seen[n]++;
-      prev = from + (r.to - r.from);
-    }
-  }
-  check('отрезки идут встык', broken, 0);
-  check('последний отрезок доходит до конца Корана', prev, TOTAL_AYAHS);
-
-  let notOnce = 0;
-  for (let n = 1; n <= TOTAL_AYAHS; n++) if (seen[n] !== 1) notOnce++;
-  check('каждый аят попал ровно в один джуз', notOnce, 0);
-
-  // Флаг whole не должен врать: он решает, показывать «286 аятов»
-  // или «Аяты 142–286».
-  let wrongWhole = 0;
-  for (const { rows } of JUZ_SECTIONS) {
-    for (const r of rows) {
-      const isWhole = r.from === 1 && r.to === ayahsInSurah(r.meta.number);
-      if (isWhole !== r.whole) wrongWhole++;
-    }
-  }
-  check('флаг «сура целиком» согласован с границами', wrongWhole, 0);
 });
 
 // ─── Поиск по переводу ────────────────────────────────────────────────
