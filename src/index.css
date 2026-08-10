@@ -275,24 +275,25 @@
    телефона она съела бы половину ширины, а ради неё пришлось бы
    ломать вёрстку ленты аятов. */
 [data-theme="mushaf"] {
-  /* Тон canvas обязан совпадать с тоном, запечённым в
-     /textures/paper-mushaf.webp (см. components/PaperLayer.tsx): на
-     широком экране картинка не покрывает всё поле, и разошедшиеся
-     тона дали бы видимый шов. */
-  --canvas:        #f9f2e2;   /* яркая светло-бежевая бумага */
-  --canvas-soft:   #f4ecd9;
-  --surface:       #fdfaf2;   /* карточка — лист посветлее сверху */
-  --surface-strong:#efe4cd;
+  /* Белая бумага, а не кремовая: тон снят по решению владельца — от
+     темы нужна фактура, а не оттенок.  Палитра повторяет светлую тему,
+     отличие только в фоне-фотографии (см. components/PaperLayer.tsx).
+     Тон canvas должен совпадать с самой светлой частью фактуры, иначе
+     на широком экране, где картинка не покрывает всё поле, виден шов. */
+  --canvas:        #ffffff;
+  --canvas-soft:   #fbfbfa;
+  --surface:       #ffffff;
+  --surface-strong:#f2f2f0;
 
-  --ink:           #2a2016;   /* тёплая тёмно-коричневая краска */
-  --ink-soft:      #3b2e22;
-  --body:          #55442f;
-  --muted:         #8a7454;
-  --muted-soft:    #ab9673;
+  --ink:           #000000;
+  --ink-soft:      #1f1f1f;
+  --body:          #3a3a3a;
+  --muted:         #6b6b6b;
+  --muted-soft:    #9c9c9c;
 
-  --hairline:        #e2d5b8;
-  --hairline-soft:   #ede3cd;
-  --hairline-strong: #cbb890;
+  --hairline:        #e3e3e0;
+  --hairline-soft:   #efefec;
+  --hairline-strong: #cdcdc9;
 }
 
 /* Алиасы — семантические имена поверх палитры активной темы. */

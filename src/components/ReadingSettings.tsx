@@ -526,14 +526,14 @@ const THEME_PREVIEW: Record<Theme,
   { canvas: string; ink: string; glow?: string; glowSize?: string }> = {
   light:  { canvas: '#ffffff', ink: '#111111' },
   mushaf: {
-    canvas: '#f9f2e2',
-    ink: '#2a2016',
+    canvas: '#ffffff',
+    ink: '#000000',
     // Превью показывает ту же фотографию бумаги, что и сама тема, —
     // иначе на карточке ровная заливка, а на экране фактура, и выбор
     // делается вслепую.  Виньетка сверху усилена: на 96×64 еле
     // заметная тень по краям не читалась бы совсем.
     glow:
-      'radial-gradient(120% 100% at 50% 50%, transparent 45%, rgba(120,96,58,0.24) 100%),' +
+      'radial-gradient(120% 100% at 50% 50%, transparent 45%, rgba(60,60,58,0.20) 100%),' +
       ' url(/textures/paper-mushaf.webp)',
     // Без cover картинка 1240×1860 легла бы в карточку 96×64 своим
     // натуральным размером — вместо бумаги был бы её случайный угол.
