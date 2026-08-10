@@ -188,15 +188,34 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
 /**
  * Крупная карточка категории.
  *
- * Занимает половину свободной высоты — на телефоне это примерно
- * 250–300 px, то есть промахнуться невозможно даже на ходу.  Внутри
- * ничего лишнего: иконка времени суток, название и счётчик.
+ * Занимает половину свободной высоты — промахнуться невозможно даже на
+ * ходу.  Прижата к низу экрана: тянуться пальцем в верхнюю треть
+ * телефона неудобно, а пунктов тут всего два.
  *
- * Композиция диагональная: иконка в левом верхнем углу, подпись — в
- * левом нижнем.  Сначала содержимое стояло по центру, и карточка
- * высотой 300 px выглядела пустой: текст висел в середине, а сверху и
- * снизу оставались широкие поля ни с чем.  Разнеся два элемента по
- * углам, мы заполняем ту же площадь, ничего в неё не добавляя.
+ * ── Почему карточки цветные ───────────────────────────────────────────
+ *
+ * Сначала обе были одинаковыми серыми прямоугольниками и читались как
+ * строки таблицы: чтобы понять, куда жмёшь, приходилось читать текст.
+ * Теперь у утренних тёплый рассветный тон, у вечерних холодный
+ * закатный — категория узнаётся боковым зрением, до чтения.
+ *
+ * Тон задан фиксированными rgb с малой прозрачностью, а не переменными
+ * темы: смысл именно в «тепло против холода», и он должен сохраняться
+ * на всех пяти темах одинаково.  Прозрачность низкая (0.05–0.12), так
+ * что подложка остаётся подложкой и не спорит с текстом ни на белой
+ * бумаге, ни на чёрной канве.
+ *
+ * Крупный знак времени суток в углу — не украшение, а способ заполнить
+ * площадь: карточка высотой 300 px с одной строкой текста выглядит
+ * пустой, а дорисовывать в неё содержание нечего.  Он обрезается
+ * краем и уведён почти в прозрачность, чтобы работать как фактура,
+ * а не как вторая иконка.
+ *
+ * Чего здесь СОЗНАТЕЛЬНО нет: отметки «сейчас читать эти».  Время
+ * азкаров привязано к намазу (утренние — после фаджра, вечерние —
+ * после асра), а расписания в приложении пока нет.  Подсказка по
+ * часам была бы религиозным утверждением наугад.  Вернуться к этому
+ * после раздела «Намаз».
  */
 function CategoryCard({
   id, title, count, onClick,
@@ -208,7 +227,11 @@ function CategoryCard({
 }) {
   const [pressed, setPressed] = useState(false);
   const release = () => setPressed(false);
-  const Icon = id === 'evening' ? Sunset : Sunrise;
+  const evening = id === 'evening';
+  const Icon = evening ? Sunset : Sunrise;
+
+  // Рассвет — тёплый янтарь, закат — холодный индиго.
+  const tint = evening ? '86, 108, 190' : '214, 150, 74';
 
   return (
     <button
@@ -218,6 +241,8 @@ function CategoryCard({
       onPointerLeave={release}
       onPointerCancel={release}
       style={{
+        position: 'relative',
+        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-start',
@@ -227,33 +252,53 @@ function CategoryCard({
         height: '100%',
         padding: '24px 26px',
         borderRadius: '20px',
-        border: '1px solid var(--hairline)',
-        background: 'var(--surface)',
+        border: `1px solid rgba(${tint}, 0.22)`,
+        background: `
+          radial-gradient(120% 90% at 100% 0%, rgba(${tint}, 0.16) 0%, rgba(${tint}, 0.05) 45%, transparent 78%),
+          var(--surface)
+        `,
         cursor: 'pointer',
         textAlign: 'left',
         fontFamily: 'inherit',
         color: 'inherit',
         transform: pressed ? 'scale(0.985)' : 'scale(1)',
-        transition: 'transform 180ms cubic-bezier(0.4,0,0.2,1), background 140ms ease',
+        transition: 'transform 180ms cubic-bezier(0.4,0,0.2,1)',
         WebkitTapHighlightColor: 'transparent',
       }}
     >
+      {/* Знак времени суток фактурой в углу. */}
       <span
         aria-hidden
         style={{
-          flexShrink: 0,
-          width: '56px', height: '56px',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          borderRadius: '9999px',
-          background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
-          border: '1px solid var(--hairline)',
-          color: 'var(--text-secondary)',
+          position: 'absolute',
+          right: '-26px',
+          bottom: '-30px',
+          color: `rgba(${tint}, 0.5)`,
+          opacity: 0.28,
+          pointerEvents: 'none',
+          display: 'inline-flex',
         }}
       >
-        <Icon size={26} />
+        <Icon size={168} />
       </span>
 
-      <span style={{ minWidth: 0 }}>
+      <span
+        aria-hidden
+        style={{
+          position: 'relative',
+          flexShrink: 0,
+          width: '54px', height: '54px',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '9999px',
+          background: `rgba(${tint}, 0.16)`,
+          border: `1px solid rgba(${tint}, 0.28)`,
+          color: 'var(--text-primary)',
+        }}
+      >
+        <Icon size={25} />
+      </span>
+
+      <span style={{ position: 'relative', minWidth: 0 }}>
         <span
           className="display-serif"
           style={{
@@ -270,7 +315,7 @@ function CategoryCard({
         <span style={{
           display: 'block', marginTop: '7px',
           fontSize: '13px',
-          color: 'var(--text-tertiary)',
+          color: 'var(--text-secondary)',
           fontVariantNumeric: 'tabular-nums',
         }}>
           {count} {azkarWord(count)}
