@@ -397,11 +397,26 @@ body {
   letter-spacing: -0.018em;
 }
 
-/* Виньетка «Мусхафа» переехала в components/PaperLayer.tsx — она
-   рисуется поверх фотографии бумаги, а не под ней, иначе фактура
-   ложилась бы на тень и края выглядели грязными.  Заодно ушёл
-   `background-attachment: fixed`, который на iOS Safari работает
-   через раз и стоит перерисовки на прокрутке. */
+/* Фактура бумаги «Мусхафа».
+   Лежит фоном на <body>, а не отдельным фиксированным слоем, — чтобы
+   ехать ВМЕСТЕ с текстом. Пока слой был неподвижным, текст скользил
+   поверх фактуры, и лист читался как подложка за стеклом, а не как
+   сам лист.
+
+   `background-size: 100% auto` растягивает плитку по ширине окна;
+   `repeat-y` повторяет её вниз по всей высоте документа. Файл собран
+   зеркальным, поэтому повтор бесшовный (см. components/PaperLayer.tsx).
+
+   Виньетка осталась отдельным `fixed`-слоем в PaperLayer: она про свет
+   у кромок экрана, и если пустить её в прокрутку, получатся тёмные
+   полосы через каждую высоту экрана. */
+[data-theme="mushaf"] body {
+  background-image: url('/textures/paper-mushaf.webp');
+  background-repeat: repeat-y;
+  background-size: 100% auto;
+  background-position: top center;
+  background-attachment: scroll;
+}
 
 /* ─── Skeleton loader (used while alquran.cloud fetch is in flight) ─────────
    Shimmer is a moving gradient on top of a soft tinted base. Both colours are
