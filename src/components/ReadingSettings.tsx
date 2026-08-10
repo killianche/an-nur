@@ -19,10 +19,6 @@ import {
 // проверки `!!QURAN_SEGMENTS[reciter]`.  Заменено на сет-константу
 // в reciters.ts — тот же sync-чек, ноль bundle-overhead.
 import { RECITERS_WITH_SEGMENTS } from '../lib/reciters';
-import {
-  getAuroraPulse, setAuroraPulse, getAuroraFlow, setAuroraFlow,
-  AURORA_SPEEDS, AURORA_SPEED_LABELS, type AuroraSpeed,
-} from '../lib/auroraPrefs';
 import { Microphone, Close } from './icons';
 import { OfflineAudioCard } from './OfflineAudioCard';
 
@@ -507,103 +503,12 @@ export function ThemeSettings(p: ThemeProps) {
     <SettingsSheet onClose={p.onClose} title="Оформление" placement="top-popover" anchorEl={p.anchorEl}>
       <div style={{ display: 'grid', gap: '10px' }}>
         <ThemePicker theme={p.theme} setTheme={p.setTheme} />
-        {/* Карточка живёт только на «Авроре»: на остальных темах
-            свечения нет, и настраивать было бы нечего. */}
-        {p.theme === 'aurora' && <AuroraMotionCard />}
         {p.reciter && <HighlightCard reciter={p.reciter} />}
       </div>
     </SettingsSheet>
   );
 }
 
-/**
- * Скорость «жизни» свечения: дыхание и течение — двумя независимыми
- * рядами.
- *
- * Почему двумя, а не одним «уровнем анимации»: это разные раздражители.
- * Дыхание меняет яркость всей рамки и заметно боковым зрением; течение
- * перемещает светлое пятно и заметно, только если специально смотреть.
- * Кому-то мешает первое, кому-то второе — общий ползунок заставил бы
- * выключать оба ради одного.
- */
-function AuroraMotionCard() {
-  const [pulse, setPulseS] = useState<AuroraSpeed>(getAuroraPulse);
-  const [flow, setFlowS] = useState<AuroraSpeed>(getAuroraFlow);
-
-  return (
-    <section style={settingCard}>
-      <p style={cardTitle}>Живое свечение</p>
-
-      <p style={motionLabel}>Дыхание</p>
-      <SpeedPicker
-        value={pulse}
-        onChange={v => { setPulseS(v); setAuroraPulse(v); }}
-      />
-
-      <p style={{ ...motionLabel, marginTop: '14px' }}>Течение по краям</p>
-      <SpeedPicker
-        value={flow}
-        onChange={v => { setFlowS(v); setAuroraFlow(v); }}
-      />
-
-      <p style={{
-        margin: '12px 0 0', fontSize: '11.5px', lineHeight: 1.5,
-        color: 'var(--text-tertiary)',
-      }}>
-        Движение задумано на грани заметности. Если в системе включено
-        «Уменьшение движения», свечение остаётся неподвижным независимо
-        от этих настроек.
-      </p>
-    </section>
-  );
-}
-
-function SpeedPicker({ value, onChange }: {
-  value: AuroraSpeed;
-  onChange: (v: AuroraSpeed) => void;
-}) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
-      {AURORA_SPEEDS.map(id => {
-        const active = id === value;
-        return (
-          <button
-            key={id}
-            onClick={() => onChange(id)}
-            aria-pressed={active}
-            style={{
-              minHeight: '38px',
-              padding: '8px 0',
-              borderRadius: '10px',
-              border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline)'}`,
-              background: active
-                ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
-                : 'color-mix(in srgb, var(--ink) 3%, transparent)',
-              boxShadow: active ? 'inset 0 0 0 1px var(--text-primary)' : 'none',
-              color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: '11.5px',
-              fontWeight: active ? 600 : 500,
-              lineHeight: 1.2,
-            }}
-          >
-            {AURORA_SPEED_LABELS[id]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-const motionLabel: CSSProperties = {
-  margin: '0 0 8px',
-  fontSize: '10px',
-  fontWeight: 600,
-  color: 'var(--text-tertiary)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.10em',
-};
 
 /**
  * Превью темы на карточке.
