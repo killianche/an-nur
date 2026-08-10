@@ -233,7 +233,7 @@ export default function App() {
       )}
       {tab === 'prayer' && (
         <ErrorBoundary name="PrayerTimesScreen">
-          <PrayerTimesScreen />
+          <PrayerTimesScreen theme={theme} setTheme={setTheme} />
         </ErrorBoundary>
       )}
       {tab === 'qibla' && (
