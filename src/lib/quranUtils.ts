@@ -1,5 +1,4 @@
 import { reciterById, DEFAULT_RECITER, type ReciterId } from './reciters';
-import { SURAHS_WITH_LOCAL_AUDIO } from '../content/surahs';
 import { localAyahSrc } from './audioStore';
 import { globalAyahNumber } from './ayahNumbering';
 
@@ -19,19 +18,10 @@ export { globalAyahNumber, ayahsInSurah, TOTAL_AYAHS } from './ayahNumbering';
  *      только для аятов ниже «планки» скачанного; проверка
  *      синхронная, см. шапку lib/audioStore.ts.
  *
- *   1. Local origin — only for the default reciter (Alafasy) on surahs
- *      whose mp3s we ship in the bundle (SURAHS_WITH_LOCAL_AUDIO).
- *      Removes iOS Safari Range / CORS / UA-throttling issues, gives
- *      instant playback once the asset is in the SW cache, and avoids
- *      a TLS handshake against the CDN.
- *      Earlier this gate was keyed off SURAHS_WITH_CONTENT — but we
- *      expanded that set to all 114 surahs (so word-level segments
- *      cover everything), while the local mp3 inventory still only
- *      covers surahs 67-114.  The mismatch turned every play() in
- *      surahs 1-66 into an instant 404 on `/audio/N.mp3` followed by
- *      a panicked queue-cascade.  Splitting the gates fixes that —
- *      local audio is a strict subset of shipped content, and the
- *      two lists evolve independently.
+ *   1. Раньше вторым источником был локальный origin — 594 mp3 сур
+ *      67–114, лежавшие прямо в пакете.  Снято: тот же материал
+ *      приезжает докачкой, а в пакете он весил 53 МБ и дублировал
+ *      то, что автозагрузка кладёт в Library/NoCloud.
  *
  *   2. islamic.network — reciters with a `slug` (Alafasy / Shaatree /
  *      Husary / AbdulBasit).  Uses the global ayah number 1..6236.
@@ -51,9 +41,6 @@ function pad3(n: number): string {
 export function ayahAudioUrl(surah: number, ayah: number, reciter: ReciterId = DEFAULT_RECITER): string {
   const offline = localAyahSrc(surah, ayah, reciter);
   if (offline) return offline;
-  if (reciter === 'alafasy' && SURAHS_WITH_LOCAL_AUDIO.has(surah)) {
-    return `/audio/${globalAyahNumber(surah, ayah)}.mp3`;
-  }
   const r = reciterById(reciter);
   if (r.slug) {
     return `https://cdn.islamic.network/quran/audio/64/${r.slug}/${globalAyahNumber(surah, ayah)}.mp3`;

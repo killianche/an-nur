@@ -141,20 +141,19 @@ export const SURAHS_WITH_CONTENT = new Set([
   111, 112, 113, 114,
 ]);
 
-/** Suras for which the Alafasy mp3 files are bundled in
- *  `web/public/audio/<globalAyahNum>.mp3`. For these, the player
- *  serves audio from the local origin (instant, no CORS, no UA
- *  throttling); other surahs fall back to cdn.islamic.network.
+/**
+ * Раньше здесь жил список сур 67–114, чьи mp3 лежали прямо в пакете
+ * (`public/audio/<сквозной номер>.mp3`, 594 файла, 53 МБ).  Список
+ * снят вместе с файлами.
  *
- *  Keep this list in sync with the actual file inventory under
- *  `web/public/audio/` — bundling more surahs costs ~50 KB per ayah.
- *  Currently shipped: surahs 67-114 (the last 28 short surahs that
- *  the user is most likely to start with).  Add a surah here only
- *  after dropping its mp3s into the directory. */
-export const SURAHS_WITH_LOCAL_AUDIO = new Set([
-  67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
-  81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
-  91, 92, 93, 94, 95, 96, 97, 98, 99, 100,
-  101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
-  111, 112, 113, 114,
-]);
+ * Почему: после перехода на докачку по аятам (см. lib/audioDownloads)
+ * ровно тот же материал приезжает автоматически — приоритет загрузки
+ * начинается с Аль-Фатихи и джуза Амма.  Держать его ещё и в пакете
+ * значит возить одно и то же дважды: 53 МБ при установке плюс те же
+ * записи в Library/NoCloud после первой автозагрузки.
+ *
+ * Что изменилось для человека: на свежей установке без сети аудио
+ * не заиграет, пока не пройдёт автозагрузка (Wi-Fi, через 4 секунды
+ * после запуска) или пока он не включит стрим.  Раньше джуз Амма
+ * звучал сразу.
+ */
