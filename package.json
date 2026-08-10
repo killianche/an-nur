@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "check:sacred": "node scripts/check-sacred-text.mjs",
     "sync": "npm run build && npx cap sync",
-    "test": "node --experimental-strip-types --no-warnings scripts/test-audio-model.mjs",
+    "test": "node --experimental-strip-types --no-warnings --import ./scripts/ts-resolve.mjs scripts/test-audio-model.mjs",
     "check": "npm run test && npm run check:sacred && npm run build"
   },
   "dependencies": {

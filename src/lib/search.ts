@@ -163,6 +163,11 @@ export function search(raw: string): SearchResult {
   const strong: AyahHit[] = [];   // совпадение с начала слова
   const weak: AyahHit[] = [];     // совпадение внутри слова
   let total = 0;
+  // Вышли ли из цикла досрочно.  Без этого флага «обрезано» считалось
+  // как total > показанных, а при досрочном выходе total равен числу
+  // показанных — и признак молча терялся ровно в том случае, ради
+  // которого он и нужен.  Поймано тестом.
+  let stoppedEarly = false;
 
   for (const p of prepare()) {
     const at = p.norm.indexOf(norm);
@@ -186,14 +191,14 @@ export function search(raw: string): SearchResult {
       matchEnd: endOrig,
     };
     (isWordStart(p.norm, at) ? strong : weak).push(hit);
-    if (strong.length >= MAX_AYAH_HITS) break;
+    if (strong.length >= MAX_AYAH_HITS) { stoppedEarly = true; break; }
   }
 
   const ayahs = [...strong, ...weak].slice(0, MAX_AYAH_HITS);
   return {
     surahs,
     ayahs,
-    truncated: total > ayahs.length,
+    truncated: stoppedEarly || total > ayahs.length,
     tooShortForText: false,
   };
 }

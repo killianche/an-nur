@@ -2,7 +2,13 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- maximum-scale=1 + user-scalable=no: в нативной обёртке
+         масштабирование страницы не нужно и только вредит.  Проверено
+         на симуляторе: двойной тап по списку увеличивал вёрстку и
+         оставлял её увеличенной — вернуть можно было только вторым
+         двойным тапом, о котором никто не догадается.  Размер текста
+         меняется настройками чтения, а не жестом по всему интерфейсу. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a14" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#fcf7e9" media="(prefers-color-scheme: light)" />
     <meta name="description" content="КъорIа — чтение Корана с ингушским переводом, аудио и азкарами." />

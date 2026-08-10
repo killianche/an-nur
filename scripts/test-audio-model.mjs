@@ -23,6 +23,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
 const mod = await import(pathToFileURL(resolve(ROOT, 'src/lib/ayahNumbering.ts')).href);
+const searchMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/search.ts')).href);
 const {
   globalAyahNumber, ayahsInSurah, firstGlobalOfSurah, juzRange,
   TOTAL_AYAHS, TOTAL_SURAHS,
@@ -170,6 +171,58 @@ group('Определение «сура скачана целиком»', () =>
   for (let a = 1; a <= ayahsInSurah(114); a++) set(globalAyahNumber(114, a));
   check('Ан-Нас целиком у границы', inSurah(114) === ayahsInSurah(114), true);
   check('предыдущая сура не задета', inSurah(113), 0);
+});
+
+// ─── Поиск по переводу ────────────────────────────────────────────────
+group('Поиск по русскому переводу', () => {
+  const { search, snippet, normalise } = searchMod;
+
+  check('нормализация: регистр и ё',
+    normalise('ЕЁ Господу, миров!'), 'ее господу миров');
+  check('нормализация: пустой запрос', normalise('  ,,, '), '');
+
+  const g = search('Господу миров');
+  check('«Господу миров» находит аяты', g.ayahs.length > 0, true);
+  check('первый результат — 1:2 (Аль-Фатиха)',
+    [g.ayahs[0].surah, g.ayahs[0].ayah], [1, 2]);
+
+  // Подсветка обязана быть куском ОРИГИНАЛА, а не нормализованной
+  // строки — иначе пользователь увидит покалеченную цитату.
+  const h = g.ayahs[0];
+  const s = snippet(h);
+  check('подсветка вырезана из оригинала',
+    h.text.slice(h.matchStart, h.matchEnd), s.match);
+  check('подсветка совпадает с запросом без учёта регистра',
+    normalise(s.match), normalise('Господу миров'));
+
+  // ё и е — одна буква
+  check('«ее» и «её» дают одинаковое число совпадений',
+    search('еесли').ayahs.length, search('еёсли').ayahs.length);
+  const yo = search('Аллаху');
+  check('поиск с заглавной буквы работает', yo.ayahs.length > 0, true);
+  check('он же строчными даёт столько же',
+    search('аллаху').ayahs.length, yo.ayahs.length);
+
+  // Слишком короткий запрос по переводу не идёт
+  const short = search('ее');
+  check('запрос короче трёх букв не ищет по переводу',
+    [short.ayahs.length, short.tooShortForText], [0, true]);
+
+  // Поиск сур
+  check('сура по номеру', search('2').surahs.map(x => x.number), [2]);
+  check('сура по названию', search('Фатиха').surahs.map(x => x.number), [1]);
+  check('сура по переводу названия', search('Корова').surahs.map(x => x.number), [2]);
+  check('пустой запрос — пустой результат',
+    [search('').surahs.length, search('').ayahs.length], [0, 0]);
+  check('бессмысленный запрос ничего не находит',
+    [search('ыфваыфва').surahs.length, search('ыфваыфва').ayahs.length], [0, 0]);
+
+  // Ограничение выдачи
+  const many = search('и');
+  check('однобуквенный запрос не выдаёт полкорана', many.ayahs.length, 0);
+  const common = search('Аллах');
+  check('частое слово обрезается до лимита', common.ayahs.length <= 60, true);
+  check('и помечается как обрезанное', common.truncated, true);
 });
 
 // ─── Итог ─────────────────────────────────────────────────────────────
