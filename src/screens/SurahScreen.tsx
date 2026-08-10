@@ -35,9 +35,10 @@ import { useChunkedRender } from '../hooks/useChunkedRender';
 import { ArabicAyahRouter } from '../components/ArabicAyahRouter';
 import { loadArabicEditions } from '../lib/arabicEditions';
 import { ThemeSettings, TypographySettings } from '../components/ReadingSettings';
+import { AyahSearchSheet } from '../components/AyahSearchSheet';
 import { BottomDock } from '../components/BottomDock';
 import {
-  Typography, Appearance,
+  Typography, Appearance, Search,
   ArrowChevronRight, Bookmark as BookmarkIcon, Play, Pause,
 } from '../components/icons';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
@@ -64,6 +65,8 @@ type Props = {
    * Honoured once per surah change.
    */
   initialAyah?: number;
+  /** Открыть другую суру — нужен поиску по всему Корану из шапки. */
+  onOpenSurah?: (surah: number, ayah?: number) => void;
 };
 
 const LATIN_IDS:   LatinFontId[]  = ['inter-semibold', 'inter-regular', 'garamond', 'alice'];
@@ -80,7 +83,7 @@ function migrateLegacyScale() {
   localStorage.removeItem('fontScale');
 }
 
-export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah }: Props) {
+export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah, onOpenSurah }: Props) {
   migrateLegacyScale();
 
   // ── Audio ──────────────────────────────────────────────────────────────────
@@ -108,11 +111,12 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
 
   // ── Header popovers ────────────────────────────────────────────────────────
   const [jumpOpen,       setJumpOpen]       = useState(false);
+  const [searchOpen,     setSearchOpen]     = useState(false);
   const [themeOpen,      setThemeOpen]      = useState(false);
   const [typographyOpen, setTypographyOpen] = useState(false);
   const themeBtnRef      = useRef<HTMLButtonElement>(null);
   const typographyBtnRef = useRef<HTMLButtonElement>(null);
-  const closeAll = () => { setJumpOpen(false); setThemeOpen(false); setTypographyOpen(false); };
+  const closeAll = () => { setJumpOpen(false); setThemeOpen(false); setTypographyOpen(false); setSearchOpen(false); };
 
   // ── Desktop responsive ─────────────────────────────────────────────────────
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
@@ -175,7 +179,21 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
   // NOT call window.scrollTo(0,0) on navigation into a surah for this
   // reason, so any leftover scroll from the previous screen would persist
   // unless we handle it here.
-  const feedReady = !feedLoading && (feed?.ayahs.length ?? 0) > 0;
+  // Проверяем не только «лента загружена», но и «загружена ИМЕННО ЭТА
+  // сура».  Переход между сурами не размонтирует экран: меняется проп,
+  // а компонент тот же.  Из-за этого было две беды сразу.
+  //
+  // Первая: `feedReady` при переходе оставался true (лента предыдущей
+  // суры уже в кэше), зависимость не менялась, эффект не перезапускался
+  // — и переход «открыть аят 46 суры Йусуф» приводил на её начало.
+  // Поймано живым прогоном поиска по всему Корану.
+  //
+  // Вторая опаснее: пока новая лента грузится, в DOM ещё висят якоря
+  // СТАРОЙ суры.  У Аль-Бакары 286 аятов, значит `[data-ayah-anchor=46]`
+  // там есть — и мы бы уехали к 46-му аяту не той суры, молча и
+  // правдоподобно.  Сверка номера суры в самой ленте это исключает.
+  const feedSurah = feed?.ayahs[0]?.surah ?? null;
+  const feedReady = !feedLoading && (feed?.ayahs.length ?? 0) > 0 && feedSurah === surahNumber;
   useEffect(() => {
     if (!feedReady) return;
     const target = priorAyahToRestoreRef.current;
@@ -184,14 +202,48 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
       window.scrollTo(0, 0);
       return;
     }
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const el = document.querySelector(`[data-ayah-anchor="${target}"]`) as HTMLElement | null;
-        if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
-        else window.scrollTo(0, 0);
-      });
-    });
-  }, [feedReady]);
+    // Ждём появления самого якоря, а не просто пары кадров.
+    //
+    // Лента рендерится порциями (useChunkedRender): к моменту, когда
+    // «лента готова», в DOM есть только первые аяты.  Прежний код после
+    // двух кадров не находил, скажем, 46-й, молча уходил в «наверх» и
+    // ЗАБЫВАЛ цель — она уже была вынута из ref.  Снаружи это выглядело
+    // так: переход к найденному аяту открывает начало суры.  Поймано
+    // живым прогоном поиска по всему Корану.
+    //
+    // Ждём появления якоря на таймере, а не на requestAnimationFrame.
+    //
+    // rAF не тикает в скрытой вкладке.  На это я потратил несколько
+    // итераций отладки: цикл ожидания не запускался ни разу, и переход
+    // «открыть найденный аят» приводил на начало суры — хотя ручной
+    // вызов scrollIntoView в той же вкладке отрабатывал мгновенно.
+    // Для пользователя это тот же случай: открыл ссылку, ушёл в другое
+    // приложение, вернулся — и позиция потеряна.  setTimeout тикает
+    // всегда, а 50 мс на проверку для разовой прокрутки более чем
+    // достаточно.
+    //
+    // Ждать приходится потому, что лента рендерится порциями: в момент
+    // готовности данных в DOM есть только первые аяты, и 46-го ещё нет.
+    //
+    // Пять секунд — с запасом на медленный телефон и заведомо конечны,
+    // если аята с таким номером в суре нет вовсе.
+    const deadline = Date.now() + 5000;
+    let timer = 0;
+    const tryScroll = () => {
+      const el = document.querySelector(`[data-ayah-anchor="${target}"]`) as HTMLElement | null;
+      if (el) {
+        el.scrollIntoView({ behavior: 'auto', block: 'start' });
+        return;
+      }
+      if (Date.now() > deadline) {
+        window.scrollTo(0, 0);
+        return;
+      }
+      timer = window.setTimeout(tryScroll, 50);
+    };
+    tryScroll();
+    return () => window.clearTimeout(timer);
+  }, [feedReady, surahNumber]);
 
   // ── Track the ayah currently at the top of the viewport on user scroll ───
   // Without this, recent-ayah only ever updated on play / jump / auto-scroll,
@@ -448,12 +500,22 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
           // первом экране получалось два одинаковых текста подряд.
           onBack={onBack}
           actions={[
+            {
+              key: 'search',
+              label: 'Поиск по переводу',
+              icon: <Search size={20} />,
+              active: searchOpen,
+              onClick: () => {
+                setSearchOpen(v => !v);
+                setJumpOpen(false); setThemeOpen(false); setTypographyOpen(false);
+              },
+            },
             ...(meta && meta.ayahs > 10 ? [{
               key: 'jump',
               label: 'Перейти к аяту',
               icon: <ArrowChevronRight size={20} />,
               active: jumpOpen,
-              onClick: () => { setJumpOpen(v => !v); setThemeOpen(false); setTypographyOpen(false); },
+              onClick: () => { setJumpOpen(v => !v); setThemeOpen(false); setTypographyOpen(false); setSearchOpen(false); },
             }] : []),
             {
               key: 'type',
@@ -461,7 +523,7 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
               icon: <Typography size={20} />,
               active: typographyOpen,
               ref: typographyBtnRef,
-              onClick: () => { setTypographyOpen(v => !v); setJumpOpen(false); setThemeOpen(false); },
+              onClick: () => { setTypographyOpen(v => !v); setJumpOpen(false); setThemeOpen(false); setSearchOpen(false); },
             },
             {
               key: 'theme',
@@ -469,13 +531,22 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah 
               icon: <Appearance size={20} />,
               active: themeOpen,
               ref: themeBtnRef,
-              onClick: () => { setThemeOpen(v => !v); setJumpOpen(false); setTypographyOpen(false); },
+              onClick: () => { setThemeOpen(v => !v); setJumpOpen(false); setTypographyOpen(false); setSearchOpen(false); },
             },
           ]}
         />
       </div>
 
       {/* ── Popovers ──────────────────────────────────────────────────────── */}
+      {searchOpen && (
+        <AyahSearchSheet
+          surahNumber={surahNumber}
+          surahTitle={meta?.transliteration ?? `Сура ${surahNumber}`}
+          onClose={() => setSearchOpen(false)}
+          onJumpInSurah={jumpToAyahNumber}
+          onOpenOtherSurah={(s, a) => onOpenSurah?.(s, a)}
+        />
+      )}
       {jumpOpen && meta && (
         <JumpPopover
           maxAyah={meta.ayahs}

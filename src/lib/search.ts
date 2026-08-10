@@ -143,18 +143,29 @@ function searchSurahs(raw: string, norm: string): SurahMeta[] {
   });
 }
 
+export type SearchOptions = {
+  /**
+   * Искать только внутри одной суры.  Нужен для поиска из экрана
+   * чтения: человек уже читает конкретную суру, и «найти у себя»
+   * — самый частый запрос.  В этом режиме поиск по названиям сур
+   * не выполняется: искать сам себя бессмысленно.
+   */
+  surah?: number;
+};
+
 /**
  * Основной поиск.  Возвращает и суры, и аяты — экран решает, что
  * показать.
  */
-export function search(raw: string): SearchResult {
+export function search(raw: string, opts: SearchOptions = {}): SearchResult {
   const norm = normalise(raw);
   const empty: SearchResult = {
     surahs: [], ayahs: [], truncated: false, tooShortForText: false,
   };
   if (!norm) return empty;
 
-  const surahs = searchSurahs(raw, norm);
+  const scoped = opts.surah != null;
+  const surahs = scoped ? [] : searchSurahs(raw, norm);
 
   if (norm.replace(/\s/g, '').length < MIN_QUERY_FOR_TEXT) {
     return { surahs, ayahs: [], truncated: false, tooShortForText: true };
@@ -170,6 +181,7 @@ export function search(raw: string): SearchResult {
   let stoppedEarly = false;
 
   for (const p of prepare()) {
+    if (scoped && p.surah !== opts.surah) continue;
     const at = p.norm.indexOf(norm);
     if (at === -1) continue;
     total++;
