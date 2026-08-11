@@ -268,6 +268,29 @@ export const DragHandle = ({ size = 20 }: Props) => (
   </svg>
 );
 
+/** Глаз с чертой — «скрыть».  Тот же знак, что у Apple в SF Symbols
+ *  (eye.slash): именно он читается как «убрать с глаз», а не «удалить». */
+export const EyeOff = ({ size = 20 }: Props) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
+       aria-hidden>
+    <path d="M3 12s3.6-6 9-6c1.2 0 2.3.3 3.3.8" />
+    <path d="M19.4 8.6C20.5 9.9 21 12 21 12s-3.6 6-9 6c-1.2 0-2.3-.3-3.3-.8" />
+    <path d="M9.9 9.9a3 3 0 1 0 4.2 4.2" />
+    <path d="M4 20 20 4" />
+  </svg>
+);
+
+/** Галочка без круга — «уже добавлено».  Круг здесь лишний: кнопка и так
+ *  обведена, а второй контур внутри читался бы как отдельный элемент. */
+export const Check = ({ size = 20 }: Props) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"
+       aria-hidden>
+    <path d="M5 12.8 9.4 17 19 7" />
+  </svg>
+);
+
 export const Trash = ({ size = 18 }: Props) => (
   <svg {...stroke(size)}>
     <path d="M4.75 6.5h14.5" />

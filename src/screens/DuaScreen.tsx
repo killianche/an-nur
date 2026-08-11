@@ -38,7 +38,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Appearance, Bookmark, DragHandle, MinusCircleFill, Typography } from '../components/icons';
+import {
+  Appearance, Check, Close, DragHandle, EyeOff, MinusCircleFill, Plus, Typography,
+} from '../components/icons';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
 import { SourceDisclosure, TasbihPill } from '../components/DevotionalBits';
 import { azkarFontConfig, type AzkarFontId } from '../lib/azkarFonts';
@@ -52,9 +54,12 @@ import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
 import { loadDuaData, type DuaData, type DuaEntry } from '../lib/dua';
 import {
-  insertIntoDuaList, moveInDuaList, onDuaListChange, readDuaList,
-  removeFromDuaList, toggleInDuaList,
+  addToDuaList, insertIntoDuaList, moveInDuaList, onDuaListChange,
+  readDuaList, removeFromDuaList,
 } from '../lib/duaList';
+import {
+  hideDua, onHiddenDuaChange, readHiddenDua, unhideDua,
+} from '../lib/duaHidden';
 
 type Props = { theme: Theme; setTheme: (t: Theme) => void };
 type Mode = 'mine' | 'all';
@@ -96,6 +101,10 @@ export function DuaScreen({ theme, setTheme }: Props) {
   }, []);
 
   useEffect(() => onDuaListChange(() => setList(readDuaList())), []);
+
+  const [hidden, setHidden] = useState<string[]>(readHiddenDua);
+  const [hiddenOpen, setHiddenOpen] = useState(false);
+  useEffect(() => onHiddenDuaChange(() => setHidden(readHiddenDua())), []);
 
   // Правка живёт только в «моём списке»: в витрине нечего переставлять.
   useEffect(() => { if (mode !== 'mine') setEditing(false); }, [mode]);
@@ -142,19 +151,32 @@ export function DuaScreen({ theme, setTheme }: Props) {
     rememberUndo(entry.id, index < 0 ? 0 : index, entry.title_ru);
   }, [rememberUndo]);
 
-  const toggle = useCallback((entry: DuaEntry) => {
-    const index = readDuaList().indexOf(entry.id);
-    const nowIn = toggleInDuaList(entry.id);
-    // Снятие закладки — тоже потеря, и её тоже надо уметь вернуть.
-    if (nowIn) setUndo(null);
-    else rememberUndo(entry.id, index < 0 ? 0 : index, entry.title_ru);
-  }, [rememberUndo]);
+  /*
+   * Кнопка в витрине только добавляет.
+   *
+   * Раньше она была переключателем и снимала дуа из списка одним
+   * касанием — та же дыра, из-за которой убрали закладку с карточек
+   * «Моего списка».  Убирать теперь можно ровно в одном месте: «Мой
+   * список» → «Изменить».  Одно действие — одно место.
+   */
+  const add = useCallback((entry: DuaEntry) => {
+    addToDuaList(entry.id);
+    setUndo(null);
+  }, []);
 
-  const shown = useMemo(() => {
-    if (!data) return [];
-    if (category === null) return data.entries;
-    return data.entries.filter(e => e.category === category);
-  }, [data, category]);
+  // Витрина без скрытого: смысл скрытия в том, чтобы этого здесь не
+  // было.  «Мой список» не фильтруем — его человек собрал руками, и
+  // прятать оттуда никто не просил.
+  const visible = useMemo(
+    () => (data?.entries ?? []).filter(e => !hidden.includes(e.id)),
+    [data, hidden],
+  );
+  const shown = useMemo(() => (
+    category === null ? visible : visible.filter(e => e.category === category)
+  ), [visible, category]);
+  const hiddenEntries = hidden
+    .map(id => byId.get(id))
+    .filter((e): e is DuaEntry => !!e);
 
   return (
     <div style={{
@@ -269,11 +291,35 @@ export function DuaScreen({ theme, setTheme }: Props) {
         mode={mode}
         onChange={setMode}
         mineCount={mine.length}
-        allCount={total}
+        allCount={visible.length}
       />
 
       {mode === 'all' && total > 0 && data && data.categories.length > 1 && (
         <CategoryChips data={data} value={category} onChange={setCategory} />
+      )}
+
+      {/* Кнопка появляется только когда есть что возвращать: пустой
+          пункт «Скрытые · 0» был бы мусором на экране. */}
+      {mode === 'all' && hiddenEntries.length > 0 && (
+        <button
+          onClick={() => setHiddenOpen(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            width: '100%', minHeight: '40px', padding: '0 14px',
+            marginBottom: '14px',
+            borderRadius: '12px',
+            border: '1px dashed var(--hairline-strong)',
+            background: 'transparent',
+            color: 'var(--text-secondary)', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: '13px', textAlign: 'left',
+          }}
+        >
+          <EyeOff size={16} />
+          <span style={{ flex: 1 }}>Скрытые</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-tertiary)' }}>
+            {hiddenEntries.length}
+          </span>
+        </button>
       )}
 
       {!data && <Skeleton />}
@@ -324,7 +370,8 @@ export function DuaScreen({ theme, setTheme }: Props) {
                   entry={e}
                   inList={list.includes(e.id)}
                   delay={Math.min(i * 40, MAX_STAGGER_MS)}
-                  onToggle={() => toggle(e)}
+                  onAdd={() => add(e)}
+                  onHide={() => hideDua(e.id)}
                   prefs={prefs}
                   count={counts[e.id] ?? 0}
                   onCount={() => inc(e.id)}
@@ -335,6 +382,14 @@ export function DuaScreen({ theme, setTheme }: Props) {
               ))}
             </div>
           )
+      )}
+
+      {hiddenOpen && (
+        <HiddenSheet
+          entries={hiddenEntries}
+          onUnhide={id => unhideDua(id)}
+          onClose={() => setHiddenOpen(false)}
+        />
       )}
 
       {undo && (
@@ -501,14 +556,18 @@ function CategoryChips({ data, value, onChange }: {
  * нет вовсе.  Рисовать кнопку, которой нечего проиграть, — обман.
  */
 function DuaCard({
-  entry, ordinal, inList, delay, onToggle,
+  entry, ordinal, inList, delay, onAdd, onHide,
   prefs, count, onCount, onResetCount, sourceOpen, setSourceOpen,
 }: {
   entry: DuaEntry;
   ordinal?: number;
   inList: boolean;
   delay: number;
-  onToggle?: () => void;
+  /** Добавить в мой список.  Без него кнопки нет — так карточка в
+   *  «Моём списке» остаётся без действий над списком. */
+  onAdd?: () => void;
+  /** Скрыть из витрины.  Только в витрине. */
+  onHide?: () => void;
   prefs: DuaPrefs;
   count: number;
   onCount: () => void;
@@ -562,23 +621,57 @@ function DuaCard({
           {entry.title_ru}
         </h3>
 
-        {onToggle && (
+        {onHide && (
           <button
-            onClick={onToggle}
-            aria-label={inList ? 'Убрать из моего списка' : 'Добавить в мой список'}
-            title={inList ? 'Убрать из моего списка' : 'Добавить в мой список'}
+            onClick={onHide}
+            aria-label={`Скрыть «${entry.title_ru}»`}
+            title="Скрыть из «Все дуа»"
             style={{
               flexShrink: 0,
-              width: '32px', height: '32px', borderRadius: '9999px',
+              width: '34px', height: '34px', borderRadius: '9999px',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               border: 'none', background: 'transparent',
-              color: inList ? 'var(--text-primary)' : 'var(--text-tertiary)',
-              cursor: 'pointer', marginTop: '-3px', marginRight: '-4px',
+              color: 'var(--text-tertiary)', cursor: 'pointer',
+              marginTop: '-2px',
               WebkitTapHighlightColor: 'transparent',
-              transition: 'color 0.18s ease',
             }}
           >
-            <Bookmark size={19} isFilled={inList} />
+            <EyeOff size={19} />
+          </button>
+        )}
+
+        {onAdd && (
+          /*
+           * Крупный «+» вместо прежней закладки — решение владельца.
+           * Плюс прямо говорит, что произойдёт: дуа добавится в список.
+           * Закладка этого не говорила, её принимали за «отметить».
+           *
+           * Когда дуа уже в списке — галочка, и кнопка не нажимается.
+           * Убрать можно ровно в одном месте: «Мой список» →
+           * «Изменить».  Иначе вернулась бы потеря по случайному
+           * касанию, из-за которой закладку и убрали.
+           */
+          <button
+            onClick={inList ? undefined : onAdd}
+            disabled={inList}
+            aria-label={inList ? 'Уже в вашем списке' : `Добавить «${entry.title_ru}» в мой список`}
+            title={inList ? 'Уже в вашем списке' : 'Добавить в мой список'}
+            style={{
+              flexShrink: 0,
+              width: '36px', height: '36px', borderRadius: '9999px',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              border: `1px solid ${inList ? 'transparent' : 'var(--hairline-strong)'}`,
+              background: inList
+                ? 'color-mix(in srgb, var(--ink) 7%, transparent)'
+                : 'color-mix(in srgb, var(--ink) 5%, transparent)',
+              color: inList ? 'var(--text-tertiary)' : 'var(--text-primary)',
+              cursor: inList ? 'default' : 'pointer',
+              marginTop: '-3px', marginRight: '-2px',
+              WebkitTapHighlightColor: 'transparent',
+              transition: 'background 0.18s ease, color 0.18s ease',
+            }}
+          >
+            {inList ? <Check size={18} /> : <Plus size={22} />}
           </button>
         )}
       </div>
@@ -880,6 +973,119 @@ function EditList({ items, onRemove }: {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Список скрытых дуа.
+ *
+ * Единственный путь вернуть скрытое — так попросил владелец, и это
+ * честно: скрывают осознанно и надолго, всплывашка «вернуть» здесь была
+ * бы шумом.  Зато сам список обязан быть на виду, иначе скрытое
+ * превращается в потерянное — поэтому кнопка к нему стоит прямо в
+ * витрине и показывает, сколько там лежит.
+ *
+ * Портал в body: экран задаёт свой контекст наложения, и без портала
+ * лист уехал бы под панель вкладок.
+ */
+function HiddenSheet({ entries, onUnhide, onClose }: {
+  entries: DuaEntry[];
+  onUnhide: (id: string) => void;
+  onClose: () => void;
+}) {
+  // Когда вернули последнее — закрываемся сами: пустой лист держать
+  // открытым незачем.
+  useEffect(() => { if (entries.length === 0) onClose(); }, [entries.length, onClose]);
+
+  return createPortal(
+    <>
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 60,
+          background: 'rgba(0,0,0,0.45)',
+          animation: 'fade-in 0.18s ease',
+        }}
+      />
+      <div
+        role="dialog"
+        aria-label="Скрытые дуа"
+        style={{
+          position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 61,
+          maxHeight: '78vh',
+          display: 'flex', flexDirection: 'column',
+          background: 'var(--surface)',
+          borderTopLeftRadius: '22px', borderTopRightRadius: '22px',
+          borderTop: '1px solid var(--hairline)',
+          boxShadow: '0 -10px 40px rgba(0,0,0,0.32)',
+          animation: 'sheet-up 0.24s cubic-bezier(0.22,1,0.36,1)',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '16px 18px 12px',
+          borderBottom: '1px solid var(--hairline)',
+        }}>
+          <h2 className="display-serif" style={{
+            margin: 0, flex: 1, minWidth: 0,
+            fontSize: '22px', fontWeight: 400, letterSpacing: '-0.015em',
+            color: 'var(--text-primary)',
+          }}>
+            Скрытые
+          </h2>
+          <button
+            onClick={onClose}
+            aria-label="Закрыть"
+            className="icon-btn"
+            style={{
+              width: '34px', height: '34px', flexShrink: 0, borderRadius: '9999px',
+              border: '1px solid var(--hairline)', background: 'transparent',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <Close size={15} />
+          </button>
+        </div>
+
+        <div style={{ overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
+          {entries.map((e, i) => (
+            <div
+              key={e.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '10px 18px',
+                borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',
+                overflow: 'hidden',
+              }}
+            >
+              <span style={{
+                flex: 1, minWidth: 0,
+                fontSize: '14.5px', color: 'var(--text-primary)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {e.title_ru}
+              </span>
+              <button
+                onClick={() => onUnhide(e.id)}
+                style={{
+                  flexShrink: 0, minHeight: '32px', padding: '0 14px',
+                  borderRadius: '9999px',
+                  border: '1px solid var(--hairline)',
+                  background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+                  color: 'var(--text-primary)', cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: '13px', fontWeight: 500,
+                }}
+              >
+                Вернуть
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ height: 'env(safe-area-inset-bottom)', flexShrink: 0 }} />
+      </div>
+    </>,
+    document.body,
   );
 }
 
