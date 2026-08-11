@@ -42,7 +42,10 @@ type Screen =
   | { name: 'surah'; number: number; initialAyah?: number }
   // Режим мусхафа — отдельный экран, а не вариант чтения: у него своя
   // единица навигации (страница, не аят) и своя история.
-  | { name: 'mushaf'; page: number };
+  | { name: 'mushaf'; page: number }
+  // Кибла ушла из вкладок: открывается с экрана намаза и имеет свою
+  // запись в истории, поэтому системная «назад» возвращает к намазу.
+  | { name: 'qibla' };
 
 const INITIAL_SCREEN: Screen = { name: 'tabs', tab: 'quran' };
 
@@ -199,6 +202,16 @@ export default function App() {
     );
   }
 
+  if (screen.name === 'qibla') {
+    return (
+      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
+        <ErrorBoundary name="QiblaScreen" onReset={goBack}>
+          <QiblaScreen theme={theme} setTheme={setTheme} onBack={goBack} />
+        </ErrorBoundary>
+      </Shell>
+    );
+  }
+
   if (screen.name === 'bookmarks') {
     return (
       <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
@@ -259,15 +272,13 @@ export default function App() {
       )}
       {tab === 'prayer' && (
         <ErrorBoundary name="PrayerTimesScreen">
-          <PrayerTimesScreen theme={theme} setTheme={setTheme} />
+          <PrayerTimesScreen
+            theme={theme}
+            setTheme={setTheme}
+            onOpenQibla={() => navigate({ name: 'qibla' })}
+          />
         </ErrorBoundary>
       )}
-      {tab === 'qibla' && (
-        <ErrorBoundary name="QiblaScreen">
-          <QiblaScreen theme={theme} setTheme={setTheme} />
-        </ErrorBoundary>
-      )}
-
       <TabBar
         active={tab}
         onSelect={next => {

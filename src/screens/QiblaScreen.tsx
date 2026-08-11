@@ -32,21 +32,26 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as adhan from 'adhan';
-import { Compass, Appearance } from '../components/icons';
+import { Compass, Appearance, ChevronLeft } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
-import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
 import {
   CITIES, KAABA, distanceKm, locate, onPlaceChange, readPlace, writePlace,
   LOCATE_ERROR_TEXT, type LocateError, type Place,
 } from '../lib/location';
 
-type Props = { theme: Theme; setTheme: (t: Theme) => void };
+type Props = {
+  theme: Theme;
+  setTheme: (t: Theme) => void;
+  /** Кибла перестала быть вкладкой: теперь она открывается с экрана
+   *  намаза, и ей нужен выход назад. */
+  onBack: () => void;
+};
 
 /** Курс устройства: 0 = север, растёт по часовой. */
 type Heading = { deg: number; trueNorth: boolean } | null;
 
-export function QiblaScreen({ theme, setTheme }: Props) {
+export function QiblaScreen({ theme, setTheme, onBack }: Props) {
   const [place, setPlace] = useState<Place>(readPlace);
   const [themeOpen, setThemeOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -136,7 +141,7 @@ export function QiblaScreen({ theme, setTheme }: Props) {
       minHeight: '100dvh',
       maxWidth: 'min(100%, 720px)',
       margin: '0 auto',
-      padding: `0 16px calc(${TAB_BAR_HEIGHT}px + 28px + env(safe-area-inset-bottom))`,
+      padding: '0 16px calc(28px + env(safe-area-inset-bottom))',
       position: 'relative',
       zIndex: 1,
       display: 'flex',
@@ -151,10 +156,24 @@ export function QiblaScreen({ theme, setTheme }: Props) {
       )}
 
       <header style={{
-        display: 'flex', alignItems: 'center', gap: '10px',
+        display: 'flex', alignItems: 'center', gap: '12px',
         paddingTop: 'calc(env(safe-area-inset-top) + 18px)',
         paddingBottom: '16px',
       }}>
+        <button
+          onClick={onBack}
+          aria-label="Назад"
+          className="icon-btn"
+          style={{
+            width: '42px', height: '42px', flexShrink: 0, borderRadius: '12px',
+            border: '1px solid var(--hairline)',
+            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            color: 'var(--text-secondary)', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <ChevronLeft size={20} />
+        </button>
         <h1 className="display-serif" style={{
           margin: 0, flex: 1, minWidth: 0,
           fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 400,

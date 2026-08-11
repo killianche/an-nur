@@ -1,10 +1,14 @@
 /**
  * TabBar — нижняя панель с разделами приложения.
  *
- * Показывается только на корневых экранах.  Чтение суры, закладки и
- * лента азкаров открываются «поверх» и панель прячут — там свой
- * плавающий хедер с кнопкой назад, и две панели одновременно
- * конкурировали бы за нижний край с плеером (BottomDock).
+ * Показывается только на корневых экранах.  Чтение суры, закладки,
+ * лента азкаров, мусхаф и кибла открываются «поверх» и панель прячут —
+ * там своя кнопка назад, и две панели одновременно конкурировали бы за
+ * нижний край с плеером (BottomDock).
+ *
+ * Кибла из вкладок ушла по решению владельца: её открывают редко, а
+ * вход в неё логичнее там, где человек уже думает о молитве — на экране
+ * намаза.  Освободившееся место занял «Аккаунт».
  *
  * В QuranIng разделов было два и они жили горизонтальной слайд-парой
  * (контейнер шириной 200% с translateX).  С четырьмя разделами такой
@@ -17,16 +21,15 @@
  */
 
 import type { ReactNode } from 'react';
-import { BookOpen, Sparkle, Clock, Compass, Bookmark } from './icons';
+import { BookOpen, Sparkle, Clock, Flower } from './icons';
 
-export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer' | 'qibla';
+export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer';
 
 const TABS: { id: TabId; label: string; icon: ReactNode }[] = [
   { id: 'quran',  label: 'Коран',  icon: <BookOpen size={21} /> },
   { id: 'azkar',  label: 'Азкары', icon: <Sparkle size={21} />  },
-  { id: 'dua',    label: 'Дуа',    icon: <Bookmark size={21} /> },
+  { id: 'dua',    label: 'Дуа',    icon: <Flower size={21} />   },
   { id: 'prayer', label: 'Намаз',  icon: <Clock size={21} />    },
-  { id: 'qibla',  label: 'Кибла',  icon: <Compass size={21} />  },
 ];
 
 /** Высота панели без safe-area.  Экраны отводят под неё нижний

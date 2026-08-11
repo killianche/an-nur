@@ -31,7 +31,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Appearance, ChevronRight, Clock, Close, Plus, Trash } from '../components/icons';
+import { Appearance, ChevronRight, Clock, Close, Compass, Plus, Trash } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
@@ -49,9 +49,15 @@ import {
   type DayTimes, type Madhab, type MethodId, type PrayerSettings,
 } from '../lib/prayerTimes';
 
-type Props = { theme: Theme; setTheme: (t: Theme) => void };
+type Props = {
+  theme: Theme;
+  setTheme: (t: Theme) => void;
+  /** Открыть киблу.  Она перестала быть вкладкой: её открывают редко, а
+   *  вход логичнее там, где человек уже думает о молитве. */
+  onOpenQibla: () => void;
+};
 
-export function PrayerTimesScreen({ theme, setTheme }: Props) {
+export function PrayerTimesScreen({ theme, setTheme, onOpenQibla }: Props) {
   const [cities, setCities] = useState<PrayerCity[]>(readCities);
   const [activeId, setActive] = useState<string>(() => readActiveId());
   const [themeOpen, setThemeOpen] = useState(false);
@@ -136,6 +142,20 @@ export function PrayerTimesScreen({ theme, setTheme }: Props) {
         }}>
           Намаз
         </h1>
+        <button
+          onClick={onOpenQibla}
+          aria-label="Кибла" title="Кибла — направление на Каабу"
+          className="icon-btn"
+          style={{
+            width: '42px', height: '42px', flexShrink: 0, borderRadius: '12px',
+            border: '1px solid var(--hairline)',
+            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <Compass size={19} />
+        </button>
+
         <button
           ref={themeBtnRef}
           onClick={() => setThemeOpen(v => !v)}
