@@ -1,5 +1,5 @@
 /**
- * TabBar — нижняя панель с четырьмя разделами приложения.
+ * TabBar — нижняя панель с разделами приложения.
  *
  * Показывается только на корневых экранах.  Чтение суры, закладки и
  * лента азкаров открываются «поверх» и панель прячут — там свой
@@ -17,13 +17,14 @@
  */
 
 import type { ReactNode } from 'react';
-import { BookOpen, Sparkle, Clock, Compass } from './icons';
+import { BookOpen, Sparkle, Clock, Compass, Bookmark } from './icons';
 
-export type TabId = 'quran' | 'azkar' | 'prayer' | 'qibla';
+export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer' | 'qibla';
 
 const TABS: { id: TabId; label: string; icon: ReactNode }[] = [
   { id: 'quran',  label: 'Коран',  icon: <BookOpen size={21} /> },
   { id: 'azkar',  label: 'Азкары', icon: <Sparkle size={21} />  },
+  { id: 'dua',    label: 'Дуа',    icon: <Bookmark size={21} /> },
   { id: 'prayer', label: 'Намаз',  icon: <Clock size={21} />    },
   { id: 'qibla',  label: 'Кибла',  icon: <Compass size={21} />  },
 ];
@@ -46,7 +47,7 @@ export function TabBar({ active, onSelect }: {
         bottom: 0,
         zIndex: 40,
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
+        gridTemplateColumns: `repeat(${TABS.length}, 1fr)`,
         height: `calc(${TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom))`,
         paddingBottom: 'env(safe-area-inset-bottom)',
         background: 'color-mix(in srgb, var(--surface) 92%, transparent)',

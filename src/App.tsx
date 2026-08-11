@@ -4,6 +4,7 @@ import { SurahPicker } from './screens/SurahPicker';
 import { SurahScreen } from './screens/SurahScreen';
 import { MushafScreen } from './screens/MushafScreen';
 import { AzkarScreen } from './screens/AzkarScreen';
+import { DuaScreen } from './screens/DuaScreen';
 import { AzkarCategoryScreen } from './screens/AzkarCategoryScreen';
 import { BookmarksScreen } from './screens/BookmarksScreen';
 import { PrayerTimesScreen } from './screens/PrayerTimesScreen';
@@ -249,6 +250,11 @@ export default function App() {
             setTheme={setTheme}
             onOpenCategory={c => navigate({ name: 'azkar-category', category: c })}
           />
+        </ErrorBoundary>
+      )}
+      {tab === 'dua' && (
+        <ErrorBoundary name="DuaScreen">
+          <DuaScreen theme={theme} setTheme={setTheme} />
         </ErrorBoundary>
       )}
       {tab === 'prayer' && (

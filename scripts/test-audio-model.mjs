@@ -437,6 +437,56 @@ group('Города намаза', () => {
   check('потолок списка разумный', MAX_CITIES >= 4 && MAX_CITIES <= 20, true);
 });
 
+// ─── Мой список дуа ───────────────────────────────────────────────────
+//
+// Порядок в списке — порядок чтения, его задаёт человек. Молчаливая
+// потеря порядка или дубль после перезахода на экран не видны в типах.
+const duaMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/duaList.ts')).href);
+const {
+  readDuaList, writeDuaList, addToDuaList, removeFromDuaList,
+  toggleInDuaList, moveInDuaList, isInDuaList, clearDuaList,
+} = duaMod;
+
+group('Мой список дуа', () => {
+  localStorage.removeItem('dua.list');
+  check('пустой список на старте', readDuaList(), []);
+
+  addToDuaList('dua-002');
+  addToDuaList('dua-001');
+  check('порядок — тот, в котором добавляли', readDuaList(), ['dua-002', 'dua-001']);
+
+  addToDuaList('dua-002');
+  check('повторное добавление не плодит дубль', readDuaList(), ['dua-002', 'dua-001']);
+
+  check('принадлежность проверяется',
+    [isInDuaList('dua-001'), isInDuaList('dua-999')], [true, false]);
+
+  check('переключатель снимает', toggleInDuaList('dua-002'), false);
+  check('и список сократился', readDuaList(), ['dua-001']);
+  check('переключатель возвращает', toggleInDuaList('dua-002'), true);
+  check('в конец, а не на прежнее место', readDuaList(), ['dua-001', 'dua-002']);
+
+  addToDuaList('dua-003');
+  moveInDuaList('dua-003', -1);
+  check('перестановка вверх', readDuaList(), ['dua-001', 'dua-003', 'dua-002']);
+  moveInDuaList('dua-001', -1);
+  check('за край не уезжает', readDuaList(), ['dua-001', 'dua-003', 'dua-002']);
+  moveInDuaList('dua-002', 1);
+  check('и за нижний тоже', readDuaList(), ['dua-001', 'dua-003', 'dua-002']);
+
+  removeFromDuaList('dua-003');
+  check('удаление работает', readDuaList(), ['dua-001', 'dua-002']);
+
+  // Хранилище чинится, а не роняет экран.
+  localStorage.setItem('dua.list', 'не json');
+  check('битое хранилище даёт пустой список', readDuaList(), []);
+  localStorage.setItem('dua.list', '["a", "a", 5, null, "b"]');
+  check('мусор и дубли отбрасываются', readDuaList(), ['a', 'b']);
+
+  clearDuaList();
+  check('очистка работает', readDuaList(), []);
+});
+
 // ─── Итог ─────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length === 0) {
