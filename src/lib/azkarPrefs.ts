@@ -51,7 +51,11 @@ const DEFAULT_ARABIC_FONT: AzkarFontId = 'kfgqpc-v22';
 const DEFAULT_RUSSIAN_FONT: LatinFontId  = 'inter-regular';
 const DEFAULT_TRANSLIT_FONT: LatinFontId = 'inter-regular';
 
-const DEFAULT_ARABIC_SCALE   = 1.4;
+// Второй размер из четырёх (SCALE_OPTIONS: 0.85 / 1.0 / 1.2 / 1.4).
+// Был четвёртый, самый крупный — арабский занимал почти весь экран
+// карточки, и перевод с транскрипцией уезжали под сгиб. Решение
+// владельца: по умолчанию второй.
+const DEFAULT_ARABIC_SCALE   = 1.0;
 const DEFAULT_RUSSIAN_SCALE  = 1.0;
 const DEFAULT_TRANSLIT_SCALE = 0.85;
 
