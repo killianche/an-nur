@@ -94,7 +94,9 @@ export const AURORA_MOSS: AuroraPaletteSpec = {
 };
 
 export const AURORA_SCENE = {
-  auroraBrightness: 0.42,
+  // 0.62, а не прежние 0.42: по замеру кромки свечение давало прибавку
+  // всего в 7–11 уровней над фоном — на телефоне это не читалось.
+  auroraBrightness: 0.62,
   auroraDirection: 'frame' as AuroraDirection,
 } as const;
 

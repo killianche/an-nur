@@ -278,33 +278,41 @@ function AuroraImpl({
   }
 
   if (direction === 'frame') {
-    // Для дымки берём более слабый alpha чем core — конденсат светится
-    // мягко, не светит как лампа.
-    const mistStrong = withAlpha(colors.layer1, 0.32);
-    const mistMid = withAlpha(colors.layer1, 0.16);
-    const mistAccent = withAlpha(colors.layer2, 0.20);
+    /*
+     * Дымка светит мягче, чем ядро аврор, — это конденсат по кромке, а
+     * не лампа.  Но мягче не значит «на грани видимости»: было 0.32 при
+     * общей прозрачности 0.42, то есть на пике 0.13, и по замеру кромка
+     * давала (18,24,28) против фона (17,17,17) — прибавка в 7–11
+     * уровней, которую на телефоне днём просто не видно.
+     *
+     * Поднято так, чтобы свет читался, а центр экрана остался чистым:
+     * спад по краю не тронут, растут только сами alpha.
+     */
+    const mistStrong = withAlpha(colors.layer1, 0.55);
+    const mistMid = withAlpha(colors.layer1, 0.30);
+    const mistAccent = withAlpha(colors.layer2, 0.36);
 
     // 4 ободка по краям. Узкие — ~18% viewport — чтобы остался большой
     // прозрачный центр. Кривая stop'ов: сильное у кромки, плавный спад.
     const topMist = `linear-gradient(to bottom,
       ${mistStrong} 0%,
       ${mistMid} 6%,
-      ${withAlpha(colors.layer1, 0.04)} 14%,
+      ${withAlpha(colors.layer1, 0.07)} 14%,
       transparent 22%)`;
     const bottomMist = `linear-gradient(to top,
       ${mistStrong} 0%,
       ${mistMid} 6%,
-      ${withAlpha(colors.layer1, 0.04)} 14%,
+      ${withAlpha(colors.layer1, 0.07)} 14%,
       transparent 22%)`;
     const leftMist = `linear-gradient(to right,
       ${mistAccent} 0%,
-      ${withAlpha(colors.layer2, 0.10)} 6%,
-      ${withAlpha(colors.layer2, 0.03)} 14%,
+      ${withAlpha(colors.layer2, 0.18)} 6%,
+      ${withAlpha(colors.layer2, 0.055)} 14%,
       transparent 22%)`;
     const rightMist = `linear-gradient(to left,
       ${mistAccent} 0%,
-      ${withAlpha(colors.layer2, 0.10)} 6%,
-      ${withAlpha(colors.layer2, 0.03)} 14%,
+      ${withAlpha(colors.layer2, 0.18)} 6%,
+      ${withAlpha(colors.layer2, 0.055)} 14%,
       transparent 22%)`;
 
     // Лёгкая органическая патчёвость: маленькие радиалы на серединах
