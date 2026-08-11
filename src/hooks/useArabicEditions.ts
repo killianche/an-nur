@@ -24,12 +24,25 @@ function ensureLoaded() {
     });
 }
 
-/** Returns the edition record for the given verseKey, or null while
- *  the dataset is still loading.  Subscribes the component so it
- *  re-renders once load completes. */
-export function useEdition(verseKey: string): AyahEditionData | null {
+/**
+ * Returns the edition record for the given verseKey, or null while
+ * the dataset is still loading.  Subscribes the component so it
+ * re-renders once load completes.
+ *
+ * `needed = false` означает «выбранный шрифт этот датасет не использует
+ * — не качай».  Файл весит 3.9 МБ, и до этого флага он тянулся при
+ * КАЖДОМ открытии суры, хотя по умолчанию читают мусхафом QCF V4,
+ * которому editions не нужны вовсе.  На медленной сети он забивал канал
+ * и шрифт страницы ждал за ним: человек смотрел на скелет секунды
+ * вместо 0.8.
+ */
+export function useEdition(
+  verseKey: string,
+  needed = true,
+): AyahEditionData | null {
   const [, force] = useState(0);
   useEffect(() => {
+    if (!needed) return;
     ensureLoaded();
     if (loaded) return;
     const fn = () => force(n => n + 1);
@@ -37,6 +50,6 @@ export function useEdition(verseKey: string): AyahEditionData | null {
     return () => {
       listeners.delete(fn);
     };
-  }, []);
-  return getEdition(verseKey);
+  }, [needed]);
+  return needed ? getEdition(verseKey) : null;
 }

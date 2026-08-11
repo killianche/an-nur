@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { type QcfPageData, pageJsonPath } from '../lib/qcf4';
+import { type QcfPageData, pageJsonPath, hydratePage } from '../lib/qcf4';
 
 // Module-level cache: page number → loaded data
 const pageCache = new Map<number, QcfPageData>();
@@ -26,7 +26,10 @@ function fetchPage(pageNum: number): Promise<QcfPageData> {
       if (!r.ok) throw new Error(`page ${pageNum} HTTP ${r.status}`);
       return r.json() as Promise<QcfPageData>;
     })
-    .then(data => {
+    .then(raw => {
+      // Номер страницы нужен каждому слову: шрифты нарезаны по страницам,
+      // и семейство выбирается по паре (шрифт, страница).
+      const data = hydratePage(raw);
       pageCache.set(pageNum, data);
       pagePromises.delete(pageNum);
       return data;
@@ -49,6 +52,20 @@ export function getPageSync(pageNum: number): QcfPageData | null {
 export function preloadPage(pageNum: number | null): void {
   if (pageNum === null || pageCache.has(pageNum)) return;
   fetchPage(pageNum).catch(() => { /* ignore preload errors */ });
+}
+
+/**
+ * Дождаться одной страницы.
+ *
+ * Нужно, чтобы заказать шрифты ПЕРВОЙ страницы суры, не дожидаясь
+ * остальных: у Бакары их сорок пять, и пока едут все, шрифт первого
+ * экрана даже не начинал качаться.  Какие подмножества нужны странице,
+ * известно только из её json — отсюда обещание, а не fire-and-forget.
+ */
+export function ensurePage(pageNum: number): Promise<QcfPageData> {
+  const cached = pageCache.get(pageNum);
+  if (cached) return Promise.resolve(cached);
+  return fetchPage(pageNum);
 }
 
 export function useQcfPage(pageNum: number | null): {

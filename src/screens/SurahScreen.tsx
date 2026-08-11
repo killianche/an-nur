@@ -25,12 +25,14 @@
  * scrolling through the feed is instant.
  */
 
-import { useState, useEffect, useRef, useCallback, memo, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo, type ReactNode } from 'react';
 import { QURAN_SOURCES } from '../content/quran-sources';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { useAyahAudio } from '../hooks/useAyahAudio';
 import { useQcfAyahFeed } from '../hooks/useQcfAyahFeed';
-import { useQcfFont } from '../hooks/useQcfFont';
+import { useQcfFont, preloadQcfFonts } from '../hooks/useQcfFont';
+import { ensurePage } from '../hooks/useQcfPage';
+import { qcfPageFamily, distinctFontRefs } from '../lib/qcf4';
 import { useChunkedRender } from '../hooks/useChunkedRender';
 import { ArabicAyahRouter } from '../components/ArabicAyahRouter';
 import { loadArabicEditions } from '../lib/arabicEditions';
@@ -49,6 +51,7 @@ import { isBookmarked, toggleBookmark } from '../lib/bookmarks';
 import {
   readPref, readNumber,
   latinStack, latinWeight, latinIsSerif, ARABIC_FONT_IDS,
+  arabicFontConfig,
   type LatinFontId, type ArabicFontId,
 } from '../lib/typography';
 import { RECITERS, DEFAULT_RECITER, type ReciterId } from '../lib/reciters';
@@ -70,6 +73,16 @@ type Props = {
   /** Переключиться в режим мусхафа на странице, где стоит читатель. */
   onOpenMushaf?: (page: number) => void;
 };
+
+/**
+ * Сколько аятов от места, где человек начнёт читать, просят шрифт сразу.
+ *
+ * Восемь с запасом покрывают первый экран при любом кегле.  Меньше —
+ * нижние аяты первого экрана ждали бы наблюдателя; больше — вернулась бы
+ * гурьба одновременных запросов, из-за которой шрифт первого экрана и
+ * приходил последним.
+ */
+const EAGER_AYAHS = 8;
 
 const LATIN_IDS:   LatinFontId[]  = ['inter-semibold', 'inter-regular', 'garamond', 'alice'];
 const ARABIC_IDS:  ArabicFontId[] = ARABIC_FONT_IDS;
@@ -144,14 +157,63 @@ export function SurahScreen({
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  // Warm the multi-edition Arabic dataset on entry so the first font
-  // switch is instant.  Idempotent: subsequent calls return the same
-  // cached promise without re-fetching.
-  useEffect(() => { loadArabicEditions(); }, []);
+  // Датасет альтернативных начертаний греем ТОЛЬКО когда человек уже
+  // читает одним из них.  Он весит 3.9 МБ, а раньше тянулся при каждом
+  // открытии суры «чтобы переключение было мгновенным» — и на медленной
+  // сети занимал канал, пока шрифт страницы мусхафа ждал своей очереди.
+  //
+  // Цена отказа — первое переключение на Усмани или V1 будет с паузой.
+  // Это честный обмен: переключают шрифт редко и осознанно, а суру
+  // открывают каждый раз.
+  useEffect(() => {
+    if (arabicFontConfig(arabicFont).kind === 'qcf-v4') return;
+    loadArabicEditions();
+  }, [arabicFont]);
 
   // ── Surah metadata + QCF feed ──────────────────────────────────────────────
   const meta = SURAH_BY_NUMBER[surahNumber];
-  const { feed, loading: feedLoading, error: feedError } = useQcfAyahFeed(surahNumber);
+
+  /**
+   * Аят, с которого человек начнёт читать, — он и несколько следующих
+   * просят шрифт сразу, минуя наблюдатель видимости (см. `eager` в
+   * QcfAyahLine).  Считается тем же правилом, что и восстановление
+   * прокрутки ниже, иначе «сразу» пришлось бы не на тот экран.
+   */
+  const eagerAnchor = useMemo(() => {
+    const prior = readRecents().find(r => r.surah === surahNumber);
+    return initialAyah ?? prior?.ayah ?? 1;
+  }, [surahNumber, initialAyah]);
+
+  // Начало суры показываем, не дожидаясь всех её страниц, — но только
+  // когда читать начинают сверху.  Если человек пришёл по закладке в
+  // середину, ждём полную ленту: в неполной его аята ещё нет, и
+  // восстановление прокрутки поставило бы его не на то место.
+  const { feed, loading: feedLoading, error: feedError } =
+    useQcfAyahFeed(surahNumber, eagerAnchor === 1);
+
+  // Шрифт первого экрана заказываем, не дожидаясь всей суры.
+  //
+  // useQcfAyahFeed собирает ленту из ВСЕХ страниц суры (у Бакары их сорок
+  // пять) и отдаёт результат, когда приехала последняя.  Только после этого
+  // становилось известно, какое подмножество нужно первому аяту, и шрифт
+  // начинал качаться — то есть ожидание шло последовательно: сначала
+  // данные всей суры, потом шрифт.
+  //
+  // Номер первой страницы известен без сети — из таблицы mushafPages.
+  // Забираем её json (единицы килобайт) и сразу просим её шрифты, поэтому
+  // они едут одновременно с остальными страницами, а не после них.
+  useEffect(() => {
+    let cancelled = false;
+    const page = pageOfAyah(surahNumber, 1);
+    if (!page) return;
+    ensurePage(page)
+      .then(data => {
+        if (cancelled) return;
+        preloadQcfFonts(distinctFontRefs(data.lines.flatMap(l => l.words)));
+      })
+      .catch(() => { /* лента загрузится обычным путём и покажет ошибку */ });
+    return () => { cancelled = true; };
+  }, [surahNumber]);
 
   // Inject fonts for surah header / basmala (the ayah lines inject their own)
   useQcfFont(feed?.decor.fonts ?? []);
@@ -166,6 +228,7 @@ export function SurahScreen({
   //   2. last-read ayah for this surah from recents
   //   3. nothing (start at the surah header)
   const priorAyahToRestoreRef = useRef<number | null>(null);
+
   useEffect(() => {
     const prior = readRecents().find(r => r.surah === surahNumber);
     const target = initialAyah ?? prior?.ayah ?? null;
@@ -695,6 +758,10 @@ export function SurahScreen({
                       activeWordPos={isActiveAyah ? audio.currentWordPos : null}
                       isActive={isActiveAyah}
                       scale={arabicScale}
+                      eager={
+                        entry.ayah >= eagerAnchor
+                        && entry.ayah < eagerAnchor + EAGER_AYAHS
+                      }
                     />
                   )}
 
@@ -803,7 +870,14 @@ function AyahFeedList({
   children: (visibleCount: number) => ReactNode;
 }) {
   const visibleCount = useChunkedRender(totalAyahs, {
-    initial: 30,
+    // Первым заходом ставили 30 — тогда это был выбор между «весь Коран
+    // сразу» и «хоть что-то».  Сейчас узкое место другое: до первой
+    // отрисовки React монтирует все 30 аятов, а на экране их два-три, и у
+    // Аш-Шуара (227 аятов) это стоило почти две секунды ожидания.
+    //
+    // Шесть покрывают первый экран при любом кегле, остальные подъезжают
+    // батчами в простое — человек этого уже не замечает.
+    initial: 6,
     batch: 30,
     forceUpTo,
   });
@@ -814,11 +888,17 @@ function SurahTitleBlock({
   meta, decor,
 }: {
   meta: { number: number; transliteration: string; russian: string; ayahs: number; arabic: string };
-  decor: { header: import('../lib/qcf4').QcfWord[]; basmala: import('../lib/qcf4').QcfWord[]; fonts: string[] } | null;
+  decor: import('../hooks/useQcfAyahFeed').QcfSurahDecor | null;
 }) {
   // Surah 1 (Al-Fatiha) has the basmala AS ayah 1 — don't show a separate basmala.
   // Surah 9 (At-Tawba) has no basmala at all — QCF data reflects this (decor.basmala empty).
-  const showBasmala = meta.number !== 1 && decor && decor.basmala.length > 0;
+  //
+  // Басмала ждёт свой шрифт: до его прихода на её месте был бы кубик, а
+  // здесь всего одна строка — скелет ради неё выглядел бы навязчиво,
+  // поэтому просто держим место пустым до готовности.
+  const decorReady = useQcfFont(decor?.fonts ?? []);
+  const showBasmala =
+    meta.number !== 1 && decor && decor.basmala.length > 0 && decorReady;
 
   return (
     <div style={{ textAlign: 'center', padding: '4px 0 24px' }}>
@@ -870,7 +950,8 @@ function SurahTitleBlock({
               key={i}
               dir="rtl"
               style={{
-                fontFamily: `'${w.font}', serif`,
+                // Семейство с суффиксом страницы — см. qcfPageFamily.
+                fontFamily: `'${qcfPageFamily(w.font, w.page ?? 0)}', serif`,
                 whiteSpace: 'nowrap',
                 letterSpacing: '0',
                 wordSpacing: '0',

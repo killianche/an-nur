@@ -4,7 +4,12 @@
  *
  * Assets live in /public/qcf4/:
  *   pages/NNN.json  — per-page glyph data (604 files)
- *   fonts-woff2/    — 47 Hafs fonts + 1 QBSML font (48 total)
+ *   fonts-page/NNN/ — постраничные подмножества шрифтов (797 файлов,
+ *                     ~71 КБ на страницу).  Нарезаются из 48 исходных
+ *                     шрифтов скриптом scripts/build-page-fonts.py;
+ *                     исходники лежат в vendor/qcf4-fonts-woff2/, вне
+ *                     public — в рантайме они не нужны, а в пакете это
+ *                     были лишние 36 МБ.
  *   verses.json     — verse_key → {page, lines}
  *   font-map.json   — page number → font name
  *
@@ -32,6 +37,16 @@ export interface QcfWord {
   position?: number;
   /** Surah number — present on headers */
   sura?: number;
+  /**
+   * Страница мусхафа, с которой пришло слово.  В JSON этого поля нет —
+   * его проставляет `hydratePage` при загрузке.
+   *
+   * Нужно потому, что шрифты нарезаны по страницам, и семейство слова
+   * зависит от страницы, а не только от `font`.  У аята на стыке страниц
+   * слова приходят с двух страниц сразу, поэтому одного номера на аят
+   * недостаточно — нужен номер на каждое слово.
+   */
+  page?: number;
 }
 
 export interface QcfLine {
@@ -65,13 +80,62 @@ export type VersesJson = Record<string, VerseLocation>;
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 /**
- * Maps a QCF font name to its woff2 filename.
- * QCF4_Hafs_NN  → QCF4_Hafs_NN_W.woff2
- * QCF4_QBSML    → QCF4_QBSML.woff2
+ * Семейство для CSS: шрифт плюс страница.
+ *
+ * Подмножества одного шрифта для разных страниц обязаны жить в разных
+ * семействах.  Если назвать их одинаково, браузер сложит все `@font-face`
+ * с этим именем в одно семейство и на пересекающихся PUA-кодах отдаст
+ * глиф не той страницы — то есть чужое слово внутри аята.
  */
-export function qcfFontFileName(fontName: string): string {
-  if (fontName === 'QCF4_QBSML') return 'QCF4_QBSML.woff2';
-  return `${fontName}_W.woff2`;
+export function qcfPageFamily(fontName: string, page: number): string {
+  return `${fontName}_p${page}`;
+}
+
+/** Постраничное подмножество: /qcf4/fonts-page/077/QCF4_Hafs_06.woff2 */
+export function qcfPageFontUrl(fontName: string, page: number): string {
+  return `/qcf4/fonts-page/${String(page).padStart(3, '0')}/${fontName}.woff2`;
+}
+
+/** Пара «шрифт + страница» — минимум, которым однозначно задаётся семейство. */
+export interface QcfFontRef {
+  font: string;
+  page: number;
+}
+
+/**
+ * Какие подмножества нужны набору слов, без повторов.
+ *
+ * Слова аята могут лежать на двух страницах, а на одной странице
+ * встречаться слова из трёх разных шрифтов — поэтому считаем по парам.
+ */
+export function distinctFontRefs(words: QcfWord[]): QcfFontRef[] {
+  const seen = new Set<string>();
+  const refs: QcfFontRef[] = [];
+  for (const w of words) {
+    if (!w.font || w.page == null) continue;
+    const key = `${w.font}|${w.page}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    refs.push({ font: w.font, page: w.page });
+  }
+  return refs;
+}
+
+/**
+ * Проставить слову номер страницы.
+ *
+ * Данные страниц отдаются как есть, без номера внутри слова, а шрифт
+ * теперь выбирается по паре (шрифт, страница) — значит номер нужен на
+ * каждом слове.  Делается один раз при загрузке: слова живут в кэше и
+ * расходятся по компонентам уже готовыми.
+ */
+export function hydratePage(data: QcfPageData): QcfPageData {
+  for (const line of data.lines) {
+    for (const word of line.words) {
+      word.page = data.page;
+    }
+  }
+  return data;
 }
 
 /**

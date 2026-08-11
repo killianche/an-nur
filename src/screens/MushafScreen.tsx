@@ -42,7 +42,9 @@ import { ThemeSettings } from '../components/ReadingSettings';
 import { QURAN_SOURCES } from '../content/quran-sources';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { useAyahAudio } from '../hooks/useAyahAudio';
-import { preloadPage, useQcfPage } from '../hooks/useQcfPage';
+import { preloadPage, useQcfPage, getPageSync } from '../hooks/useQcfPage';
+import { preloadQcfFonts } from '../hooks/useQcfFont';
+import { distinctFontRefs } from '../lib/qcf4';
 import type { Theme } from '../hooks/useTheme';
 import { juzOfPage } from '../lib/mushafPages';
 import { RECITERS, DEFAULT_RECITER, type ReciterId } from '../lib/reciters';
@@ -91,10 +93,26 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme }: Props) {
 
   // Соседние страницы подгружаем заранее: листание должно быть
   // мгновенным, а json страницы — единицы килобайт.
+  //
+  // Вместе с json тянем и шрифты этих страниц.  После нарезки по
+  // страницам это около 70 КБ на страницу — незаметно в фоне, зато
+  // перелистывание открывает готовый текст, без скелета.
   useEffect(() => {
-    preloadPage(page + 1 <= MUSHAF_LAST_PAGE ? page + 1 : null);
-    preloadPage(page - 1 >= MUSHAF_FIRST_PAGE ? page - 1 : null);
-  }, [page]);
+    const neighbours = [
+      page + 1 <= MUSHAF_LAST_PAGE ? page + 1 : null,
+      page - 1 >= MUSHAF_FIRST_PAGE ? page - 1 : null,
+    ];
+    for (const n of neighbours) {
+      preloadPage(n);
+      if (n == null) continue;
+      // Шрифты просим только когда json уже разобран: до этого неизвестно,
+      // какие подмножества нужны странице.
+      const known = getPageSync(n);
+      if (known) {
+        preloadQcfFonts(distinctFontRefs(known.lines.flatMap(l => l.words)));
+      }
+    }
+  }, [page, data]);
 
   // Клавиатура: стрелки листают. Влево — следующая страница, потому что
   // книга арабская и «вперёд» здесь физически налево.

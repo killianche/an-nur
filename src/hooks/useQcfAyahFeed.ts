@@ -22,9 +22,9 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { QcfWord, QcfPageData } from '../lib/qcf4';
-import { loadVersesJson, pageJsonPath } from '../lib/qcf4';
-import { getPageSync, preloadPage } from './useQcfPage';
+import type { QcfWord, QcfPageData, QcfFontRef } from '../lib/qcf4';
+import { loadVersesJson, distinctFontRefs } from '../lib/qcf4';
+import { ensurePage, preloadPage } from './useQcfPage';
 
 /** One ayah's worth of QCF data, ready to render. */
 export interface QcfAyahEntry {
@@ -35,8 +35,8 @@ export interface QcfAyahEntry {
   pageNum: number;
   /** All words in this ayah, in mushaf reading order */
   words: QcfWord[];
-  /** Distinct fonts the words use — pass to useQcfFont */
-  fonts: string[];
+  /** Подмножества шрифтов, нужные словам аята — пары «шрифт + страница» */
+  fonts: QcfFontRef[];
 }
 
 /** Decorative items that don't belong to any single ayah. */
@@ -46,8 +46,8 @@ export interface QcfSurahDecor {
   /** Words of type 'basmala' — empty when the surah has no separate basmala
    *  (Al-Fatiha, At-Tawba), shown as a centered line when present */
   basmala: QcfWord[];
-  /** Distinct fonts used by header + basmala — pass to useQcfFont */
-  fonts: string[];
+  /** Подмножества для заголовка и басмалы — пары «шрифт + страница» */
+  fonts: QcfFontRef[];
 }
 
 export interface QcfAyahFeed {
@@ -75,39 +75,25 @@ function touchFeedCache(surahNumber: number, feed: QcfAyahFeed) {
   }
 }
 
-async function fetchPageData(pageNum: number): Promise<QcfPageData> {
-  const cached = getPageSync(pageNum);
-  if (cached) return cached;
-  // Re-fetch directly — useQcfPage's internal Promise map is not exported,
-  // but the GET will hit the browser's HTTP cache after the first request.
-  const res = await fetch(pageJsonPath(pageNum));
-  if (!res.ok) throw new Error(`page ${pageNum} HTTP ${res.status}`);
-  return res.json() as Promise<QcfPageData>;
+function fetchPageData(pageNum: number): Promise<QcfPageData> {
+  // Через ensurePage, а не своим fetch: у useQcfPage есть карта запросов в
+  // полёте, и без неё первая страница суры качалась дважды — её просит
+  // SurahScreen, чтобы заранее заказать шрифт, и тут же лента.
+  return ensurePage(pageNum);
 }
 
 /**
- * Build the feed for one surah by walking every page it spans.
+ * Собрать ленту из уже загруженных страниц.
+ *
+ * Вынесено отдельно, потому что вызывается дважды: сначала на одной
+ * первой странице суры, чтобы показать начало без ожидания, потом на
+ * всех — см. buildFeed.
+ *
  * Decorative items (surah_header, basmala) are collected separately from
  * verse-keyed words so the renderer can place them above the ayah list.
  */
-async function buildFeed(surahNumber: number): Promise<QcfAyahFeed> {
-  const cached = feedCache.get(surahNumber);
-  if (cached) return cached;
-
-  const verses = await loadVersesJson();
+function assembleFeed(surahNumber: number, pages: QcfPageData[]): QcfAyahFeed {
   const prefix = `${surahNumber}:`;
-
-  // Collect distinct pages the surah spans, sorted ascending.
-  const pageSet = new Set<number>();
-  for (const [key, val] of Object.entries(verses)) {
-    if (key.startsWith(prefix)) pageSet.add(val.page);
-  }
-  const pageNums = Array.from(pageSet).sort((a, b) => a - b);
-
-  // Fetch all pages in parallel.  Page cache from useQcfPage is re-used,
-  // so a surah already partially loaded (e.g. user navigated to page 2 of
-  // Al-Baqarah via the picker) gets that page instantly.
-  const pages = await Promise.all(pageNums.map(p => fetchPageData(p)));
 
   // Buckets
   const ayahMap = new Map<string, QcfAyahEntry>();
@@ -154,21 +140,17 @@ async function buildFeed(surahNumber: number): Promise<QcfAyahFeed> {
     }
   }
 
-  // Compute distinct fonts per ayah
+  // Какие подмножества нужны каждому аяту.  Считаем по парам «шрифт +
+  // страница»: аят на стыке страниц берёт слова из двух подмножеств.
   for (const entry of ayahMap.values()) {
-    entry.fonts = Array.from(new Set(entry.words.map(w => w.font)));
+    entry.fonts = distinctFontRefs(entry.words);
   }
 
   const ayahs = Array.from(ayahMap.values()).sort((a, b) => a.ayah - b.ayah);
 
-  const decorFonts = Array.from(
-    new Set([
-      ...headerWords.map(w => w.font),
-      ...basmalaWords.map(w => w.font),
-    ]),
-  );
+  const decorFonts = distinctFontRefs([...headerWords, ...basmalaWords]);
 
-  const feed: QcfAyahFeed = {
+  return {
     decor: {
       header: headerWords,
       basmala: basmalaWords,
@@ -176,13 +158,69 @@ async function buildFeed(surahNumber: number): Promise<QcfAyahFeed> {
     },
     ayahs,
   };
+}
 
+/**
+ * Загрузить суру целиком, по пути отдав её начало.
+ *
+ * Раньше лента ждала все страницы суры разом.  У Бакары их сорок восемь,
+ * и хотя каждая — три килобайта, сорок восемь запросов по медленной сети
+ * держали экран пустым четыре секунды: человек не видел ни текста, ни
+ * даже скелета, хотя первая страница приехала за сто пятьдесят
+ * миллисекунд.
+ *
+ * Теперь первая страница собирается в ленту сразу и уходит в `onPartial`.
+ * Начало суры (и её заголовок с басмалой — они на первой странице) видно
+ * почти мгновенно, остальное дополняется, когда приедет.
+ *
+ * В кэш идёт только полная лента: неполной нельзя, иначе следующий вход
+ * в суру получил бы обрезанный текст Корана.
+ */
+async function buildFeed(
+  surahNumber: number,
+  onPartial?: (feed: QcfAyahFeed) => void,
+): Promise<QcfAyahFeed> {
+  const cached = feedCache.get(surahNumber);
+  if (cached) return cached;
+
+  const verses = await loadVersesJson();
+  const prefix = `${surahNumber}:`;
+
+  // Collect distinct pages the surah spans, sorted ascending.
+  const pageSet = new Set<number>();
+  for (const [key, val] of Object.entries(verses)) {
+    if (key.startsWith(prefix)) pageSet.add(val.page);
+  }
+  const pageNums = Array.from(pageSet).sort((a, b) => a - b);
+
+  // Все страницы просим сразу — они и так качаются параллельно.  Разница
+  // в том, что первую ещё и ждём отдельно, чтобы отдать начало суры.
+  const all = pageNums.map(p => fetchPageData(p));
+
+  if (onPartial && all.length > 1) {
+    try {
+      const first = await all[0];
+      onPartial(assembleFeed(surahNumber, [first]));
+    } catch {
+      // Ошибку первой страницы разберёт общий await ниже.
+    }
+  }
+
+  const pages = await Promise.all(all);
+  const feed = assembleFeed(surahNumber, pages);
   touchFeedCache(surahNumber, feed);
   return feed;
 }
 
-/** Public hook — subscribes to the feed for a given surah. */
-export function useQcfAyahFeed(surahNumber: number): {
+/**
+ * Public hook — subscribes to the feed for a given surah.
+ *
+ * `showStartEarly` разрешает показать начало суры, не дожидаясь остальных
+ * страниц.  Включать можно только когда человек читает с начала: если он
+ * пришёл по закладке на аят 200, в неполной ленте этого аята ещё нет, и
+ * восстановление прокрутки увело бы его не туда.
+ */
+export function useQcfAyahFeed(surahNumber: number, showStartEarly = false): {
   feed: QcfAyahFeed | null;
   loading: boolean;
   error: string | null;
@@ -209,7 +247,16 @@ export function useQcfAyahFeed(surahNumber: number): {
     setLoading(true);
     setError(null);
 
-    buildFeed(surahNumber)
+    buildFeed(
+      surahNumber,
+      showStartEarly
+        ? partial => {
+            if (cancelled) return;
+            setFeed(partial);
+            setLoading(false);
+          }
+        : undefined,
+    )
       .then(result => {
         if (cancelled) return;
         setFeed(result);
@@ -222,7 +269,7 @@ export function useQcfAyahFeed(surahNumber: number): {
       });
 
     return () => { cancelled = true; };
-  }, [surahNumber]);
+  }, [surahNumber, showStartEarly]);
 
   return { feed, loading, error };
 }

@@ -36,6 +36,8 @@
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useQcfFont } from '../hooks/useQcfFont';
+import { ArabicSkeleton } from './ArabicSkeleton';
+import { distinctFontRefs, qcfPageFamily } from '../lib/qcf4';
 import type { QcfPageData, QcfWord } from '../lib/qcf4';
 
 type Props = {
@@ -66,12 +68,14 @@ export function QcfMushafPage({
   selectedVerseKey = null,
   onAyahTap,
 }: Props) {
-  const fontNames = Array.from(
-    new Set(pageData.lines.flatMap(l => l.words.map(w => w.font))),
-  );
+  const fontRefs = distinctFontRefs(pageData.lines.flatMap(l => l.words));
   // @font-face инжектится в фазе рендера, а не в эффекте: браузер должен
   // начать качать шрифт в том же кадре, в котором появился текст.
-  useQcfFont(fontNames);
+  //
+  // Готовность важна не только против кубиков: подгонка кегля ниже мерит
+  // ширину строк, и до прихода шрифта мерила бы запасной — то есть
+  // подбирала кегль под чужие метрики.
+  const fontsReady = useQcfFont(fontRefs);
 
   const lineCount = pageData.lines.length || 15;
   // Прикидка по высоте. Ширину проверим замером — предсказать её нельзя:
@@ -95,6 +99,9 @@ export function QcfMushafPage({
   useLayoutEffect(() => {
     if (!fitTo || !boxRef.current) return;
     if (passRef.current >= 2) return;
+    // Мерить по запасному шрифту нельзя — метрики другие, кегль выйдет
+    // неверным, а после подмены страница не впишется.
+    if (!fontsReady) return;
 
     const box = boxRef.current;
     const lines = Array.from(box.children) as HTMLElement[];
@@ -143,7 +150,15 @@ export function QcfMushafPage({
         WebkitUserSelect: 'none',
       }}
     >
-      {pageData.lines.map(line => {
+      {/* Шрифт страницы ещё едет.  Скелет на столько же строк и того же
+          ритма: когда текст придёт, страница проявится, а не перестроится. */}
+      {!fontsReady ? (
+        <ArabicSkeleton
+          lines={lineCount}
+          fontSize={fontSize}
+          align="stretch"
+        />
+      ) : pageData.lines.map(line => {
         const isSurahHeader = line.words.some(w => w.type === 'surah_header');
         const isBasmala = line.words.some(w => w.type === 'bismillah');
         // Короткие строки (конец суры) в мусхафе тоже стоят по центру.
@@ -199,7 +214,9 @@ function QcfWordSpan({ word, fontSize, isActive, isSelected, onTap }: WordSpanPr
       {...(key ? { 'data-verse-key': key } : {})}
       onClick={key && onTap ? () => onTap(key) : undefined}
       style={{
-        fontFamily: `'${word.font}', serif`,
+        // Семейство с суффиксом страницы — см. qcfPageFamily: одни и те же
+        // PUA-коды в разных шрифтах означают разные слова.
+        fontFamily: `'${qcfPageFamily(word.font, word.page ?? 0)}', serif`,
         fontSize: isHeader ? `${fontSize * 0.82}px` : `${fontSize}px`,
         color: isActive
           ? 'var(--qcf-active, var(--accent, #1a6b3c))'

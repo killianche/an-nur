@@ -178,7 +178,7 @@
 }
 
 /* Mushaf typesetting lives entirely in QCF V4 (PUA glyphs from
-   `qcf4/fonts-woff2/QCF4_Hafs_*_W.woff2`).  Each ayah uses several
+   `qcf4/fonts-page/NNN/QCF4_Hafs_*.woff2`).  Each ayah uses several
    page-specific Hafs subsets injected on demand by `useQcfFont`, so
    no @font-face declarations for Arabic body text are needed here.
    The legacy Uthmani / AmiriQuran / IndopakNastaleeq web-fonts were
@@ -450,6 +450,27 @@ body {
   background-size: 200% 100%;
   animation: skeletonShimmer 1.6s ease-in-out infinite;
   border-radius: 6px;
+}
+
+/* ─── Скелет арабского текста (ArabicSkeleton) ──────────────────────────────
+   Стоит на месте аята, пока едет постраничный шрифт мусхафа: у PUA-глифов
+   нет запасного шрифта, и без скелета браузер рисует ряды кубиков.
+
+   Здесь именно пульс, а не бегущий блик, как у `.skeleton` выше: экран с
+   аятом не место для аттракциона — заметное движение по тексту Корана
+   выглядит неуважительно. Пульс еле дышит и не тянет на себя взгляд. */
+@keyframes arabicSkeletonPulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.arabic-skeleton-bar {
+  animation: arabicSkeletonPulse 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .arabic-skeleton-bar {
+    animation: none;
+    opacity: 0.75;
+  }
 }
 
 /* ─── Icon buttons — Lucide-grade hit + hover ────────────────── */

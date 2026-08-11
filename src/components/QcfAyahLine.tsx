@@ -35,21 +35,33 @@
 
 import { Fragment, useRef } from 'react';
 import { useQcfFont } from '../hooks/useQcfFont';
+import { useNearViewport } from '../hooks/useNearViewport';
 import { useAyahGlow } from '../hooks/useAyahGlow';
 import { AyahGlowLayer } from './AyahGlowLayer';
-import type { QcfWord } from '../lib/qcf4';
+import { ArabicSkeleton } from './ArabicSkeleton';
+import { qcfPageFamily, type QcfWord, type QcfFontRef } from '../lib/qcf4';
 
 type Props = {
   /** Words composing this ayah, in mushaf reading order (position 1 = first) */
   words: QcfWord[];
-  /** Distinct font names used by the words (passed in for hook stability) */
-  fonts: string[];
+  /** Подмножества шрифтов, нужные словам — пары «шрифт + страница» */
+  fonts: QcfFontRef[];
   /** 1-based word position currently being recited, or null */
   activeWordPos?: number | null;
   /** Whether the WHOLE ayah is the active one (controls highlight visibility) */
   isActive?: boolean;
   /** px size at scale=1.0 — comfortable for mobile reading */
   scale?: number;
+  /**
+   * Просить шрифт сразу, не дожидаясь наблюдателя видимости.
+   *
+   * Нужно для аятов, которые точно окажутся на первом экране.  Наблюдатель
+   * присылает свой вердикт асинхронно, а при монтировании длинной суры
+   * основной поток занят: у Ан-Нахль (128 аятов) первый вердикт приходил
+   * через две секунды ПОСЛЕ того, как шрифт был уже загружен, и человек
+   * ровно столько смотрел на скелет впустую.
+   */
+  eager?: boolean;
   /** Optional tap handler for the ayah (play / focus) */
   onTap?: () => void;
 };
@@ -88,11 +100,9 @@ export function QcfAyahLine({
   activeWordPos = null,
   isActive = false,
   scale = 1.0,
+  eager = false,
   onTap,
 }: Props) {
-  // Inject @font-face for every font the ayah needs (idempotent across calls)
-  useQcfFont(fonts);
-
   const fontSize = BASE_FONT_PX * scale;
   const chunks = chunkWords(words);
 
@@ -115,6 +125,16 @@ export function QcfAyahLine({
     wordCount: words.length,
     fontSize,
   });
+
+  // Шрифт просим, только когда аят подошёл к экрану.  Сура смонтирована
+  // целиком (см. useChunkedRender), и без этого условия Ан-Ниса разом
+  // запрашивала 32 подмножества — файл первого экрана приходил вместе с
+  // последними.  Подробнее в hooks/useNearViewport.ts.
+  //
+  // Пока шрифт не готов, на месте аята стоит скелет, а не кубики: у
+  // PUA-глифов запасного шрифта не существует.
+  const near = useNearViewport(containerRef, !eager);
+  const fontsReady = useQcfFont(fonts, eager || near);
 
   return (
     <div
@@ -143,7 +163,17 @@ export function QcfAyahLine({
           cases so no measure work is wasted. */}
       <AyahGlowLayer box={activeBox} />
 
-      {chunks.map((chunk, idx) => (
+      {/* Шрифт ещё едет — держим место скелетом.  Кубики вместо слов аята
+          недопустимы, а скелет той же высоты не даёт странице прыгнуть,
+          когда текст появится.  Оценка строк: около пяти с половиной слов
+          мусхафа на строку при обычном кегле. */}
+      {!fontsReady ? (
+        <ArabicSkeleton
+          lines={Math.max(1, Math.ceil(words.length / 5.5))}
+          fontSize={fontSize}
+          align="right"
+        />
+      ) : chunks.map((chunk, idx) => (
         <Fragment key={idx}>
           <span
             style={{
@@ -207,7 +237,10 @@ function QcfWordSpan({ word, isActive, innerRef }: WordSpanProps) {
       {...(word.position  ? { 'data-position':  word.position  } : {})}
       dir="rtl"
       style={{
-        fontFamily: `'${word.font}', serif`,
+        // Семейство с суффиксом страницы: одни и те же PUA-коды в разных
+        // шрифтах означают разные слова, поэтому подмножества страниц не
+        // должны делить имя — иначе в аяте окажется чужое слово.
+        fontFamily: `'${qcfPageFamily(word.font, word.page ?? 0)}', serif`,
         // Default colour for inactive words. The active-word colour is
         // applied via the CSS `[data-active-word]` rule (with !important
         // to win against this inline default) so the user's theme- and

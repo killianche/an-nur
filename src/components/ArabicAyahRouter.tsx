@@ -34,18 +34,21 @@ import { arabicFontConfig, type ArabicFontId } from '../lib/typography';
 // пользователь реально выбрал Tajweed-шрифт.  useTajweedAyah вернёт
 // null пока модуль грузится — рендерим V4-fallback это время.
 import { useTajweedAyah } from '../content/quran-tajweed-lazy';
-import type { QcfWord } from '../lib/qcf4';
+import type { QcfWord, QcfFontRef } from '../lib/qcf4';
 
 type Props = {
   verseKey: string;
   ayahNumber: number;
   /** QCF V4 word data (default rendering path) */
   words: QcfWord[];
-  fonts: string[];
+  /** Подмножества шрифтов для слов аята — пары «шрифт + страница» */
+  fonts: QcfFontRef[];
   arabicFont: ArabicFontId;
   activeWordPos: number | null;
   isActive: boolean;
   scale: number;
+  /** Просить шрифт сразу — для аятов, которые точно на первом экране. */
+  eager?: boolean;
 };
 
 export function ArabicAyahRouter({
@@ -57,9 +60,13 @@ export function ArabicAyahRouter({
   activeWordPos,
   isActive,
   scale,
+  eager,
 }: Props) {
   const cfg = arabicFontConfig(arabicFont);
-  const ed = useEdition(verseKey);
+  // QCF V4 (по умолчанию) и таджвид рисуются своими данными — датасет
+  // альтернативных начертаний им не нужен, а весит он 3.9 МБ.
+  const needsEditions = cfg.kind !== 'qcf-v4' && cfg.kind !== 'tajweed';
+  const ed = useEdition(verseKey, needsEditions);
   const pxOffset = cfg.fontPxOffset ?? 0;
   // Tajweed data — lazy-loaded async; null пока грузится / нет данных.
   const tajweedData = useTajweedAyah(verseKey, cfg.kind === 'tajweed');
@@ -73,6 +80,7 @@ export function ArabicAyahRouter({
         activeWordPos={activeWordPos}
         isActive={isActive}
         scale={scale}
+        eager={eager}
       />
     );
   }
@@ -103,6 +111,7 @@ export function ArabicAyahRouter({
         activeWordPos={activeWordPos}
         isActive={isActive}
         scale={scale}
+        eager={eager}
       />
     );
   }
@@ -117,6 +126,7 @@ export function ArabicAyahRouter({
         activeWordPos={activeWordPos}
         isActive={isActive}
         scale={scale}
+        eager={eager}
       />
     );
   }
