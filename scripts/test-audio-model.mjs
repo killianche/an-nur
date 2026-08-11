@@ -225,6 +225,90 @@ group('Поиск по русскому переводу', () => {
   check('и помечается как обрезанное', common.truncated, true);
 });
 
+// ─── Время намаза ─────────────────────────────────────────────────────
+//
+// Зачем это здесь.  Время намаза — не косметика: ошибка в углах или
+// потерянная поправка означают намаз не в своё время, и увидеть это
+// на экране невозможно — цифры выглядят правдоподобно любыми.
+//
+// Эталон — расписание «Назрань 2» на 11 августа 2026, снятое с двух
+// независимых приложений (1Muslim и Sajda), которые в этот день дали
+// одно и то же по всем шести временам.
+const prayerMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/prayerTimes.ts')).href);
+const {
+  timesFor, nextPrayer, methodById, DEFAULT_SETTINGS,
+  ZERO_ADJUSTMENTS, METHODS, PRAYER_ORDER, IS_PRAYER,
+} = prayerMod;
+
+group('Время намаза — расписание «Назрань 2»', () => {
+  const NAZRAN = { lat: 43.2256, lon: 44.7642 };
+  const DAY = new Date(2026, 7, 11);
+  const KEYS = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
+  // Часовой пояс задаём явно: тест не должен зависеть от настроек
+  // машины, на которой его запускают.
+  const hhmm = d => d.toLocaleTimeString('ru-RU', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow',
+  });
+  const table = s => KEYS.map(k => hhmm(timesFor(NAZRAN, DAY, s)[k]));
+
+  check('дефолт — «Назрань 2», шафиитский аср',
+    [DEFAULT_SETTINGS.method, DEFAULT_SETTINGS.madhab], ['nazran2', 'shafi']);
+
+  check('11 августа 2026 совпадает с 1Muslim и Sajda',
+    table(DEFAULT_SETTINGS),
+    ['03:23', '05:02', '12:12', '16:01', '19:11', '20:42']);
+
+  // Без ихтията получилась бы чистая астрономия — на зухре разница
+  // в шесть минут, то есть намаз до времени.
+  check('без ихтията зухр уезжает на шесть минут раньше',
+    table({ method: 'dumrf', madhab: 'shafi', adjustments: ZERO_ADJUSTMENTS })[2],
+    '12:06');
+
+  check('ханафитский аср отличается на час',
+    table({ ...DEFAULT_SETTINGS, madhab: 'hanafi' })[3], '17:05');
+
+  // Ручная поправка не должна затирать ихтият метода: +6 у зухра и
+  // −2 от пользователя дают +4, а не −2.
+  check('ручная поправка складывается с ихтиятом метода',
+    table({ ...DEFAULT_SETTINGS, adjustments: { ...ZERO_ADJUSTMENTS, dhuhr: -2 } })[2],
+    '12:10');
+
+  check('поправка у одного намаза не трогает соседние',
+    table({ ...DEFAULT_SETTINGS, adjustments: { ...ZERO_ADJUSTMENTS, dhuhr: -2 } })[3],
+    '16:01');
+
+  check('у «Назрани 2» ихтият задан, у общих методов его нет',
+    [!!methodById('nazran2').offsets, !!methodById('mwl').offsets], [true, false]);
+
+  check('все методы имеют указание источника',
+    METHODS.every(m => typeof m.source === 'string' && m.source.length > 10), true);
+
+  check('идентификаторы методов уникальны',
+    new Set(METHODS.map(m => m.id)).size, METHODS.length);
+});
+
+group('Время намаза — ближайший намаз', () => {
+  const NAZRAN = { lat: 43.2256, lon: 44.7642 };
+  const at = (h, m) => new Date(2026, 7, 11, h, m);
+
+  check('в 08:00 следующий — зухр',
+    nextPrayer(NAZRAN, at(8, 0), DEFAULT_SETTINGS).key, 'dhuhr');
+
+  // Восход не намаз, а граница времени фаджра: отсчёт «до восхода»
+  // вводил бы в заблуждение.
+  check('в 04:00 следующий не восход, а зухр',
+    nextPrayer(NAZRAN, at(4, 0), DEFAULT_SETTINGS).key, 'dhuhr');
+
+  check('восход помечен как не-намаз',
+    [IS_PRAYER.sunrise, PRAYER_ORDER.includes('sunrise')], [false, true]);
+
+  const after = nextPrayer(NAZRAN, at(23, 30), DEFAULT_SETTINGS);
+  check('после иши экран не пустеет — берётся завтрашний фаджр',
+    [after.key, after.tomorrow], ['fajr', true]);
+  check('завтрашний фаджр действительно завтра',
+    after.at.getTime() > at(23, 30).getTime(), true);
+});
+
 // ─── Итог ─────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length === 0) {

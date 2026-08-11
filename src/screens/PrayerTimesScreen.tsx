@@ -255,7 +255,7 @@ export function PrayerTimesScreen({ theme, setTheme }: Props) {
             display: 'grid', gap: '14px',
           }}>
             <div>
-              <p style={groupTitle}>Углы фаджра и иши</p>
+              <p style={groupTitle}>Метод расчёта</p>
               <div style={{ display: 'grid', gap: '6px' }}>
                 {METHODS.map(m => (
                   <button
@@ -279,6 +279,14 @@ export function PrayerTimesScreen({ theme, setTheme }: Props) {
                       fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
                     }}>
                       {m.fajr}° / {'angle' in m.isha ? `${m.isha.angle}°` : `${m.isha.minutes} мин`}
+                      {/*
+                        Без этой пометки «Назрань 2» и «ДУМ России»
+                        выглядят одинаково — у обоих 16° / 15°, — но
+                        дают разное время: у первого сверху лежит запас
+                        местного расписания.  Два одинаковых с виду
+                        пункта с разным результатом читаются как ошибка.
+                      */}
+                      {m.offsets && ' + запас'}
                     </span>
                   </button>
                 ))}
@@ -346,8 +354,8 @@ export function PrayerTimesScreen({ theme, setTheme }: Props) {
           <Clock size={14} />
         </span>
         Время считается на устройстве по координатам, без интернета.
-        Сверьтесь с расписанием своей мечети — местные календари могут
-        добавлять запас в несколько минут.
+        Сверьтесь с расписанием своей мечети: если оно расходится хотя бы
+        на минуту — выставьте разницу в поправках, она запомнится.
       </p>
     </div>
   );
