@@ -445,6 +445,7 @@ const duaMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/duaList.ts')).h
 const {
   readDuaList, writeDuaList, addToDuaList, removeFromDuaList,
   toggleInDuaList, moveInDuaList, isInDuaList, clearDuaList,
+  insertIntoDuaList,
 } = duaMod;
 
 group('Мой список дуа', () => {
@@ -485,6 +486,22 @@ group('Мой список дуа', () => {
 
   clearDuaList();
   check('очистка работает', readDuaList(), []);
+
+  // Возврат после удаления обязан ставить дуа на прежнее место: иначе
+  // «Вернуть» ломает порядок чтения и отмена перестаёт быть отменой.
+  writeDuaList(['a', 'b', 'c']);
+  removeFromDuaList('b');
+  check('удалили середину', readDuaList(), ['a', 'c']);
+  insertIntoDuaList('b', 1);
+  check('вернули на своё место', readDuaList(), ['a', 'b', 'c']);
+
+  insertIntoDuaList('z', 99);
+  check('индекс за концом зажимается', readDuaList(), ['a', 'b', 'c', 'z']);
+  insertIntoDuaList('z', -5);
+  check('и за началом тоже, без дубля', readDuaList(), ['z', 'a', 'b', 'c']);
+  insertIntoDuaList('a', 0);
+  check('повторная вставка переносит, а не дублирует', readDuaList(), ['a', 'z', 'b', 'c']);
+  clearDuaList();
 });
 
 // ─── Итог ─────────────────────────────────────────────────────────────

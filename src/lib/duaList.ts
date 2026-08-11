@@ -24,7 +24,7 @@
  *
  * Порядок в списке — порядок чтения, и задаёт его человек.  Поэтому
  * массив, а не множество: новое добавляется в конец, переставляется
- * стрелками.
+ * перетаскиванием за хват в режиме правки.
  */
 
 const KEY = 'dua.list';
@@ -90,6 +90,20 @@ export function toggleInDuaList(id: string): boolean {
   }
   writeDuaList([...list, id]);
   return true;
+}
+
+/**
+ * Вставить дуа на конкретное место.
+ *
+ * Нужно для «Вернуть» после удаления: обратимую потерю Apple лечит
+ * отменой, а не диалогом перед каждым удалением, — а отмена обязана
+ * вернуть дуа туда, откуда оно ушло, иначе порядок чтения ломается.
+ */
+export function insertIntoDuaList(id: string, index: number) {
+  const list = readDuaList().filter(x => x !== id);
+  const at = Math.max(0, Math.min(list.length, Math.round(index)));
+  list.splice(at, 0, id);
+  writeDuaList(list);
 }
 
 /** Переставить дуа в списке: порядок чтения задаёт человек. */

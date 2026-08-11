@@ -36,14 +36,15 @@
  * что произошло и что будет дальше.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Appearance, Bookmark, Trash } from '../components/icons';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Appearance, Bookmark, DragHandle, MinusCircleFill } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
 import { loadDuaData, type DuaData, type DuaEntry } from '../lib/dua';
 import {
-  moveInDuaList, onDuaListChange, readDuaList,
+  insertIntoDuaList, moveInDuaList, onDuaListChange, readDuaList,
   removeFromDuaList, toggleInDuaList,
 } from '../lib/duaList';
 
@@ -90,6 +91,44 @@ export function DuaScreen({ theme, setTheme }: Props) {
   const mine = list.map(id => byId.get(id)).filter((e): e is DuaEntry => !!e);
   const total = data?.entries.length ?? 0;
 
+  /*
+   * Отмена вместо подтверждения.
+   *
+   * Потеря дуа из списка обратима, и Apple такие вещи лечит не диалогом
+   * перед каждым удалением, а возможностью вернуть — как «Undo Send» в
+   * Почте.  Диалог на каждое удаление превращается в нытьё, и человек
+   * начинает жать «да» не читая.
+   *
+   * Помним и место, откуда дуа ушло: вернуть надо туда же, иначе
+   * порядок чтения ломается.
+   */
+  const [undo, setUndo] = useState<{ id: string; index: number; title: string } | null>(null);
+  const undoTimer = useRef<number | null>(null);
+
+  const rememberUndo = useCallback((id: string, index: number, title: string) => {
+    setUndo({ id, index, title });
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    undoTimer.current = window.setTimeout(() => setUndo(null), 6000);
+  }, []);
+
+  useEffect(() => () => {
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+  }, []);
+
+  const remove = useCallback((entry: DuaEntry) => {
+    const index = readDuaList().indexOf(entry.id);
+    removeFromDuaList(entry.id);
+    rememberUndo(entry.id, index < 0 ? 0 : index, entry.title_ru);
+  }, [rememberUndo]);
+
+  const toggle = useCallback((entry: DuaEntry) => {
+    const index = readDuaList().indexOf(entry.id);
+    const nowIn = toggleInDuaList(entry.id);
+    // Снятие закладки — тоже потеря, и её тоже надо уметь вернуть.
+    if (nowIn) setUndo(null);
+    else rememberUndo(entry.id, index < 0 ? 0 : index, entry.title_ru);
+  }, [rememberUndo]);
+
   const shown = useMemo(() => {
     if (!data) return [];
     if (category === null) return data.entries;
@@ -125,6 +164,29 @@ export function DuaScreen({ theme, setTheme }: Props) {
         }}>
           Дуа
         </h1>
+
+        {/* «Изменить» стоит в шапке справа, а не отдельной строкой под
+            переключателем: у Apple вход в правку списка живёт именно
+            здесь, и рука тянется туда по привычке. */}
+        {mode === 'mine' && mine.length > 0 && (
+          <button
+            onClick={() => setEditing(v => !v)}
+            style={{
+              minHeight: '34px', padding: '0 14px', borderRadius: '9999px',
+              border: `1px solid ${editing ? 'var(--text-primary)' : 'var(--hairline)'}`,
+              background: editing
+                ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
+                : 'transparent',
+              color: 'var(--text-primary)', cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: '14px',
+              fontWeight: editing ? 600 : 500,
+              flexShrink: 0,
+            }}
+          >
+            {editing ? 'Готово' : 'Изменить'}
+          </button>
+        )}
+
         <button
           ref={themeBtnRef}
           onClick={() => setThemeOpen(v => !v)}
@@ -148,39 +210,6 @@ export function DuaScreen({ theme, setTheme }: Props) {
         allCount={total}
       />
 
-      {/* Панель режима: слева что показано, справа вход в правку.
-          Появляется только когда есть что править. */}
-      {mode === 'mine' && mine.length > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '10px',
-          padding: '0 2px 12px',
-        }}>
-          <span style={{
-            flex: 1, minWidth: 0,
-            fontSize: '12px', color: 'var(--text-tertiary)',
-          }}>
-            {editing
-              ? 'Стрелками — порядок чтения'
-              : `${mine.length} в вашем порядке`}
-          </span>
-          <button
-            onClick={() => setEditing(v => !v)}
-            style={{
-              minHeight: '30px', padding: '0 13px', borderRadius: '9999px',
-              border: `1px solid ${editing ? 'var(--text-primary)' : 'var(--hairline)'}`,
-              background: editing
-                ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
-                : 'transparent',
-              color: 'var(--text-primary)', cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: '12.5px', fontWeight: 500,
-              flexShrink: 0,
-            }}
-          >
-            {editing ? 'Готово' : 'Изменить'}
-          </button>
-        </div>
-      )}
-
       {mode === 'all' && total > 0 && data && data.categories.length > 1 && (
         <CategoryChips data={data} value={category} onChange={setCategory} />
       )}
@@ -192,30 +221,24 @@ export function DuaScreen({ theme, setTheme }: Props) {
           ? <EmptyMine hasAny={total > 0} onBrowse={() => setMode('all')} />
           : editing
             ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px' }}>
-                {mine.map((e, i) => (
-                  <EditRow
-                    key={e.id}
-                    entry={e}
-                    ordinal={i + 1}
-                    first={i === 0}
-                    last={i === mine.length - 1}
-                    onMove={d => moveInDuaList(e.id, d)}
-                    onRemove={() => removeFromDuaList(e.id)}
-                  />
-                ))}
-              </div>
+              <EditList items={mine} onRemove={remove} />
             )
             : (
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '14px' }}>
                 {mine.map((e, i) => (
+                  /*
+                   * Кнопки удаления на карточке чтения нет намеренно.
+                   * Раньше закладка справа сверху убирала дуа одним
+                   * касанием — случайный тап терял собранное молча.
+                   * Убрать можно только через «Изменить», и там в два
+                   * шага.
+                   */
                   <DuaCard
                     key={e.id}
                     entry={e}
                     ordinal={i + 1}
                     inList
                     delay={Math.min(i * 40, MAX_STAGGER_MS)}
-                    onToggle={() => removeFromDuaList(e.id)}
                   />
                 ))}
               </div>
@@ -233,11 +256,19 @@ export function DuaScreen({ theme, setTheme }: Props) {
                   entry={e}
                   inList={list.includes(e.id)}
                   delay={Math.min(i * 40, MAX_STAGGER_MS)}
-                  onToggle={() => toggleInDuaList(e.id)}
+                  onToggle={() => toggle(e)}
                 />
               ))}
             </div>
           )
+      )}
+
+      {undo && (
+        <UndoBar
+          title={undo.title}
+          onUndo={() => { insertIntoDuaList(undo.id, undo.index); setUndo(null); }}
+          onDismiss={() => setUndo(null)}
+        />
       )}
     </div>
   );
@@ -391,7 +422,9 @@ function DuaCard({ entry, ordinal, inList, delay, onToggle }: {
   ordinal?: number;
   inList: boolean;
   delay: number;
-  onToggle: () => void;
+  /** Без обработчика закладка не рисуется вовсе.  Так карточка в «моём
+   *  списке» остаётся без разрушительных кнопок. */
+  onToggle?: () => void;
 }) {
   return (
     <article
@@ -454,23 +487,25 @@ function DuaCard({ entry, ordinal, inList, delay, onToggle }: {
           </span>
         )}
 
-        <button
-          onClick={onToggle}
-          aria-label={inList ? 'Убрать из моего списка' : 'Добавить в мой список'}
-          title={inList ? 'Убрать из моего списка' : 'Добавить в мой список'}
-          style={{
-            flexShrink: 0,
-            width: '32px', height: '32px', borderRadius: '9999px',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            border: 'none', background: 'transparent',
-            color: inList ? 'var(--text-primary)' : 'var(--text-tertiary)',
-            cursor: 'pointer', marginTop: '-3px', marginRight: '-4px',
-            WebkitTapHighlightColor: 'transparent',
-            transition: 'color 0.18s ease',
-          }}
-        >
-          <Bookmark size={19} isFilled={inList} />
-        </button>
+        {onToggle && (
+          <button
+            onClick={onToggle}
+            aria-label={inList ? 'Убрать из моего списка' : 'Добавить в мой список'}
+            title={inList ? 'Убрать из моего списка' : 'Добавить в мой список'}
+            style={{
+              flexShrink: 0,
+              width: '32px', height: '32px', borderRadius: '9999px',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              border: 'none', background: 'transparent',
+              color: inList ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              cursor: 'pointer', marginTop: '-3px', marginRight: '-4px',
+              WebkitTapHighlightColor: 'transparent',
+              transition: 'color 0.18s ease',
+            }}
+          >
+            <Bookmark size={19} isFilled={inList} />
+          </button>
+        )}
       </div>
 
       <Rule />
@@ -542,81 +577,276 @@ function Rule() {
 }
 
 /**
- * Строка в режиме правки.
+ * Список в режиме правки — с перетаскиванием за хват.
  *
- * Плотно: весь список должен быть виден целиком, иначе переставлять
- * приходится наугад.  Тексты здесь не нужны — переставляют по названию.
+ * ── Почему перетаскивание, а не стрелки ───────────────────────────────
+ *
+ * Стрелки были моей самоделкой: у Apple порядок в списке меняют
+ * перетаскиванием за хват из трёх полос справа.  Стрелками десять
+ * позиций переставляются десятью нажатиями, перетаскиванием — одним
+ * движением.
+ *
+ * Тянуть можно только за хват: `touch-action: none` стоит на нём одном,
+ * поэтому за остальную площадь строки страница по-прежнему
+ * прокручивается.  Если бы захват работал по всей строке, список
+ * перестал бы скроллиться.
+ *
+ * Стрелки клавиатуры на хвате оставлены для доступности — так порядок
+ * меняется и без мыши, и у Apple это работает так же.
+ *
+ * ── Почему удаление в два шага ─────────────────────────────────────────
+ *
+ * Минус слева ничего не удаляет: он открывает кнопку «Удалить».
+ * Удаляет только второе касание.  Это тот самый порядок, что у Apple в
+ * списках, и он защищает от случайного касания надёжнее диалога —
+ * диалог люди закрывают не читая.
  */
-function EditRow({ entry, ordinal, first, last, onMove, onRemove }: {
-  entry: DuaEntry;
-  ordinal: number;
-  first: boolean;
-  last: boolean;
-  onMove: (delta: number) => void;
-  onRemove: () => void;
+function EditList({ items, onRemove }: {
+  items: DuaEntry[];
+  onRemove: (entry: DuaEntry) => void;
 }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragDy, setDragDy] = useState(0);
+  // Какая строка раскрыла кнопку «Удалить».  Одна за раз: две открытые
+  // красные кнопки на экране — приглашение промахнуться.
+  const [armed, setArmed] = useState<string | null>(null);
+
+  const startY = useRef(0);
+
+  const rowsNow = () => Array.from(
+    boxRef.current?.querySelectorAll<HTMLElement>('[data-dua-row]') ?? [],
+  );
+
+  const onPointerDown = (id: string) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    // Захват указателя нужен, чтобы палец, ушедший за пределы хвата,
+    // продолжал тянуть строку.  В try, потому что на неактивном
+    // указателе браузер бросает NotFoundError, и падение обработчика
+    // сорвало бы весь жест.
+    try { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* не критично */ }
+    setDragId(id);
+    setDragDy(0);
+    setArmed(null);
+    startY.current = e.clientY;
+  };
+
+  const onPointerMove = (id: string) => (e: React.PointerEvent) => {
+    if (dragId !== id) return;
+    setDragDy(e.clientY - startY.current);
+
+    // Куда переносить: строка, чью середину пересёк палец.  Пересчитываем
+    // из DOM на каждом движении — после переноса порядок и координаты
+    // меняются, кэшировать нельзя.
+    const rows = rowsNow();
+    const from = rows.findIndex(r => r.dataset.duaRow === id);
+    if (from === -1) return;
+    let to = from;
+    for (let i = 0; i < rows.length; i++) {
+      if (i === from) continue;
+      const r = rows[i].getBoundingClientRect();
+      const middle = r.top + r.height / 2;
+      if (i < from && e.clientY < middle) { to = i; break; }
+      if (i > from && e.clientY > middle) to = i;
+    }
+    if (to !== from) {
+      moveInDuaList(id, to - from);
+      // Точку отсчёта переносим вместе со строкой, иначе смещение
+      // накапливается и строка «убегает» от пальца.
+      startY.current = e.clientY;
+      setDragDy(0);
+    }
+  };
+
+  const endDrag = () => { setDragId(null); setDragDy(0); };
+
+  const onHandleKey = (id: string) => (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowUp')   { e.preventDefault(); moveInDuaList(id, -1); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); moveInDuaList(id, 1); }
+  };
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '8px',
-      minHeight: '54px', padding: '8px 10px 8px 12px',
-      borderRadius: '14px',
-      // Колонка grid снаружи задана как minmax(0, 1fr), но подстрахуемся:
-      // без этого nowrap-заголовок вытягивал строку за край экрана и
-      // стрелки с корзиной уезжали за границу — поймано на симуляторе.
-      overflow: 'hidden',
-      border: '1px solid var(--hairline)',
-      background: 'var(--surface)',
-    }}>
-      <span style={{
-        flexShrink: 0,
-        width: '22px', height: '22px', borderRadius: '9999px',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        background: 'color-mix(in srgb, var(--ink) 7%, transparent)',
-        fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)',
-        fontVariantNumeric: 'tabular-nums',
-      }}>
-        {ordinal}
-      </span>
+    <div
+      ref={boxRef}
+      style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px' }}
+    >
+      {items.map((e, i) => {
+        const dragging = dragId === e.id;
+        return (
+          <div
+            key={e.id}
+            data-dua-row={e.id}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              minHeight: '56px', padding: '8px 8px 8px 10px',
+              borderRadius: '14px',
+              border: `1px solid ${dragging ? 'var(--hairline-strong)' : 'var(--hairline)'}`,
+              background: 'var(--surface)',
+              overflow: 'hidden',
+              // Поднимаем перетаскиваемую строку над остальными: без
+              // этого непонятно, что именно ты держишь.
+              transform: dragging ? `translateY(${dragDy}px) scale(1.015)` : 'none',
+              boxShadow: dragging ? '0 10px 26px rgba(0,0,0,0.28)' : 'none',
+              zIndex: dragging ? 2 : 1,
+              position: 'relative',
+              transition: dragging
+                ? 'box-shadow 0.18s ease'
+                : 'transform 0.2s cubic-bezier(0.22,1,0.36,1), box-shadow 0.18s ease',
+              touchAction: 'pan-y',
+            }}
+          >
+            <button
+              onClick={() => setArmed(a => (a === e.id ? null : e.id))}
+              aria-label={armed === e.id ? 'Отменить удаление' : `Удалить ${e.title_ru}`}
+              aria-expanded={armed === e.id}
+              style={{
+                flexShrink: 0,
+                width: '34px', height: '34px', borderRadius: '9999px',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', background: 'transparent',
+                color: 'var(--danger)', cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent',
+                // Поворот минуса — тот же знак, что у Apple: «нажатие
+                // принято, подтверди справа».
+                transform: armed === e.id ? 'rotate(90deg)' : 'none',
+                transition: 'transform 0.22s cubic-bezier(0.22,1,0.36,1)',
+              }}
+            >
+              <MinusCircleFill size={21} />
+            </button>
 
-      <span style={{
-        flex: 1, minWidth: 0,
-        fontSize: '14.5px', fontWeight: 500, color: 'var(--text-primary)',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-      }}>
-        {entry.title_ru}
-      </span>
+            <span style={{
+              flexShrink: 0,
+              width: '22px', height: '22px', borderRadius: '9999px',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              background: 'color-mix(in srgb, var(--ink) 7%, transparent)',
+              fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {i + 1}
+            </span>
 
-      <span style={{ display: 'inline-flex', gap: '3px', flexShrink: 0 }}>
-        <Mini label="Выше" disabled={first} onClick={() => onMove(-1)}>↑</Mini>
-        <Mini label="Ниже" disabled={last} onClick={() => onMove(1)}>↓</Mini>
-        <Mini label="Убрать из списка" disabled={false} onClick={onRemove}>
-          <Trash size={14} />
-        </Mini>
-      </span>
+            <span style={{
+              flex: 1, minWidth: 0,
+              fontSize: '14.5px', fontWeight: 500, color: 'var(--text-primary)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {e.title_ru}
+            </span>
+
+            {armed === e.id ? (
+              <button
+                onClick={() => { setArmed(null); onRemove(e); }}
+                style={{
+                  flexShrink: 0, minHeight: '34px', padding: '0 14px',
+                  borderRadius: '9999px', border: 'none',
+                  background: 'var(--danger)',
+                  color: '#fff', cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: '13.5px', fontWeight: 600,
+                  animation: 'card-in 0.18s ease both',
+                }}
+              >
+                Удалить
+              </button>
+            ) : (
+              <button
+                onPointerDown={onPointerDown(e.id)}
+                onPointerMove={onPointerMove(e.id)}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+                onKeyDown={onHandleKey(e.id)}
+                aria-label={`${e.title_ru}: изменить порядок`}
+                style={{
+                  flexShrink: 0,
+                  width: '38px', height: '38px', borderRadius: '10px',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  border: 'none', background: 'transparent',
+                  color: 'var(--text-tertiary)',
+                  cursor: dragging ? 'grabbing' : 'grab',
+                  // Только на хвате: за остальную площадь строки страница
+                  // должна прокручиваться как обычно.
+                  touchAction: 'none',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                <DragHandle size={19} />
+              </button>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function Mini({ children, onClick, disabled, label }: {
-  children: React.ReactNode; onClick: () => void; disabled: boolean; label: string;
+/**
+ * Всплывашка отмены.
+ *
+ * Портал в body: экран задаёт свой контекст наложения, и без портала
+ * всплывашка уехала бы под панель вкладок — та же ловушка, что была с
+ * листом городов на экране намаза.
+ *
+ * Живёт шесть секунд.  Меньше — не успеть прочитать и дотянуться,
+ * больше — начинает мешать.
+ */
+function UndoBar({ title, onUndo, onDismiss }: {
+  title: string;
+  onUndo: () => void;
+  onDismiss: () => void;
 }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
+  return createPortal(
+    <div
+      role="status"
       style={{
-        width: '32px', height: '32px', borderRadius: '9px',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        border: '1px solid var(--hairline)', background: 'transparent',
-        color: disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)',
-        fontFamily: 'inherit', fontSize: '13px', lineHeight: 1,
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.35 : 1,
+        position: 'fixed', left: '12px', right: '12px', zIndex: 62,
+        bottom: `calc(${TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom) + 12px)`,
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '11px 12px 11px 16px',
+        borderRadius: '15px',
+        border: '1px solid var(--hairline)',
+        background: 'color-mix(in srgb, var(--surface) 94%, transparent)',
+        backdropFilter: 'saturate(150%) blur(14px)',
+        WebkitBackdropFilter: 'saturate(150%) blur(14px)',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+        maxWidth: 'min(100%, 640px)', margin: '0 auto',
+        animation: 'sheet-up 0.22s cubic-bezier(0.22,1,0.36,1)',
       }}
     >
-      {children}
-    </button>
+      <span style={{
+        flex: 1, minWidth: 0,
+        fontSize: '13.5px', color: 'var(--text-primary)',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        «{title}» убрано
+      </span>
+      <button
+        onClick={onUndo}
+        style={{
+          flexShrink: 0, minHeight: '32px', padding: '0 14px',
+          borderRadius: '9999px',
+          border: '1px solid var(--hairline)',
+          background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
+          color: 'var(--text-primary)', cursor: 'pointer',
+          fontFamily: 'inherit', fontSize: '13.5px', fontWeight: 600,
+        }}
+      >
+        Вернуть
+      </button>
+      <button
+        onClick={onDismiss}
+        aria-label="Скрыть"
+        style={{
+          flexShrink: 0, width: '30px', height: '30px', borderRadius: '9999px',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          border: 'none', background: 'transparent',
+          color: 'var(--text-tertiary)', cursor: 'pointer',
+          fontFamily: 'inherit', fontSize: '17px', lineHeight: 1,
+        }}
+      >
+        ×
+      </button>
+    </div>,
+    document.body,
   );
 }
 

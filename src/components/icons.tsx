@@ -249,6 +249,25 @@ export const Plus = ({ size = 20 }: Props) => (
   </svg>
 );
 
+/** Минус в залитом круге — то, чем Apple помечает удаление в режиме
+ *  правки списка.  Заливка обязательна: у пустого контура минус читается
+ *  как «свернуть», а не как «удалить». */
+export const MinusCircleFill = ({ size = 20 }: Props) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="12" cy="12" r="9.25" fill="currentColor" />
+    <path d="M8 12h8" stroke="var(--surface)" strokeWidth="1.9" strokeLinecap="round" />
+  </svg>
+);
+
+/** Хват для перетаскивания.  Три полосы — ровно то, что Apple ставит
+ *  справа у строки в режиме правки. */
+export const DragHandle = ({ size = 20 }: Props) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
+    <path d="M5 8.5h14M5 12h14M5 15.5h14" />
+  </svg>
+);
+
 export const Trash = ({ size = 18 }: Props) => (
   <svg {...stroke(size)}>
     <path d="M4.75 6.5h14.5" />
