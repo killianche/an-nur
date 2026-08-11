@@ -330,6 +330,113 @@ group('Время намаза — ближайший намаз', () => {
     after.at.getTime() > at(23, 30).getTime(), true);
 });
 
+// ─── Города намаза ────────────────────────────────────────────────────
+//
+// Список городов и их настройки — то, что человек собирает руками и
+// теряет молча: ошибка в разборе хранилища не видна ни в типах, ни на
+// экране, пока однажды не сбросятся все поправки.
+//
+// Модуль работает с localStorage, поэтому подставляем минимальную
+// заглушку ДО импорта: модуль читает хранилище на первом обращении.
+globalThis.localStorage = (() => {
+  const map = new Map();
+  return {
+    getItem: k => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: k => map.delete(k),
+    clear: () => map.clear(),
+    key: i => [...map.keys()][i] ?? null,
+    get length() { return map.size; },
+  };
+})();
+globalThis.window = {
+  localStorage: globalThis.localStorage,
+  addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; },
+};
+globalThis.Event = class { constructor(type) { this.type = type; } };
+
+const citiesMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/prayerCities.ts')).href);
+const {
+  readCities, writeCities, readActiveId, setActiveId,
+  addCity, removeCity, moveCity, updateCitySettings, MAX_CITIES,
+} = citiesMod;
+
+group('Города намаза', () => {
+  localStorage.clear();
+
+  // Первый запуск: переносим прежнее одиночное место и досыпаем пресеты,
+  // названные владельцем.
+  const seeded = readCities();
+  check('на первом запуске город не один', seeded.length >= 4, true);
+  check('первым идёт Назрань', seeded[0].name, 'Назрань');
+  check('пресеты владельца на месте',
+    ['Малгобек', 'Владикавказ', 'Москва'].every(n => seeded.some(c => c.name === n)), true);
+  check('дублей нет',
+    new Set(seeded.map(c => c.name)).size, seeded.length);
+  check('id уникальны',
+    new Set(seeded.map(c => c.id)).size, seeded.length);
+  check('активный город существует',
+    seeded.some(c => c.id === readActiveId()), true);
+
+  // Главное свойство модели: настройки принадлежат городу, а не
+  // приложению.  Если это сломается, поправки под мечеть в Назрани
+  // молча уедут на Москву.
+  const nazran = readCities()[0];
+  const moscow = readCities().find(c => c.name === 'Москва');
+  updateCitySettings(nazran.id, {
+    ...nazran.settings, method: 'mwl',
+    adjustments: { ...nazran.settings.adjustments, dhuhr: 5 },
+  });
+  const after = readCities();
+  check('настройка применилась к своему городу',
+    [after.find(c => c.id === nazran.id).settings.method,
+     after.find(c => c.id === nazran.id).settings.adjustments.dhuhr], ['mwl', 5]);
+  check('и не задела соседний',
+    [after.find(c => c.id === moscow.id).settings.method,
+     after.find(c => c.id === moscow.id).settings.adjustments.dhuhr], ['dumrf', 0]);
+
+  // Порядок в списке — это порядок смахивания.
+  const before = readCities().map(c => c.name);
+  moveCity(readCities()[0].id, 1);
+  const moved = readCities().map(c => c.name);
+  check('перестановка меняет порядок', [moved[0], moved[1]], [before[1], before[0]]);
+  moveCity(readCities()[1].id, -1);
+  check('и возвращается обратно', readCities().map(c => c.name), before);
+
+  // Повторное добавление того же места не плодит дубль.
+  const n1 = readCities().length;
+  addCity({ name: 'Назрань', lat: 43.2256, lon: 44.7642, source: 'manual' });
+  check('дубль по координатам не добавляется', readCities().length, n1);
+
+  addCity({ name: 'Стамбул', lat: 41.0082, lon: 28.9784, source: 'manual' });
+  check('новый город добавляется', readCities().length, n1 + 1);
+  check('и становится активным',
+    readCities().find(c => c.id === readActiveId()).name, 'Стамбул');
+
+  const target = readCities().find(c => c.name === 'Стамбул');
+  removeCity(target.id);
+  check('удаление работает',
+    readCities().some(c => c.name === 'Стамбул'), false);
+  check('активный город после удаления существует',
+    readCities().some(c => c.id === readActiveId()), true);
+
+  // Последний город не удаляем: экрану нужно что-то показывать.
+  const only = readCities()[0];
+  writeCities([only]);
+  setActiveId(only.id);
+  removeCity(only.id);
+  check('последний город удалить нельзя', readCities().length, 1);
+
+  // Испорченное хранилище не должно ронять экран.
+  localStorage.setItem('prayer.cities', '{ не json');
+  check('битое хранилище чинится', readCities().length >= 1, true);
+  localStorage.setItem('prayer.cities', '[{"name":"Кривой"}]');
+  check('запись без координат отбрасывается',
+    readCities().every(c => Number.isFinite(c.lat) && Number.isFinite(c.lon)), true);
+
+  check('потолок списка разумный', MAX_CITIES >= 4 && MAX_CITIES <= 20, true);
+});
+
 // ─── Итог ─────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length === 0) {
