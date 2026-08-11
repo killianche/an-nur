@@ -242,6 +242,13 @@ export const Download = ({ size = 18 }: Props) => (
 );
 
 /** Корзина — «удалить скачанное». */
+export const Plus = ({ size = 20 }: Props) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+
 export const Trash = ({ size = 18 }: Props) => (
   <svg {...stroke(size)}>
     <path d="M4.75 6.5h14.5" />

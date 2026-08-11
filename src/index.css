@@ -713,3 +713,26 @@ body {
 .inline-play-swap {
   animation: inlinePlaySwap 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Появление нижнего листа и затемнения под ним.
+   Держим здесь, а не в стилях компонента: лист поднимается на трёх
+   экранах (города, аят мусхафа, настройки), и три копии одного
+   keyframes разъезжались бы при правке. */
+@keyframes sheet-up {
+  from { transform: translateY(14%); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Уважаем системную настройку: кому движение мешает — тому просто
+   появление без выезда. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes sheet-up {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+}
