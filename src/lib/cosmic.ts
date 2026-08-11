@@ -11,7 +11,7 @@
  *
  * Что осталось настраиваемым: скорость дыхания и течения рамки
  * (lib/auroraPrefs.ts).  Что вернуть проще всего, если захочется:
- * палитру — добавить ещё запись в AURORA_PALETTES и прокинуть выбор
+ * палитру — добавить ещё запись в AURORA_COLOURS и прокинуть выбор
  * в CosmicLayer.
  */
 
@@ -92,6 +92,131 @@ export const AURORA_MOSS: AuroraPaletteSpec = {
     '0 0 30px rgba(120,225,170,0.80), 0 -40px 110px rgba(80,190,140,0.72), ' +
     '0 40px 110px rgba(80,190,140,0.72)',
 };
+
+/*
+ * Остальные цвета сияния.
+ *
+ * «Лёд» и «Мох» выше подбирались вручную и остаются как есть.  Эти
+ * четыре собраны по тому же рецепту от одного базового тона: layer1 —
+ * сам цвет, layer2 — его посветлевшая версия, ореол и тень слова
+ * производные.  Одинаковая формула нужна, чтобы при переключении цвета
+ * менялся оттенок, а не яркость и характер свечения.
+ *
+ * rgba развёрнуты заранее, без color-mix(): iOS Safari < 16.4 молча
+ * выбрасывает такой стоп градиента, и сияние пропадает целиком.
+ */
+
+export const AURORA_VIOLET: AuroraPaletteSpec = {
+  label: 'Сирень',
+  layer1: 'rgba(168,140,245,0.42)',
+  layer2: 'rgba(205,185,250,0.34)',
+  ayahGlow:
+    'radial-gradient(ellipse at 50% 50%, rgba(168,140,245,0.46) 0%, ' +
+    'rgba(168,140,245,0.19) 30%, rgba(168,140,245,0.06) 55%, transparent 80%)',
+  wordShadow:
+    '0 -16px 36px rgba(205,185,250,0.80), 0 16px 36px rgba(205,185,250,0.80), ' +
+    '0 0 30px rgba(205,185,250,0.80), 0 -40px 110px rgba(168,140,245,0.72), ' +
+    '0 40px 110px rgba(168,140,245,0.72)',
+};
+
+export const AURORA_GOLD: AuroraPaletteSpec = {
+  label: 'Золото',
+  layer1: 'rgba(240,198,120,0.42)',
+  layer2: 'rgba(248,224,175,0.34)',
+  ayahGlow:
+    'radial-gradient(ellipse at 50% 50%, rgba(240,198,120,0.46) 0%, ' +
+    'rgba(240,198,120,0.19) 30%, rgba(240,198,120,0.06) 55%, transparent 80%)',
+  wordShadow:
+    '0 -16px 36px rgba(248,224,175,0.80), 0 16px 36px rgba(248,224,175,0.80), ' +
+    '0 0 30px rgba(248,224,175,0.80), 0 -40px 110px rgba(240,198,120,0.72), ' +
+    '0 40px 110px rgba(240,198,120,0.72)',
+};
+
+export const AURORA_ROSE: AuroraPaletteSpec = {
+  label: 'Роза',
+  layer1: 'rgba(240,150,190,0.42)',
+  layer2: 'rgba(248,195,218,0.34)',
+  ayahGlow:
+    'radial-gradient(ellipse at 50% 50%, rgba(240,150,190,0.46) 0%, ' +
+    'rgba(240,150,190,0.19) 30%, rgba(240,150,190,0.06) 55%, transparent 80%)',
+  wordShadow:
+    '0 -16px 36px rgba(248,195,218,0.80), 0 16px 36px rgba(248,195,218,0.80), ' +
+    '0 0 30px rgba(248,195,218,0.80), 0 -40px 110px rgba(240,150,190,0.72), ' +
+    '0 40px 110px rgba(240,150,190,0.72)',
+};
+
+export const AURORA_EMBER: AuroraPaletteSpec = {
+  label: 'Закат',
+  layer1: 'rgba(240,145,110,0.42)',
+  layer2: 'rgba(248,190,160,0.34)',
+  ayahGlow:
+    'radial-gradient(ellipse at 50% 50%, rgba(240,145,110,0.46) 0%, ' +
+    'rgba(240,145,110,0.19) 30%, rgba(240,145,110,0.06) 55%, transparent 80%)',
+  wordShadow:
+    '0 -16px 36px rgba(248,190,160,0.80), 0 16px 36px rgba(248,190,160,0.80), ' +
+    '0 0 30px rgba(248,190,160,0.80), 0 -40px 110px rgba(240,145,110,0.72), ' +
+    '0 40px 110px rgba(240,145,110,0.72)',
+};
+
+/** Идентификатор цвета сияния.  Не путать с AURORA_PALETTES из
+ *  audioPrefs — те про подсветку слова при чтении, а не про фон. */
+export type AuroraColourId = 'ice' | 'moss' | 'violet' | 'gold' | 'rose' | 'ember';
+
+/** Порядок в выборе цвета: от холодных к тёплым. */
+export const AURORA_COLOURS: { id: AuroraColourId; spec: AuroraPaletteSpec; swatch: string }[] = [
+  { id: 'ice',    spec: AURORA_ICE,    swatch: '#78c8f0' },
+  { id: 'moss',   spec: AURORA_MOSS,   swatch: '#5ad296' },
+  { id: 'violet', spec: AURORA_VIOLET, swatch: '#a88cf5' },
+  { id: 'gold',   spec: AURORA_GOLD,   swatch: '#f0c678' },
+  { id: 'rose',   spec: AURORA_ROSE,   swatch: '#f096be' },
+  { id: 'ember',  spec: AURORA_EMBER,  swatch: '#f0916e' },
+];
+
+export function auroraPaletteById(id: AuroraColourId): AuroraPaletteSpec {
+  return AURORA_COLOURS.find(p => p.id === id)?.spec ?? AURORA_ICE;
+}
+
+
+/**
+ * Выбранный цвет сияния.
+ *
+ * Ключей два, по одному на тему, и это осознанно: «Аврора 2» — зелёная
+ * по своей сути, и если бы цвет был один на обе темы, выбор синего в
+ * первой молча превращал бы вторую в её копию.  Так у каждой темы свой
+ * цвет по умолчанию, а человек меняет тот, который видит сейчас.
+ */
+const PALETTE_KEYS = {
+  aurora: 'aurora.palette',
+  aurora2: 'aurora2.palette',
+} as const;
+
+const PALETTE_DEFAULTS = {
+  aurora: 'ice',
+  aurora2: 'moss',
+} as const;
+
+export type AuroraVariant = keyof typeof PALETTE_KEYS;
+export const AURORA_PALETTE_EVENT = 'aurora-palette-changed';
+
+export function readAuroraPalette(variant: AuroraVariant): AuroraColourId {
+  if (typeof window === 'undefined') return PALETTE_DEFAULTS[variant];
+  const v = localStorage.getItem(PALETTE_KEYS[variant]);
+  return AURORA_COLOURS.some(p => p.id === v)
+    ? (v as AuroraColourId)
+    : PALETTE_DEFAULTS[variant];
+}
+
+export function writeAuroraPalette(variant: AuroraVariant, id: AuroraColourId) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(PALETTE_KEYS[variant], id);
+  window.dispatchEvent(new Event(AURORA_PALETTE_EVENT));
+}
+
+export function onAuroraPaletteChange(fn: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(AURORA_PALETTE_EVENT, fn);
+  return () => window.removeEventListener(AURORA_PALETTE_EVENT, fn);
+}
 
 export const AURORA_SCENE = {
   // 0.62, а не прежние 0.42: по замеру кромки свечение давало прибавку

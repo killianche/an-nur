@@ -2,6 +2,10 @@ import { useState, useRef, useEffect, type CSSProperties, type ReactNode } from 
 import { createPortal } from 'react-dom';
 import { ALL_THEMES, THEME_LABELS, isLightTheme, type Theme } from '../hooks/useTheme';
 import {
+  AURORA_COLOURS, readAuroraPalette, writeAuroraPalette,
+  type AuroraColourId, type AuroraVariant,
+} from '../lib/cosmic';
+import {
   LATIN_FONTS, ARABIC_FONTS, SCALE_OPTIONS, SCALE_FONT_PX,
   type LatinFontId, type ArabicFontId,
 } from '../lib/typography';
@@ -503,12 +507,79 @@ export function ThemeSettings(p: ThemeProps) {
     <SettingsSheet onClose={p.onClose} title="Оформление" placement="top-popover" anchorEl={p.anchorEl}>
       <div style={{ display: 'grid', gap: '10px' }}>
         <ThemePicker theme={p.theme} setTheme={p.setTheme} />
+        {/* Цвет сияния — только когда сияние есть.  На светлой теме и
+            «Бумаге» этот выбор ни на что не влиял бы. */}
+        {(p.theme === 'aurora' || p.theme === 'aurora2') && (
+          <AuroraColourCard variant={p.theme} />
+        )}
         {p.reciter && <HighlightCard reciter={p.reciter} />}
       </div>
     </SettingsSheet>
   );
 }
 
+
+/**
+ * Цвет сияния «Авроры».
+ *
+ * Кружки, а не подписи: цвет выбирают глазами.  Подпись всё равно есть —
+ * в `aria-label` и `title`, чтобы работали и скринридер, и наведение.
+ *
+ * Изменение применяется сразу: CosmicLayer слушает событие и
+ * перерисовывает сияние, не дожидаясь закрытия попапа, — иначе цвет
+ * приходилось бы выбирать вслепую.
+ */
+function AuroraColourCard({ variant }: { variant: AuroraVariant }) {
+  const [current, setCurrent] = useState(() => readAuroraPalette(variant));
+  useEffect(() => setCurrent(readAuroraPalette(variant)), [variant]);
+
+  const pick = (id: AuroraColourId) => {
+    writeAuroraPalette(variant, id);
+    setCurrent(id);
+  };
+
+  return (
+    <section style={settingCard}>
+      <p style={cardTitle}>Цвет сияния</p>
+      <div style={{
+        display: 'flex', gap: '10px', flexWrap: 'wrap',
+        paddingTop: '2px',
+      }}>
+        {AURORA_COLOURS.map(({ id, spec, swatch }) => {
+          const on = id === current;
+          return (
+            <button
+              key={id}
+              onClick={() => pick(id)}
+              aria-label={spec.label}
+              aria-pressed={on}
+              title={spec.label}
+              style={{
+                width: '40px', height: '40px', borderRadius: '9999px',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                border: `2px solid ${on ? 'var(--text-primary)' : 'transparent'}`,
+                background: 'transparent',
+                cursor: 'pointer', padding: 0, flexShrink: 0,
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: '26px', height: '26px', borderRadius: '9999px',
+                  // Свечение вокруг кружка — чтобы образец показывал не
+                  // просто цвет, а то, как он светит.
+                  background: swatch,
+                  boxShadow: `0 0 12px ${swatch}`,
+                }}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 /**
  * Превью темы на карточке.

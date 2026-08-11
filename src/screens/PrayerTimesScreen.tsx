@@ -173,34 +173,53 @@ export function PrayerTimesScreen({ theme, setTheme, onOpenQibla }: Props) {
       </header>
 
       {/* ── Город ────────────────────────────────────────────────────────
-          Кнопка, а не подпись: город — главный переключатель этого
-          экрана, и он должен выглядеть нажимаемым. */}
-      <button
-        onClick={() => setCitiesOpen(true)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          width: '100%', padding: '2px 2px 14px',
-          border: 'none', background: 'transparent', cursor: 'pointer',
-          fontFamily: 'inherit', textAlign: 'left',
-          WebkitTapHighlightColor: 'transparent',
-        }}
-      >
-        <span style={{
-          fontSize: '17px', fontWeight: 600, letterSpacing: '-0.01em',
-          color: 'var(--text-secondary)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          {city.name}
-        </span>
-        <span style={{
-          display: 'inline-flex', color: 'var(--text-tertiary)', flexShrink: 0,
-          transform: 'translateY(1px)',
-        }}>
-          <ChevronRight size={15} />
-        </span>
-        <span style={{ flex: 1 }} />
+          По центру и капсулой — решение владельца, и он прав: прижатая
+          влево строка с шевроном читалась как подпись, а не как кнопка.
+          Капсула с обводкой и шеврон вниз говорят прямо: нажми, откроется
+          список.  Шеврон именно вниз, а не вправо: вправо означает
+          «перейти на другой экран», вниз — «раскроется выбор».
+
+          Точки под капсулой, а не сбоку: они показывают, сколько городов
+          и где мы, — это подпись к капсуле, и стоять она должна под ней. */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        gap: '9px', padding: '2px 0 16px',
+      }}>
+        <button
+          onClick={() => setCitiesOpen(true)}
+          aria-haspopup="dialog"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '7px',
+            maxWidth: '86%', minHeight: '38px', padding: '0 8px 0 16px',
+            borderRadius: '9999px',
+            border: '1px solid var(--hairline-strong)',
+            background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
+            color: 'var(--text-primary)', cursor: 'pointer',
+            fontFamily: 'inherit',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          <span style={{
+            minWidth: 0,
+            fontSize: '16px', fontWeight: 600, letterSpacing: '-0.01em',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {city.name}
+          </span>
+          <span
+            aria-hidden
+            style={{
+              display: 'inline-flex', flexShrink: 0,
+              color: 'var(--text-tertiary)',
+              transform: 'rotate(90deg)',
+            }}
+          >
+            <ChevronRight size={16} />
+          </span>
+        </button>
+
         {cities.length > 1 && <Dots count={cities.length} index={index} />}
-      </button>
+      </div>
 
       {/* Смах ловим на блоке времён: ниже настроек нет, выше — заголовок. */}
       <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>

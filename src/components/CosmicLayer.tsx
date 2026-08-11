@@ -28,16 +28,25 @@
  * из AURORA_SCENE.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Aurora } from './Aurora';
-import { AURORA_ICE, AURORA_MOSS, AURORA_SCENE, AURORA2_SCENE } from '../lib/cosmic';
+import {
+  auroraPaletteById, onAuroraPaletteChange, readAuroraPalette,
+  AURORA_SCENE, AURORA2_SCENE,
+} from '../lib/cosmic';
 
 export function CosmicLayer({ variant = 'aurora' }: { variant?: 'aurora' | 'aurora2' }) {
   // Какая из двух космических тем сейчас: ледяная рамка по краям или
   // зелёное пятно из центра.  Всё различие сводится к палитре и сцене —
   // сам слой один и тот же.
   const second = variant === 'aurora2';
-  const palette = second ? AURORA_MOSS : AURORA_ICE;
+  // Цвет сияния теперь выбирает человек; тема задаёт только направление
+  // (рамка против лучей) и яркость, см. AURORA_SCENE.
+  const [paletteId, setPaletteId] = useState(() => readAuroraPalette(variant));
+  useEffect(() => setPaletteId(readAuroraPalette(variant)), [variant]);
+  useEffect(() => onAuroraPaletteChange(() => setPaletteId(readAuroraPalette(variant))), [variant]);
+
+  const palette = auroraPaletteById(paletteId);
   const scene = second ? AURORA2_SCENE : AURORA_SCENE;
 
   // Проецируем палитру сияния на CSS-переменную караоке-подсветки,
