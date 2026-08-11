@@ -94,7 +94,14 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah,
   const [arabicScale, setArabicScaleS] = useState<number>(() => readNumber('arabicScale', 1.0));
   const [ruScale,     setRuScaleS]     = useState<number>(() => readNumber('ruScale',     1.0));
   const [ruFont,      setRuFontS]      = useState<LatinFontId>(()  => readPref('ruFont',     'inter-regular', LATIN_IDS));
-  const [arabicFont,  setArabicFontS]  = useState<ArabicFontId>(() => readPref('arabicFont', 'uthmani', ARABIC_IDS));
+  // Дефолт — «Мусхаф» (QCF V4), а не юникодный «Усмани»: это глифы
+  // мединского мусхафа от King Fahd Complex, то самое начертание, к
+  // которому человек привык в печатном Коране.  Юникодный текст рядом
+  // с ним читается как «набрано в текстовом редакторе».
+  //
+  // Решение владельца.  У тех, кто уже выбирал шрифт руками, ничего не
+  // изменится: `readPref` сначала смотрит в localStorage.
+  const [arabicFont,  setArabicFontS]  = useState<ArabicFontId>(() => readPref('arabicFont', 'qcf-v4', ARABIC_IDS));
   const [showArabic,  setShowArabicS]  = useState<boolean>(() => localStorage.getItem('showArabic') !== '0');
   const [showRu,      setShowRuS]      = useState<boolean>(() => localStorage.getItem('showRu')     !== '0');
 
