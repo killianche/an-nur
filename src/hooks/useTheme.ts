@@ -21,7 +21,17 @@ export type ThemeMode = 'light' | 'dark' | 'cosmic';
 
 export type Theme = 'light' | 'mushaf' | 'dark' | 'aurora' | 'aurora2';
 
-export const ALL_THEMES: Theme[] = ['light', 'mushaf', 'dark', 'aurora', 'aurora2'];
+/*
+ * Порядок в списке оформления.  «Аврора» первой — она и так дефолт
+ * первого запуска (FIRST_RUN_DEFAULT ниже), и стоять четвёртой ей
+ * было незачем: пункт по умолчанию читается первым.  Дальше две
+ * тёмные, потом две светлые.
+ *
+ * Массив используется и как порядок в интерфейсе, и как список
+ * допустимых значений при чтении localStorage — перестановка ничей
+ * сохранённый выбор не ломает.
+ */
+export const ALL_THEMES: Theme[] = ['aurora', 'aurora2', 'dark', 'light', 'mushaf'];
 
 export const THEME_LABELS: Record<Theme, string> = {
   light:  'Светлая',

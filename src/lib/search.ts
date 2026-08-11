@@ -126,11 +126,6 @@ function prepare(): Prepared[] {
   return out;
 }
 
-/** Совпадает ли с началом слова в нормализованном тексте. */
-function isWordStart(norm: string, at: number): boolean {
-  return at === 0 || norm[at - 1] === ' ';
-}
-
 /** Поиск сур по номеру, транслитерации, переводу названия и арабскому. */
 function searchSurahs(raw: string, norm: string): SurahMeta[] {
   if (!norm) return [];
@@ -171,8 +166,20 @@ export function search(raw: string, opts: SearchOptions = {}): SearchResult {
     return { surahs, ayahs: [], truncated: false, tooShortForText: true };
   }
 
-  const strong: AyahHit[] = [];   // совпадение с начала слова
-  const weak: AyahHit[] = [];     // совпадение внутри слова
+  /*
+   * Один список, а не два.
+   *
+   * Раньше совпадения делились на «с начала слова» и «внутри слова» и
+   * склеивались как `[...strong, ...weak]`.  Внутри каждого списка
+   * порядок мусхафа соблюдался, но склейка его рвала: аят из 2-й суры,
+   * где слово нашлось внутри другого, оказывался ниже аята из 27-й.
+   * Человек читает выдачу как оглавление — она обязана идти сверху
+   * вниз по Корану.
+   *
+   * Отдельная сортировка не нужна: `prepare()` уже отдаёт аяты в
+   * порядке мусхафа, и мы идём по ним подряд.
+   */
+  const hits: AyahHit[] = [];
   let total = 0;
   // Вышли ли из цикла досрочно.  Без этого флага «обрезано» считалось
   // как total > показанных, а при досрочном выходе total равен числу
@@ -202,11 +209,13 @@ export function search(raw: string, opts: SearchOptions = {}): SearchResult {
       matchStart: startOrig,
       matchEnd: endOrig,
     };
-    (isWordStart(p.norm, at) ? strong : weak).push(hit);
-    if (strong.length >= MAX_AYAH_HITS) { stoppedEarly = true; break; }
+    hits.push(hit);
+    // Лимит теперь на общее число найденного, а не на одну из двух
+    // корзин — иначе при обрыве терялись бы уже собранные совпадения.
+    if (hits.length >= MAX_AYAH_HITS) { stoppedEarly = true; break; }
   }
 
-  const ayahs = [...strong, ...weak].slice(0, MAX_AYAH_HITS);
+  const ayahs = hits;
   return {
     surahs,
     ayahs,
