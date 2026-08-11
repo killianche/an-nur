@@ -38,7 +38,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Appearance, Bookmark, DragHandle, MinusCircleFill } from '../components/icons';
+import { Appearance, Bookmark, DragHandle, MinusCircleFill, Typography } from '../components/icons';
+import { AzkarTypographySettings } from '../components/AzkarSettings';
+import { SourceDisclosure, TasbihPill } from '../components/DevotionalBits';
+import { azkarFontConfig, type AzkarFontId } from '../lib/azkarFonts';
+import {
+  readDuaPrefs, writeDuaFont, writeDuaLatinFont, writeDuaPref, writeDuaScale,
+  type DuaPrefs,
+} from '../lib/duaPrefs';
+import { latinSizeBump, latinStack, latinWeight, type LatinFontId } from '../lib/typography';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
@@ -51,11 +59,6 @@ import {
 type Props = { theme: Theme; setTheme: (t: Theme) => void };
 type Mode = 'mine' | 'all';
 
-/** Тот же стек, что у арабского в азкарах: разделы рядом, и разное
- *  начертание читалось бы как разное качество текста. */
-const ARABIC_STACK =
-  "'Azkar KFGQPC', 'KFGQPC Uthmanic Hafs v22', 'KFGQPC Uthmanic Hafs', serif";
-
 /** Дальше задержку не растим: последние карточки не должны ждать. */
 const MAX_STAGGER_MS = 240;
 
@@ -66,7 +69,25 @@ export function DuaScreen({ theme, setTheme }: Props) {
   const [category, setCategory] = useState<string | null>(null);
   const [list, setList] = useState<string[]>(readDuaList);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [typographyOpen, setTypographyOpen] = useState(false);
   const themeBtnRef = useRef<HTMLButtonElement>(null);
+  const typographyBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Настройки текста — свои, не азкарные: попап подписан «Текст дуа» и
+  // обязан менять только дуа (см. lib/duaPrefs.ts).
+  const [prefs, setPrefs] = useState<DuaPrefs>(readDuaPrefs);
+  const reloadPrefs = () => setPrefs(readDuaPrefs());
+
+  // Счётчик повторов — в памяти, как у азкаров: он про «сколько раз я
+  // прочитал сейчас», а не про историю, и переживать перезапуск ему не
+  // нужно.
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const inc = (id: string) => setCounts(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
+  const reset = (id: string) => setCounts(c => ({ ...c, [id]: 0 }));
+
+  // Раскрытый источник — общий для всех карточек: раскрыл один раз,
+  // видно у всех.  Так же сделано в азкарах.
+  const [sourceOpen, setSourceOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -152,6 +173,32 @@ export function DuaScreen({ theme, setTheme }: Props) {
         />
       )}
 
+      {typographyOpen && (
+        <AzkarTypographySettings
+          title="Текст дуа"
+          showArabic={prefs.showArabic}
+          setShowArabic={v => { writeDuaPref('showArabic', v); reloadPrefs(); }}
+          showRussian={prefs.showRussian}
+          setShowRussian={v => { writeDuaPref('showRussian', v); reloadPrefs(); }}
+          showTranslit={prefs.showTranslit}
+          setShowTranslit={v => { writeDuaPref('showTranslit', v); reloadPrefs(); }}
+          arabicScale={prefs.arabicScale}
+          setArabicScale={v => { writeDuaScale('arabicScale', v); reloadPrefs(); }}
+          russianScale={prefs.russianScale}
+          setRussianScale={v => { writeDuaScale('russianScale', v); reloadPrefs(); }}
+          translitScale={prefs.translitScale}
+          setTranslitScale={v => { writeDuaScale('translitScale', v); reloadPrefs(); }}
+          arabicFont={prefs.arabicFont}
+          setArabicFont={(v: AzkarFontId) => { writeDuaFont(v); reloadPrefs(); }}
+          russianFont={prefs.russianFont}
+          setRussianFont={(v: LatinFontId) => { writeDuaLatinFont('russianFont', v); reloadPrefs(); }}
+          translitFont={prefs.translitFont}
+          setTranslitFont={(v: LatinFontId) => { writeDuaLatinFont('translitFont', v); reloadPrefs(); }}
+          onClose={() => setTypographyOpen(false)}
+          anchorEl={typographyBtnRef.current}
+        />
+      )}
+
       <header style={{
         display: 'flex', alignItems: 'center', gap: '10px',
         paddingTop: 'calc(env(safe-area-inset-top) + 18px)',
@@ -188,8 +235,23 @@ export function DuaScreen({ theme, setTheme }: Props) {
         )}
 
         <button
+          ref={typographyBtnRef}
+          onClick={() => { setTypographyOpen(v => !v); setThemeOpen(false); }}
+          aria-label="Текст и шрифты" title="Текст и шрифты"
+          className="icon-btn" data-active={typographyOpen}
+          style={{
+            width: '42px', height: '42px', flexShrink: 0, borderRadius: '12px',
+            border: '1px solid var(--hairline)',
+            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            color: typographyOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
+          }}
+        >
+          <Typography size={19} />
+        </button>
+
+        <button
           ref={themeBtnRef}
-          onClick={() => setThemeOpen(v => !v)}
+          onClick={() => { setThemeOpen(v => !v); setTypographyOpen(false); }}
           aria-label="Оформление" title="Оформление"
           className="icon-btn" data-active={themeOpen}
           style={{
@@ -239,6 +301,12 @@ export function DuaScreen({ theme, setTheme }: Props) {
                     ordinal={i + 1}
                     inList
                     delay={Math.min(i * 40, MAX_STAGGER_MS)}
+                    prefs={prefs}
+                    count={counts[e.id] ?? 0}
+                    onCount={() => inc(e.id)}
+                    onResetCount={() => reset(e.id)}
+                    sourceOpen={sourceOpen}
+                    setSourceOpen={setSourceOpen}
                   />
                 ))}
               </div>
@@ -257,6 +325,12 @@ export function DuaScreen({ theme, setTheme }: Props) {
                   inList={list.includes(e.id)}
                   delay={Math.min(i * 40, MAX_STAGGER_MS)}
                   onToggle={() => toggle(e)}
+                  prefs={prefs}
+                  count={counts[e.id] ?? 0}
+                  onCount={() => inc(e.id)}
+                  onResetCount={() => reset(e.id)}
+                  sourceOpen={sourceOpen}
+                  setSourceOpen={setSourceOpen}
                 />
               ))}
             </div>
@@ -407,25 +481,44 @@ function CategoryChips({ data, value, onChange }: {
 }
 
 /**
- * Карточка для чтения.
+ * Карточка дуа.
  *
- * Структура важнее украшений.  Шапка (когда читают, сколько раз,
- * закладка) отделена правилом от текста; арабский стоит отдельным
- * блоком с воздухом под диакритику; перевод отделён вторым правилом.
- * Так глаз сразу знает, где текст, а где опора к нему.
+ * Сделана как карточка азкара — по решению владельца, и это правильно:
+ * два раздела с одинаковым содержимым (арабский, перевод, транскрипция,
+ * источник) не должны выглядеть по-разному.  Порядок блоков, кегли,
+ * межстрочные и приглушение перевода взяты оттуда же, а счётчик и
+ * раскрывающийся источник — буквально те же компоненты
+ * (`components/DevotionalBits.tsx`).
  *
- * Номер по порядку — только в «моём списке»: там порядок задал человек
- * и он часть смысла.  В витрине номер был бы шумом.
+ * ── Чем отличается от азкара ──────────────────────────────────────────
+ *
+ * Сверху есть строка с названием: у дуа заголовок отвечает на «когда
+ * это читают», и без него список превращается в набор текстов.  У
+ * азкаров такой строки нет — там всё содержимое одной категории читают
+ * подряд.
+ *
+ * Кнопки воспроизведения нет: аудиозаписей для дуа в приложении пока
+ * нет вовсе.  Рисовать кнопку, которой нечего проиграть, — обман.
  */
-function DuaCard({ entry, ordinal, inList, delay, onToggle }: {
+function DuaCard({
+  entry, ordinal, inList, delay, onToggle,
+  prefs, count, onCount, onResetCount, sourceOpen, setSourceOpen,
+}: {
   entry: DuaEntry;
   ordinal?: number;
   inList: boolean;
   delay: number;
-  /** Без обработчика закладка не рисуется вовсе.  Так карточка в «моём
-   *  списке» остаётся без разрушительных кнопок. */
   onToggle?: () => void;
+  prefs: DuaPrefs;
+  count: number;
+  onCount: () => void;
+  onResetCount: () => void;
+  sourceOpen: boolean;
+  setSourceOpen: (v: boolean) => void;
 }) {
+  const font = azkarFontConfig(prefs.arabicFont);
+  const repeat = entry.repeat && entry.repeat > 1 ? entry.repeat : null;
+
   return (
     <article
       style={{
@@ -433,8 +526,6 @@ function DuaCard({ entry, ordinal, inList, delay, onToggle }: {
         overflow: 'hidden',
         borderRadius: '20px',
         border: '1px solid var(--hairline)',
-        // Тот же приём, что у карточки ближайшего намаза: очень слабый
-        // блик из верхнего угла.  Дом один — язык один.
         background: `
           radial-gradient(120% 130% at 100% 0%,
             color-mix(in srgb, var(--ink) 4%, transparent) 0%,
@@ -471,22 +562,6 @@ function DuaCard({ entry, ordinal, inList, delay, onToggle }: {
           {entry.title_ru}
         </h3>
 
-        {entry.repeat && entry.repeat > 1 && (
-          <span
-            title={`Читается ${entry.repeat} раза`}
-            style={{
-              flexShrink: 0, minWidth: '30px', height: '24px', padding: '0 7px',
-              borderRadius: '9999px',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              background: 'color-mix(in srgb, var(--ink) 7%, transparent)',
-              fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)',
-              fontVariantNumeric: 'tabular-nums', marginTop: '1px',
-            }}
-          >
-            ×{entry.repeat}
-          </span>
-        )}
-
         {onToggle && (
           <button
             onClick={onToggle}
@@ -510,60 +585,89 @@ function DuaCard({ entry, ordinal, inList, delay, onToggle }: {
 
       <Rule />
 
-      {/* Арабский — verbatim из источника, шрифтом мусхафа. */}
-      <p dir="rtl" lang="ar" style={{
-        margin: 0, padding: '18px 16px 16px',
-        fontFamily: ARABIC_STACK,
-        fontSize: '26px', lineHeight: 2.05,
-        textAlign: 'right',
-        color: 'var(--text-primary)',
-      }}>
-        {entry.arabic}
-      </p>
+      <div style={{ padding: '20px 16px 16px' }}>
+        {/* Арабский — verbatim из источника.  Кегль, межстрочный и
+            OpenType-фичи те же, что в азкарах: одна типографика на два
+            раздела. */}
+        {prefs.showArabic && (
+          <div
+            dir="rtl"
+            lang="ar"
+            style={{
+              direction: 'rtl',
+              textAlign: 'right',
+              fontFamily: font.stack,
+              fontSize: `clamp(${26 * font.sizeMul * prefs.arabicScale + 17}px, calc(${6.5 * font.sizeMul * prefs.arabicScale}vw + 17px), ${38 * font.sizeMul * prefs.arabicScale + 17}px)`,
+              lineHeight: font.lineHeight,
+              color: 'var(--text-primary)',
+              whiteSpace: 'pre-line',
+              letterSpacing: 0,
+              wordSpacing: 0,
+              fontFeatureSettings: '"liga" 1, "calt" 1, "kern" 1',
+              marginBottom: repeat ? '20px' : '22px',
+            }}
+          >
+            {entry.arabic}
+          </div>
+        )}
 
-      {entry.translit_ru && (
-        <p style={{
-          margin: 0, padding: '0 16px 16px',
-          fontSize: '13px', lineHeight: 1.6,
-          color: 'var(--text-tertiary)',
-        }}>
-          {entry.translit_ru}
-        </p>
-      )}
+        {repeat && (
+          <div style={{ display: 'flex', marginBottom: '20px' }}>
+            <TasbihPill
+              current={count}
+              target={repeat}
+              onTap={onCount}
+              onReset={onResetCount}
+            />
+          </div>
+        )}
 
-      <Rule />
+        {prefs.showRussian && entry.russian && (
+          <p style={{
+            margin: '0 0 18px',
+            fontFamily: latinStack(prefs.russianFont),
+            fontSize: `${15 * prefs.russianScale + latinSizeBump(prefs.russianFont)}px`,
+            fontWeight: latinWeight(prefs.russianFont),
+            lineHeight: 1.55,
+            color: 'var(--text-secondary)',
+            letterSpacing: '-0.005em',
+            whiteSpace: 'pre-line',
+          }}>
+            {entry.russian}
+          </p>
+        )}
 
-      <div style={{ padding: '14px 16px 16px' }}>
-        <p style={{
-          margin: 0, fontSize: '14.5px', lineHeight: 1.65,
-          color: 'var(--text-primary)',
-        }}>
-          {entry.russian}
-        </p>
+        {prefs.showTranslit && entry.translit_ru && (
+          <p style={{
+            margin: '0 0 18px',
+            fontFamily: latinStack(prefs.translitFont),
+            fontSize: `${15 * prefs.translitScale + latinSizeBump(prefs.translitFont)}px`,
+            fontWeight: latinWeight(prefs.translitFont),
+            lineHeight: 1.55,
+            color: 'var(--text-tertiary)',
+            letterSpacing: '-0.005em',
+            whiteSpace: 'pre-line',
+          }}>
+            {entry.translit_ru}
+          </p>
+        )}
 
         {entry.refs && entry.refs.length > 0 && (
-          <div style={{
-            display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '13px',
-          }}>
-            {entry.refs.map(r => (
-              <span key={r} style={{
-                fontSize: '11px', padding: '3px 9px', borderRadius: '9999px',
-                border: '1px solid var(--hairline)',
-                color: 'var(--text-tertiary)',
-                letterSpacing: '0.01em',
-              }}>
-                {r}
-              </span>
-            ))}
-          </div>
+          /* Тот же раскрывающийся блок, что у азкаров.  Список наград у
+             дуа пустой — у них есть только ссылки на источник, и они
+             идут в legacy-строку компонента. */
+          <SourceDisclosure
+            rewards={[]}
+            legacy={entry.refs.join(' · ')}
+            open={sourceOpen}
+            onToggle={setSourceOpen}
+          />
         )}
       </div>
     </article>
   );
 }
 
-/** Правило внутри карточки — слабее рамки, иначе карточка распадается
- *  на три отдельные плашки. */
 function Rule() {
   return (
     <div

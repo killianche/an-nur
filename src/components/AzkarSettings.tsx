@@ -71,6 +71,10 @@ export type AzkarTypographyProps = {
 
   onClose: () => void;
   anchorEl?: HTMLElement | null;
+  /** Заголовок листа.  Раздел «Дуа» переиспользует этот же попап со
+   *  своими настройками, и подпись обязана называть то, на что он
+   *  реально влияет. */
+  title?: string;
 };
 
 export function AzkarTypographySettings(p: AzkarTypographyProps) {
@@ -78,7 +82,7 @@ export function AzkarTypographySettings(p: AzkarTypographyProps) {
   const setTab = (v: AzkarLangTab) => { setTabS(v); writeLangTab(v); };
 
   return (
-    <SettingsSheet onClose={p.onClose} title="Текст азкара" placement="top-popover" anchorEl={p.anchorEl}>
+    <SettingsSheet onClose={p.onClose} title={p.title ?? 'Текст азкара'} placement="top-popover" anchorEl={p.anchorEl}>
       <section style={settingCard}>
         <p style={cardTitle}>Текст и шрифты</p>
 
