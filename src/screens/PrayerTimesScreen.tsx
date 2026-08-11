@@ -31,7 +31,7 @@ import {
 import {
   METHODS, MADHAB_LABELS, PRAYER_LABELS, PRAYER_ORDER, IS_PRAYER,
   formatLeft, formatTime, methodById, nextPrayer, onSettingsChange,
-  readSettings, timesFor, writeSettings,
+  readSettings, timesFor, usesTimetable, writeSettings,
   type Madhab, type MethodId, type PrayerSettings,
 } from '../lib/prayerTimes';
 
@@ -60,6 +60,7 @@ export function PrayerTimesScreen({ theme, setTheme }: Props) {
   const times = useMemo(() => timesFor(place, now, settings), [place, now, settings]);
   const next = useMemo(() => nextPrayer(place, now, settings), [place, now, settings]);
   const method = methodById(settings.method);
+  const fromTimetable = usesTimetable(place, settings);
 
   const onLocate = async () => {
     setError(null);
@@ -278,15 +279,14 @@ export function PrayerTimesScreen({ theme, setTheme }: Props) {
                       fontSize: '11.5px', color: 'var(--text-tertiary)',
                       fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
                     }}>
-                      {m.fajr}° / {'angle' in m.isha ? `${m.isha.angle}°` : `${m.isha.minutes} мин`}
                       {/*
-                        Без этой пометки «Назрань 2» и «ДУМ России»
-                        выглядят одинаково — у обоих 16° / 15°, — но
-                        дают разное время: у первого сверху лежит запас
-                        местного расписания.  Два одинаковых с виду
+                        Без своей подписи «Назрань 2» и «ДУМ России»
+                        выглядели бы одинаково — у обоих 16° / 15°, —
+                        но дают разное время: первое берётся из
+                        печатного календаря. Два одинаковых с виду
                         пункта с разным результатом читаются как ошибка.
                       */}
-                      {m.offsets && ' + запас'}
+                      {m.short ?? `${m.fajr}° / ${'angle' in m.isha ? `${m.isha.angle}°` : `${m.isha.minutes} мин`}`}
                     </span>
                   </button>
                 ))}
@@ -353,7 +353,15 @@ export function PrayerTimesScreen({ theme, setTheme }: Props) {
         <span style={{ display: 'inline-flex', verticalAlign: '-3px', marginRight: '5px' }}>
           <Clock size={14} />
         </span>
-        Время считается на устройстве по координатам, без интернета.
+        {/*
+          Откуда цифры — не мелочь: «из календаря мечети» и «посчитано по
+          углам» это разный уровень доверия, и человек имеет право знать,
+          что именно он видит. Подменять одно другим молча нельзя.
+        */}
+        {fromTimetable
+          ? 'Времена — из печатного календаря Ингушетии, он лежит в приложении и работает без интернета.'
+          : 'Время считается на устройстве по координатам, без интернета.'}
+        {' '}
         Сверьтесь с расписанием своей мечети: если оно расходится хотя бы
         на минуту — выставьте разницу в поправках, она запомнится.
       </p>

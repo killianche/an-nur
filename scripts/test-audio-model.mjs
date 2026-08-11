@@ -236,7 +236,7 @@ group('Поиск по русскому переводу', () => {
 // одно и то же по всем шести временам.
 const prayerMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/prayerTimes.ts')).href);
 const {
-  timesFor, nextPrayer, methodById, DEFAULT_SETTINGS,
+  timesFor, nextPrayer, methodById, usesTimetable, DEFAULT_SETTINGS,
   ZERO_ADJUSTMENTS, METHODS, PRAYER_ORDER, IS_PRAYER,
 } = prayerMod;
 
@@ -307,6 +307,102 @@ group('Время намаза — ближайший намаз', () => {
     [after.key, after.tomorrow], ['fajr', true]);
   check('завтрашний фаджр действительно завтра',
     after.at.getTime() > at(23, 30).getTime(), true);
+});
+
+// ─── Печатный календарь Ингушетии ─────────────────────────────────────
+//
+// Эталон набран с фотографии печатного календаря Назрани (alansar.ru)
+// за август 2026, которую прислал владелец.  Это первоисточник, а не
+// пересказ: если таблица в приложении когда-нибудь разойдётся с ним,
+// тест обязан упасть.
+const timetableMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/nazranTimetable.ts')).href);
+const { timetableSize, timetableDay } = timetableMod;
+
+group('Печатный календарь Ингушетии — август 2026', () => {
+  // Дни 1–31: фаджр восход зухр аср магриб иша
+  const PHOTO = `
+    03:06 04:51 12:13 16:07 19:25 21:00
+    03:08 04:52 12:13 16:06 19:23 20:58
+    03:10 04:53 12:13 16:06 19:22 20:57
+    03:11 04:54 12:13 16:05 19:21 20:55
+    03:13 04:55 12:13 16:05 19:20 20:53
+    03:15 04:56 12:13 16:04 19:18 20:51
+    03:16 04:57 12:12 16:04 19:17 20:50
+    03:18 04:58 12:12 16:03 19:16 20:48
+    03:19 04:59 12:12 16:03 19:14 20:46
+    03:21 05:01 12:12 16:02 19:13 20:44
+    03:23 05:02 12:12 16:01 19:11 20:42
+    03:24 05:03 12:12 16:01 19:10 20:40
+    03:26 05:04 12:12 16:00 19:09 20:38
+    03:27 05:05 12:11 15:59 19:07 20:36
+    03:29 05:06 12:11 15:59 19:06 20:35
+    03:30 05:07 12:11 15:58 19:04 20:33
+    03:32 05:08 12:11 15:57 19:02 20:31
+    03:34 05:09 12:11 15:56 19:01 20:29
+    03:35 05:11 12:10 15:56 18:59 20:27
+    03:37 05:12 12:10 15:55 18:58 20:25
+    03:38 05:13 12:10 15:54 18:56 20:23
+    03:40 05:14 12:10 15:53 18:55 20:21
+    03:41 05:15 12:09 15:52 18:53 20:19
+    03:43 05:16 12:09 15:51 18:51 20:17
+    03:44 05:17 12:09 15:50 18:50 20:15
+    03:46 05:18 12:09 15:50 18:48 20:13
+    03:47 05:20 12:08 15:49 18:46 20:11
+    03:49 05:21 12:08 15:48 18:45 20:09
+    03:50 05:22 12:08 15:47 18:43 20:07
+    03:51 05:23 12:07 15:46 18:41 20:05
+    03:53 05:24 12:07 15:45 18:39 20:03
+  `.trim().split('\n').map(l => l.trim().split(/\s+/));
+
+  const NAZRAN = { lat: 43.2256, lon: 44.7642 };
+  const KEYS = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
+  const hhmm = d => d.toLocaleTimeString('ru-RU', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow',
+  });
+
+  check('в таблице ровно год', timetableSize(), 365);
+  check('29 февраля подставляется 28-м',
+    timetableDay(2, 29), timetableDay(2, 28));
+
+  let mismatch = [];
+  for (let day = 1; day <= 31; day++) {
+    const t = timesFor(NAZRAN, new Date(2026, 7, day), DEFAULT_SETTINGS);
+    KEYS.forEach((k, i) => {
+      const got = hhmm(t[k]);
+      if (got !== PHOTO[day - 1][i]) {
+        mismatch.push(`${day} авг ${k}: ${got} вместо ${PHOTO[day - 1][i]}`);
+      }
+    });
+  }
+  check('все 186 значений августа совпадают с фотографией', mismatch, []);
+
+  // Календарь назрановский. Показывать его времена в Москве было бы
+  // прямой ошибкой — там должен включаться расчёт.
+  const MOSCOW = { lat: 55.7558, lon: 37.6173 };
+  check('вне Ингушетии календарь не применяется',
+    usesTimetable(MOSCOW, DEFAULT_SETTINGS), false);
+  check('в Ингушетии применяется',
+    usesTimetable(NAZRAN, DEFAULT_SETTINGS), true);
+  check('соседняя Сунжа тоже покрыта',
+    usesTimetable({ lat: 43.3197, lon: 45.0447 }, DEFAULT_SETTINGS), true);
+  check('у Грозного своё расписание, календарь Назрани не подставляем',
+    usesTimetable({ lat: 43.3169, lon: 45.6981 }, DEFAULT_SETTINGS), false);
+  check('другой метод календарь не включает',
+    usesTimetable(NAZRAN, { ...DEFAULT_SETTINGS, method: 'mwl' }), false);
+
+  // Ханафитского асра в печатном календаре нет — он считается, а
+  // остальные пять времён всё равно должны прийти из таблицы.
+  const hanafi = timesFor(NAZRAN, new Date(2026, 7, 11), { ...DEFAULT_SETTINGS, madhab: 'hanafi' });
+  check('при ханафитском мазхабе фаджр остаётся календарным',
+    hhmm(hanafi.fajr), '03:23');
+  check('а аср считается', hhmm(hanafi.asr), '17:05');
+
+  // Ручная поправка обязана работать и поверх таблицы.
+  const shifted = timesFor(NAZRAN, new Date(2026, 7, 11), {
+    ...DEFAULT_SETTINGS, adjustments: { ...ZERO_ADJUSTMENTS, fajr: -3 },
+  });
+  check('ручная поправка применяется к календарю', hhmm(shifted.fajr), '03:20');
+  check('и не задевает соседние времена', hhmm(shifted.isha), '20:42');
 });
 
 // ─── Итог ─────────────────────────────────────────────────────────────
