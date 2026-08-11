@@ -317,6 +317,27 @@ export const Flower = ({ size = 20 }: Props) => (
   </svg>
 );
 
+/** Человек в круге — раздел «Аккаунт». */
+export const Person = ({ size = 20 }: Props) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
+       aria-hidden>
+    <circle cx="12" cy="8.2" r="3.6" />
+    <path d="M4.8 20c0-3.6 3.2-6 7.2-6s7.2 2.4 7.2 6" />
+  </svg>
+);
+
+/** Лист с текстом — юридические документы. */
+export const Document = ({ size = 20 }: Props) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
+       aria-hidden>
+    <path d="M6.5 3.5h7L18.5 8.5v12h-12z" />
+    <path d="M13.5 3.5v5h5" />
+    <path d="M9.5 13h5M9.5 16.5h5" />
+  </svg>
+);
+
 export const Trash = ({ size = 18 }: Props) => (
   <svg {...stroke(size)}>
     <path d="M4.75 6.5h14.5" />

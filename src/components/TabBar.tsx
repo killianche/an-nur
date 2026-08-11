@@ -21,15 +21,16 @@
  */
 
 import type { ReactNode } from 'react';
-import { BookOpen, Sparkle, Clock, Flower } from './icons';
+import { BookOpen, Sparkle, Clock, Flower, Person } from './icons';
 
-export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer';
+export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer' | 'account';
 
 const TABS: { id: TabId; label: string; icon: ReactNode }[] = [
   { id: 'quran',  label: 'Коран',  icon: <BookOpen size={21} /> },
   { id: 'azkar',  label: 'Азкары', icon: <Sparkle size={21} />  },
   { id: 'dua',    label: 'Дуа',    icon: <Flower size={21} />   },
   { id: 'prayer', label: 'Намаз',  icon: <Clock size={21} />    },
+  { id: 'account', label: 'Аккаунт', icon: <Person size={21} /> },
 ];
 
 /** Высота панели без safe-area.  Экраны отводят под неё нижний

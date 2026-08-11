@@ -9,6 +9,8 @@ import { AzkarCategoryScreen } from './screens/AzkarCategoryScreen';
 import { BookmarksScreen } from './screens/BookmarksScreen';
 import { PrayerTimesScreen } from './screens/PrayerTimesScreen';
 import { QiblaScreen } from './screens/QiblaScreen';
+import { AccountScreen } from './screens/AccountScreen';
+import { DocumentScreen, type DocumentId } from './screens/DocumentScreen';
 import { CosmicLayer } from './components/CosmicLayer';
 import { PaperLayer } from './components/PaperLayer';
 import { StatusBarScrim } from './components/StatusBarScrim';
@@ -45,7 +47,10 @@ type Screen =
   | { name: 'mushaf'; page: number }
   // Кибла ушла из вкладок: открывается с экрана намаза и имеет свою
   // запись в истории, поэтому системная «назад» возвращает к намазу.
-  | { name: 'qibla' };
+  | { name: 'qibla' }
+  // Юридические документы — вложенный экран, а не ссылка наружу: они
+  // лежат в пакете и обязаны открываться без интернета.
+  | { name: 'document'; doc: DocumentId };
 
 const INITIAL_SCREEN: Screen = { name: 'tabs', tab: 'quran' };
 
@@ -212,6 +217,16 @@ export default function App() {
     );
   }
 
+  if (screen.name === 'document') {
+    return (
+      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
+        <ErrorBoundary name="DocumentScreen" onReset={goBack}>
+          <DocumentScreen doc={screen.doc} onBack={goBack} />
+        </ErrorBoundary>
+      </Shell>
+    );
+  }
+
   if (screen.name === 'bookmarks') {
     return (
       <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
@@ -268,6 +283,15 @@ export default function App() {
       {tab === 'dua' && (
         <ErrorBoundary name="DuaScreen">
           <DuaScreen theme={theme} setTheme={setTheme} />
+        </ErrorBoundary>
+      )}
+      {tab === 'account' && (
+        <ErrorBoundary name="AccountScreen">
+          <AccountScreen
+            theme={theme}
+            setTheme={setTheme}
+            onOpenDocument={doc => navigate({ name: 'document', doc })}
+          />
         </ErrorBoundary>
       )}
       {tab === 'prayer' && (
