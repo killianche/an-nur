@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useTheme, themeMode } from './hooks/useTheme';
 import { SurahPicker } from './screens/SurahPicker';
 import { SurahScreen } from './screens/SurahScreen';
+import { MushafScreen } from './screens/MushafScreen';
 import { AzkarScreen } from './screens/AzkarScreen';
 import { AzkarCategoryScreen } from './screens/AzkarCategoryScreen';
 import { BookmarksScreen } from './screens/BookmarksScreen';
@@ -37,7 +38,10 @@ type Screen =
   | { name: 'tabs'; tab: TabId }
   | { name: 'azkar-category'; category: AzkarCategoryId }
   | { name: 'bookmarks' }
-  | { name: 'surah'; number: number; initialAyah?: number };
+  | { name: 'surah'; number: number; initialAyah?: number }
+  // Режим мусхафа — отдельный экран, а не вариант чтения: у него своя
+  // единица навигации (страница, не аят) и своя история.
+  | { name: 'mushaf'; page: number };
 
 const INITIAL_SCREEN: Screen = { name: 'tabs', tab: 'quran' };
 
@@ -172,6 +176,22 @@ export default function App() {
             setTheme={setTheme}
             onBack={goBack}
             onOpenSurah={(n, ayah) => navigate({ name: 'surah', number: n, initialAyah: ayah })}
+            onOpenMushaf={page => navigate({ name: 'mushaf', page })}
+          />
+        </ErrorBoundary>
+      </Shell>
+    );
+  }
+
+  if (screen.name === 'mushaf') {
+    return (
+      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
+        <ErrorBoundary name="MushafScreen" onReset={goBack}>
+          <MushafScreen
+            initialPage={screen.page}
+            theme={theme}
+            setTheme={setTheme}
+            onBack={goBack}
           />
         </ErrorBoundary>
       </Shell>

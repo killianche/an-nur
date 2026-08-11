@@ -1,97 +1,177 @@
 /**
- * QcfMushafPage — renders a single QCF V4 mushaf page.
+ * QcfMushafPage — одна страница мединского мусхафа (QCF V4), целиком.
  *
- * Each word on the page is a PUA glyph (U+F100…) that must be rendered with
- * the specific QCF font it was composed for.  We inject the required
- * @font-face rules synchronously (before the component paints) via
- * useQcfFont, so the browser starts loading the font in the same frame.
+ * Каждое слово на странице — ОДИН глиф из области частного использования
+ * (U+F100…), нарисованный шрифтом, под который эта страница свёрстана.
+ * Строки заданы в данных явно: переносить текст не нужно, вёрстка уже
+ * такая же, как в печатном мусхафе.
  *
- * Line layout:
- *   - direction: rtl, display: flex, justify-content: space-between
- *   - Words are spread across the full line width (classic Mushaf justification)
- *   - Surah header lines are centered
+ * ── Почему пословные span'ы не нарушают сакральное правило ─────────────
  *
- * Word highlighting (karaoke):
- *   activeVerseKey + activeWordPos — the word matching both gets [data-active-word]
- *   which can be targeted in CSS for highlighting.
+ * Правило запрещает разрывать арабское шейпинг-склеивание внутри слова
+ * (см. CLAUDE.md §7).  Здесь оно не нарушается: слово целиком — это уже
+ * готовый глиф, склейка запечена в самом шрифте, а между словами в
+ * арабском связи и не бывает.  Разбиение идёт ровно по границам слов,
+ * как в самом мусхафе.
+ *
+ * ── Подгонка под экран ────────────────────────────────────────────────
+ *
+ * Страница обязана быть видна целиком — в этом весь смысл режима.
+ * Кегль не берётся из настроек, а вычисляется: сначала прикидка по
+ * высоте (15 строк), потом замер реальной вёрстки и поправка, если
+ * самая длинная строка не влезла по ширине.  Двух проходов хватает:
+ * зависимость ширины от кегля линейная.
+ *
+ * Почему не `transform: scale()` — он даёт мыло на тексте и убивает
+ * попадание пальцем: у отмасштабированного слоя координаты тапа
+ * перестают совпадать с макетом.
+ *
+ * ── Подсветка ─────────────────────────────────────────────────────────
+ *
+ * Два независимых уровня:
+ *   activeVerseKey + activeWordPos — слово, которое звучит сейчас
+ *     (караоке при воспроизведении);
+ *   selectedVerseKey — весь аят, по которому человек тапнул.
  */
 
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useQcfFont } from '../hooks/useQcfFont';
 import type { QcfPageData, QcfWord } from '../lib/qcf4';
 
 type Props = {
   pageData: QcfPageData;
-  /** "surah:ayah" of the currently playing/active ayah, e.g. "1:7" */
+  /** Место, в которое надо вписать страницу.  Без него — базовый кегль. */
+  fitTo?: { width: number; height: number } | null;
+  /** «сура:аят» звучащего сейчас аята. */
   activeVerseKey?: string | null;
-  /** 1-based word position within the active ayah */
+  /** Позиция звучащего слова внутри аята, с единицы. */
   activeWordPos?: number | null;
-  /** Overall scale factor applied to the mushaf font size (default 1.0) */
-  scale?: number;
+  /** «сура:аят», выбранный тапом. */
+  selectedVerseKey?: string | null;
+  onAyahTap?: (verseKey: string) => void;
 };
 
-/** px size at scale=1.0 — comfortable for mobile reading */
+/** Кегль, если вписывать некуда. */
 const BASE_FONT_PX = 22;
+/** Во столько раз высота строки больше кегля.  Диакритике нужен воздух. */
+const LINE_FACTOR = 2.0;
+/** Поля страницы по горизонтали. */
+const SIDE_PADDING = 14;
 
 export function QcfMushafPage({
   pageData,
+  fitTo = null,
   activeVerseKey = null,
   activeWordPos = null,
-  scale = 1.0,
+  selectedVerseKey = null,
+  onAyahTap,
 }: Props) {
-  // Collect every distinct font needed for this page (usually just two:
-  // the main Hafs font + QCF4_QBSML for surah headers)
   const fontNames = Array.from(
     new Set(pageData.lines.flatMap(l => l.words.map(w => w.font))),
   );
-  // Inject @font-face for all needed fonts synchronously (render-phase, not
-  // useEffect) so the browser requests fonts in the same frame as the text.
+  // @font-face инжектится в фазе рендера, а не в эффекте: браузер должен
+  // начать качать шрифт в том же кадре, в котором появился текст.
   useQcfFont(fontNames);
 
-  const fontSize = BASE_FONT_PX * scale;
+  const lineCount = pageData.lines.length || 15;
+  // Прикидка по высоте. Ширину проверим замером — предсказать её нельзя:
+  // в строке от двух до десятка слов разной длины.
+  const guess = fitTo
+    ? Math.max(9, Math.min(46, fitTo.height / (lineCount * LINE_FACTOR)))
+    : BASE_FONT_PX;
+
+  const [fontSize, setFontSize] = useState(guess);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // Сколько поправок уже сделали для этой страницы и этого места.
+  const passRef = useRef(0);
+  const keyRef = useRef('');
+
+  const fitKey = `${pageData.page}|${fitTo?.width ?? 0}|${fitTo?.height ?? 0}`;
+  if (keyRef.current !== fitKey) {
+    keyRef.current = fitKey;
+    passRef.current = 0;
+  }
+
+  useLayoutEffect(() => {
+    if (!fitTo || !boxRef.current) return;
+    if (passRef.current >= 2) return;
+
+    const box = boxRef.current;
+    const lines = Array.from(box.children) as HTMLElement[];
+    let widthRatio = 1;
+    for (const line of lines) {
+      // Строки свёрстаны через space-between: если содержимое шире
+      // контейнера, оно вылезает, и scrollWidth это показывает.
+      if (line.clientWidth > 0 && line.scrollWidth > line.clientWidth) {
+        widthRatio = Math.max(widthRatio, line.scrollWidth / line.clientWidth);
+      }
+    }
+    const heightRatio = box.scrollHeight > fitTo.height
+      ? box.scrollHeight / fitTo.height
+      : 1;
+    const ratio = Math.max(widthRatio, heightRatio);
+
+    // 0.5 px — порог, ниже которого поправка не стоит лишней перерисовки.
+    if (ratio > 1.002) {
+      passRef.current += 1;
+      setFontSize(f => Math.max(9, f / ratio));
+      return;
+    }
+    passRef.current = 2;
+  });
+
+  // Смена страницы или размера окна — считаем заново от прикидки.
+  const [lastKey, setLastKey] = useState(fitKey);
+  if (lastKey !== fitKey) {
+    setLastKey(fitKey);
+    setFontSize(guess);
+  }
 
   return (
     <div
+      ref={boxRef}
       className="mushaf-page"
       style={{
         direction: 'rtl',
-        padding: '16px 12px',
-        // Paper-like background, dark-mode aware via CSS vars
-        background: 'var(--mushaf-bg, var(--surface))',
-        borderRadius: '6px',
-        border: '1px solid var(--hairline)',
-        // Subtle elevation
-        boxShadow: '0 1px 4px rgba(0,0,0,0.06), 0 4px 20px rgba(0,0,0,0.08)',
+        // Вертикальные поля не декоративные: верхняя мадда и нижняя
+        // кясра выходят за строчный бокс, и без запаса первая строка
+        // подрезалась краем экрана.  Подгонка их учитывает — scrollHeight
+        // считает padding.
+        padding: `${Math.round(fontSize * 0.45)}px ${SIDE_PADDING}px`,
+        width: '100%',
         userSelect: 'none',
+        WebkitUserSelect: 'none',
       }}
     >
-      {pageData.lines.map((line) => {
+      {pageData.lines.map(line => {
         const isSurahHeader = line.words.some(w => w.type === 'surah_header');
-        const isBasmala     = line.words.some(w => w.type === 'basmala');
-        const isCentered    = isSurahHeader || isBasmala || line.words.length <= 2;
+        const isBasmala = line.words.some(w => w.type === 'bismillah');
+        // Короткие строки (конец суры) в мусхафе тоже стоят по центру.
+        const centred = isSurahHeader || isBasmala || line.words.length <= 2;
 
         return (
           <div
             key={line.line}
             style={{
               display: 'flex',
-              flexDirection: 'row',
               direction: 'rtl',
               alignItems: 'center',
-              justifyContent: isCentered ? 'center' : 'space-between',
-              // Line spacing — generous to give glyphs room for diacritics
-              minHeight: `${fontSize * 2.0}px`,
-              marginBottom: '2px',
+              justifyContent: centred ? 'center' : 'space-between',
+              height: `${fontSize * LINE_FACTOR}px`,
             }}
           >
-            {line.words.map((word, wordIdx) => (
+            {line.words.map((word, i) => (
               <QcfWordSpan
-                key={wordIdx}
+                key={i}
                 word={word}
                 fontSize={fontSize}
                 isActive={
-                  word.verse_key === activeVerseKey &&
-                  word.position === activeWordPos
+                  !!word.verse_key
+                  && word.verse_key === activeVerseKey
+                  && word.position === activeWordPos
                 }
+                isSelected={!!word.verse_key && word.verse_key === selectedVerseKey}
+                onTap={onAyahTap}
               />
             ))}
           </div>
@@ -101,46 +181,47 @@ export function QcfMushafPage({
   );
 }
 
-// ─── Per-word span ─────────────────────────────────────────────────────────────
-
 type WordSpanProps = {
   word: QcfWord;
   fontSize: number;
   isActive: boolean;
+  isSelected: boolean;
+  onTap?: (verseKey: string) => void;
 };
 
-function QcfWordSpan({ word, fontSize, isActive }: WordSpanProps) {
-  const isSurahHeader = word.type === 'surah_header';
+function QcfWordSpan({ word, fontSize, isActive, isSelected, onTap }: WordSpanProps) {
+  const isHeader = word.type === 'surah_header';
+  const key = word.verse_key;
 
   return (
     <span
       {...(isActive ? { 'data-active-word': '' } : {})}
-      {...(word.verse_key ? { 'data-verse-key': word.verse_key } : {})}
-      {...(word.position  ? { 'data-position': word.position }   : {})}
+      {...(key ? { 'data-verse-key': key } : {})}
+      onClick={key && onTap ? () => onTap(key) : undefined}
       style={{
         fontFamily: `'${word.font}', serif`,
-        fontSize: isSurahHeader ? `${fontSize * 0.8}px` : `${fontSize}px`,
-        // Colour: active word gets accent, header gets muted tone
+        fontSize: isHeader ? `${fontSize * 0.82}px` : `${fontSize}px`,
         color: isActive
           ? 'var(--qcf-active, var(--accent, #1a6b3c))'
-          : isSurahHeader
+          : isHeader
             ? 'var(--text-secondary)'
             : 'var(--qcf-text, var(--text-primary))',
-        // Transition for smooth karaoke highlight swap
-        transition: 'color 0.15s ease',
-        // PUA glyphs don't wrap — keep them on one line
+        // Выбранный аят подсвечивается фоном, а не цветом букв: цвет
+        // текста уже занят под караоке, и два смысла на одном канале
+        // читались бы как один.
+        background: isSelected && !isActive
+          ? 'color-mix(in srgb, var(--ink) 12%, transparent)'
+          : 'transparent',
+        borderRadius: isSelected ? '3px' : undefined,
+        transition: 'color 0.15s ease, background 0.15s ease',
         whiteSpace: 'nowrap',
-        // Remove any letter-spacing that could misalign PUA glyphs
-        letterSpacing: '0',
-        // No word-spacing on the span itself; line flex handles the spread
-        wordSpacing: '0',
-        lineHeight: '1',
+        letterSpacing: 0,
+        wordSpacing: 0,
+        lineHeight: 1,
         display: 'inline-block',
-        // Padding gives a slight tap target without affecting layout
-        padding: word.verse_key ? '4px 0' : '0',
-        cursor: word.verse_key ? 'default' : 'default',
+        cursor: key && onTap ? 'pointer' : 'default',
+        WebkitTapHighlightColor: 'transparent',
       }}
-      // aria-label for screen readers — use the Unicode text equivalent
       aria-label={word.text || undefined}
     >
       {word.char}

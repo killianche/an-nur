@@ -39,12 +39,12 @@ import { AyahSearchSheet } from '../components/AyahSearchSheet';
 import { BottomDock } from '../components/BottomDock';
 import {
   Typography, Appearance, Search,
-  ArrowChevronRight, Bookmark as BookmarkIcon, Play, Pause,
-} from '../components/icons';
+  ArrowChevronRight, Bookmark as BookmarkIcon, Play, Pause, BookOpen } from '../components/icons';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { type Theme } from '../hooks/useTheme';
 import { getAutoScroll, subscribeAudioPrefs } from '../lib/audioPrefs';
 import { pushRecent, updateRecentAyah, readRecents } from '../lib/recents';
+import { pageOfAyah } from '../lib/mushafPages';
 import { isBookmarked, toggleBookmark } from '../lib/bookmarks';
 import {
   readPref, readNumber,
@@ -67,6 +67,8 @@ type Props = {
   initialAyah?: number;
   /** Открыть другую суру — нужен поиску по всему Корану из шапки. */
   onOpenSurah?: (surah: number, ayah?: number) => void;
+  /** Переключиться в режим мусхафа на странице, где стоит читатель. */
+  onOpenMushaf?: (page: number) => void;
 };
 
 const LATIN_IDS:   LatinFontId[]  = ['inter-semibold', 'inter-regular', 'garamond', 'alice'];
@@ -83,7 +85,9 @@ function migrateLegacyScale() {
   localStorage.removeItem('fontScale');
 }
 
-export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah, onOpenSurah }: Props) {
+export function SurahScreen({
+  surahNumber, theme, setTheme, onBack, initialAyah, onOpenSurah, onOpenMushaf,
+}: Props) {
   migrateLegacyScale();
 
   // ── Audio ──────────────────────────────────────────────────────────────────
@@ -523,6 +527,21 @@ export function SurahScreen({ surahNumber, theme, setTheme, onBack, initialAyah,
               icon: <ArrowChevronRight size={20} />,
               active: jumpOpen,
               onClick: () => { setJumpOpen(v => !v); setThemeOpen(false); setTypographyOpen(false); setSearchOpen(false); },
+            }] : []),
+            ...(onOpenMushaf ? [{
+              key: 'mushaf',
+              label: 'Читать страницами мусхафа',
+              icon: <BookOpen size={20} />,
+              onClick: () => {
+                // Открываем ту страницу, на которой человек сейчас стоит,
+                // а не первую страницу суры: переключение режима не
+                // должно терять место в чтении.
+                const ayah = lastTrackedAyahRef.current
+                  ?? (audio.currentSurah === surahNumber ? audio.currentAyah : null)
+                  ?? initialAyah
+                  ?? 1;
+                onOpenMushaf(pageOfAyah(surahNumber, ayah));
+              },
             }] : []),
             {
               key: 'type',
