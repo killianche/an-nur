@@ -119,19 +119,6 @@ export const AURORA_VIOLET: AuroraPaletteSpec = {
     '0 40px 110px rgba(168,140,245,0.72)',
 };
 
-export const AURORA_GOLD: AuroraPaletteSpec = {
-  label: 'Золото',
-  layer1: 'rgba(240,198,120,0.42)',
-  layer2: 'rgba(248,224,175,0.34)',
-  ayahGlow:
-    'radial-gradient(ellipse at 50% 50%, rgba(240,198,120,0.46) 0%, ' +
-    'rgba(240,198,120,0.19) 30%, rgba(240,198,120,0.06) 55%, transparent 80%)',
-  wordShadow:
-    '0 -16px 36px rgba(248,224,175,0.80), 0 16px 36px rgba(248,224,175,0.80), ' +
-    '0 0 30px rgba(248,224,175,0.80), 0 -40px 110px rgba(240,198,120,0.72), ' +
-    '0 40px 110px rgba(240,198,120,0.72)',
-};
-
 export const AURORA_ROSE: AuroraPaletteSpec = {
   label: 'Роза',
   layer1: 'rgba(240,150,190,0.42)',
@@ -145,31 +132,44 @@ export const AURORA_ROSE: AuroraPaletteSpec = {
     '0 40px 110px rgba(240,150,190,0.72)',
 };
 
-export const AURORA_EMBER: AuroraPaletteSpec = {
-  label: 'Закат',
-  layer1: 'rgba(240,145,110,0.42)',
-  layer2: 'rgba(248,190,160,0.34)',
+/**
+ * Серебро — единственный нейтральный вариант.
+ *
+ * Тон уведён в холод (голубее красного канала), потому что чистый серый на
+ * тёмном фоне читается не как свет, а как дымка или запачканное стекло.
+ * Малейшая синева возвращает ощущение свечения, оставаясь серой.
+ */
+export const AURORA_SILVER: AuroraPaletteSpec = {
+  label: 'Серебро',
+  layer1: 'rgba(176,184,196,0.42)',
+  layer2: 'rgba(216,222,230,0.34)',
   ayahGlow:
-    'radial-gradient(ellipse at 50% 50%, rgba(240,145,110,0.46) 0%, ' +
-    'rgba(240,145,110,0.19) 30%, rgba(240,145,110,0.06) 55%, transparent 80%)',
+    'radial-gradient(ellipse at 50% 50%, rgba(176,184,196,0.46) 0%, ' +
+    'rgba(176,184,196,0.19) 30%, rgba(176,184,196,0.06) 55%, transparent 80%)',
   wordShadow:
-    '0 -16px 36px rgba(248,190,160,0.80), 0 16px 36px rgba(248,190,160,0.80), ' +
-    '0 0 30px rgba(248,190,160,0.80), 0 -40px 110px rgba(240,145,110,0.72), ' +
-    '0 40px 110px rgba(240,145,110,0.72)',
+    '0 -16px 36px rgba(216,222,230,0.80), 0 16px 36px rgba(216,222,230,0.80), ' +
+    '0 0 30px rgba(216,222,230,0.80), 0 -40px 110px rgba(176,184,196,0.72), ' +
+    '0 40px 110px rgba(176,184,196,0.72)',
 };
 
 /** Идентификатор цвета сияния.  Не путать с AURORA_PALETTES из
  *  audioPrefs — те про подсветку слова при чтении, а не про фон. */
-export type AuroraColourId = 'ice' | 'moss' | 'violet' | 'gold' | 'rose' | 'ember';
+export type AuroraColourId = 'ice' | 'moss' | 'violet' | 'rose' | 'silver';
 
-/** Порядок в выборе цвета: от холодных к тёплым. */
+/**
+ * Порядок в выборе цвета: холодные, потом тёплый, нейтральное замыкает.
+ *
+ * Золота и заката здесь больше нет — решение владельца.  Сохранённые у
+ * прежних читателей `gold` и `ember` не сломают экран: readAuroraPalette
+ * сверяет значение с этим списком и на незнакомом откатывается к цвету
+ * темы по умолчанию.
+ */
 export const AURORA_COLOURS: { id: AuroraColourId; spec: AuroraPaletteSpec; swatch: string }[] = [
   { id: 'ice',    spec: AURORA_ICE,    swatch: '#78c8f0' },
   { id: 'moss',   spec: AURORA_MOSS,   swatch: '#5ad296' },
   { id: 'violet', spec: AURORA_VIOLET, swatch: '#a88cf5' },
-  { id: 'gold',   spec: AURORA_GOLD,   swatch: '#f0c678' },
   { id: 'rose',   spec: AURORA_ROSE,   swatch: '#f096be' },
-  { id: 'ember',  spec: AURORA_EMBER,  swatch: '#f0916e' },
+  { id: 'silver', spec: AURORA_SILVER, swatch: '#b0b8c4' },
 ];
 
 export function auroraPaletteById(id: AuroraColourId): AuroraPaletteSpec {

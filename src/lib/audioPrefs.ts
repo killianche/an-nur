@@ -11,11 +11,11 @@
  *     vertical aurora-style text-shadow + a soft radial-gradient
  *     "dome" under the word (rendered by AyahGlowLayer).
  *   - highlightColor: which colour the active-word TEXT becomes in
- *     'color' mode. 6 picks (rose/amber/green/teal/blue/violet), each
+ *     'color' mode. 6 picks (rose/green/teal/blue/violet/grey), each
  *     with a deeper light-theme shade and a brighter dark-theme shade
  *     so contrast holds across all light/* and dark/* themes.
  *   - glowPalette: which aurora palette the 'glow' mode uses. 6 picks
- *     (ice/mint/violet/gold/rose/ember). Each palette ships pre-baked
+ *     (ice/mint/violet/rose/silver). Each palette ships pre-baked
  *     rgba strings for text-shadow + a radial-gradient string for the
  *     under-word "dome" — no color-mix() so iOS Safari <16.4 and old
  *     Android Chrome render correctly.
@@ -38,32 +38,36 @@ export type HighlightStyle = 'color' | 'glow';
 
 export type HighlightColor =
   | 'rose'    // default
-  | 'amber'
+  | 'grey'
   | 'green'
   | 'teal'
   | 'blue'
   | 'violet';
 
-export type GlowPalette = 'ice' | 'mint' | 'violet' | 'gold' | 'rose' | 'ember';
+export type GlowPalette = 'ice' | 'mint' | 'violet' | 'rose' | 'silver';
 
 // Swatch in HIGHLIGHT_COLORS is the LIGHT-theme value (used as the chip
 // preview in the picker — the picker lives on the light surface of the
 // settings sheet on every theme).
-// Ordered as a rainbow ramp (warm → cool): rose → amber → green → teal
-// → blue → violet. Rose sits first because it doubles as the default —
-// a calm warm marker for the active word.
-// Note on label ↔ id drift: 'amber' renders as a true orange (orange-500)
-// and 'teal' renders as a sky blue (sky-500). The earlier orange-600 /
-// cyan-600 picks made the picker read as "two reds" next to rose and
-// "two greens" next to green; the brighter mid-ramp picks push them
-// firmly into the orange and sky-blue regions of the hue wheel.
+// Ordered as a rainbow ramp (warm → cool): rose → green → teal → blue →
+// violet, нейтральный серый замыкает. Rose sits first because it doubles
+// as the default — a calm warm marker for the active word.
+// Note on label ↔ id drift: 'teal' renders as a sky blue (sky-500). The
+// earlier cyan-600 pick made the picker read as "two greens" next to
+// green; the brighter mid-ramp pick pushes it firmly into the sky-blue
+// region of the hue wheel.
+//
+// Оранжевого здесь больше нет — решение владельца; на его месте серый.
+// Сохранённый у прежних читателей 'amber' не сломает экран:
+// getHighlightColorPref сверяет значение со списком и откатывается к
+// дефолту.
 export const HIGHLIGHT_COLORS: { id: HighlightColor; label: string; swatch: string }[] = [
   { id: 'rose',   label: 'Роза',       swatch: '#e11d48' },
-  { id: 'amber',  label: 'Оранжевый',  swatch: '#f97316' },
   { id: 'green',  label: 'Зелёный',    swatch: '#16a34a' },
   { id: 'teal',   label: 'Голубой',    swatch: '#0ea5e9' },
   { id: 'blue',   label: 'Синий',      swatch: '#2563eb' },
   { id: 'violet', label: 'Фиолет',     swatch: '#7c3aed' },
+  { id: 'grey',   label: 'Серый',      swatch: '#64748b' },
 ];
 
 // Hand-picked from Tailwind's ramps — each passes WCAG AA contrast on
@@ -72,24 +76,25 @@ export const HIGHLIGHT_COLORS: { id: HighlightColor; label: string; swatch: stri
 //     coloured on near-white surfaces (warm-gray, classic, warm-brown).
 //   - dark:  lighter end of the ramp (300–400), so text glows softly on
 //     near-black surfaces (cool-blue, true, warm, deep).
-// 'amber' uses orange-500 / orange-400 — a clean orange that no longer
-// drifts into rose territory. 'teal' uses sky-500 / sky-400 — a clearly
-// blue-leaning sky tone that doesn't compete with green.
+// 'teal' uses sky-500 / sky-400 — a clearly blue-leaning sky tone that
+// doesn't compete with green.  'grey' взят из ветки slate, а не из
+// чистой серой: у slate есть холодная примесь, и на тёмном фоне слово
+// читается как подсвеченное, а не как выцветшее.
 const COLOR_LIGHT: Record<HighlightColor, string> = {
   rose:   '#e11d48',  // tw rose-600
-  amber:  '#f97316',  // tw orange-500
   green:  '#16a34a',  // tw green-600
   teal:   '#0ea5e9',  // tw sky-500
   blue:   '#2563eb',  // tw blue-600
   violet: '#7c3aed',  // tw violet-600
+  grey:   '#64748b',  // tw slate-500
 };
 const COLOR_DARK: Record<HighlightColor, string> = {
   rose:   '#fb7185',  // tw rose-400
-  amber:  '#fb923c',  // tw orange-400
   green:  '#4ade80',  // tw green-400
   teal:   '#38bdf8',  // tw sky-400
   blue:   '#60a5fa',  // tw blue-400
   violet: '#a78bfa',  // tw violet-400
+  grey:   '#cbd5e1',  // tw slate-300
 };
 
 // ─── Aurora palettes (glow mode) ──────────────────────────────────────────
@@ -111,9 +116,7 @@ const COLOR_DARK: Record<HighlightColor, string> = {
 // Alpha tuning notes (matches reference spec):
 //   - wordShadow centre/cores 0.84, outer halo 0.76
 //   - ayahGlow stops 0.48 / 0.20 / 0.06 / transparent at 0/30/55/80%
-//   - 'gold' bumped slightly brighter (0.56 / 0.24 / 0.08) — yellow
-//     reads thinner than blue at equal alpha
-//   - 'ember' damped (0.76 / 0.64 cores, 0.44 dome) — neutral grey is
+//   - 'silver' damped (0.76 / 0.64 cores, 0.44 dome) — neutral grey is
 //     a "quiet" pick for users who find chromatic glow distracting
 export const AURORA_PALETTES: Record<
   GlowPalette,
@@ -167,22 +170,6 @@ export const AURORA_PALETTES: Record<
       'rgba(140,100,220,0.03) 55%, ' +
       'transparent 80%)',
   },
-  gold: {
-    label: 'Золото',
-    swatch: '#dcb450',
-    wordShadow:
-      '0 -16px 36px rgba(240,200,90,0.42), ' +
-      '0  16px 36px rgba(240,200,90,0.42), ' +
-      '0   0px 30px rgba(240,200,90,0.42), ' +
-      '0 -40px 110px rgba(210,160,60,0.38), ' +
-      '0  40px 110px rgba(210,160,60,0.38)',
-    ayahGlow:
-      'radial-gradient(ellipse at 50% 50%, ' +
-      'rgba(220,180,80,0.28) 0%, ' +
-      'rgba(220,180,80,0.12) 30%, ' +
-      'rgba(220,180,80,0.04) 55%, ' +
-      'transparent 80%)',
-  },
   rose: {
     label: 'Роза',
     swatch: '#c86482',
@@ -199,8 +186,11 @@ export const AURORA_PALETTES: Record<
       'rgba(200,100,130,0.03) 55%, ' +
       'transparent 80%)',
   },
-  ember: {
-    label: 'Уголёк',
+  // Раньше называлось «Уголёк», хотя цвет всегда был нейтрально-серый:
+  // имя обещало оранжевый и путало в выборе.  Значения не тронуты, только
+  // имя и ключ.
+  silver: {
+    label: 'Серебро',
     swatch: '#d2d2da',
     wordShadow:
       '0 -16px 36px rgba(210,210,220,0.38), ' +
@@ -217,8 +207,9 @@ export const AURORA_PALETTES: Record<
   },
 };
 
+/** Порядок в пикере: холодные, тёплый, нейтральное серебро замыкает. */
 export const GLOW_PALETTES_ORDER: GlowPalette[] =
-  ['ice', 'mint', 'violet', 'gold', 'rose', 'ember'];
+  ['ice', 'mint', 'violet', 'rose', 'silver'];
 
 export function getAutoScroll(): boolean {
   return localStorage.getItem(KEY_AUTO_SCROLL) !== '0';

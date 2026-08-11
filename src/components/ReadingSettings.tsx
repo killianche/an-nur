@@ -1104,7 +1104,7 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
             // 6 colour swatches — same compact row as before.
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(6, 1fr)',
+              gridTemplateColumns: `repeat(${HIGHLIGHT_COLORS.length}, 1fr)`,
               gap: '6px',
             }}>
               {HIGHLIGHT_COLORS.map(c => {
@@ -1146,7 +1146,10 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
             // glow is force-resolved away — see the !isLight tab gate.
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(6, 1fr)',
+              // От длины списка, а не жёстко шесть: после снятия золота
+              // палитр стало пять, и фиксированная шестая колонка оставляла
+              // справа пустоту.
+              gridTemplateColumns: `repeat(${GLOW_PALETTES_ORDER.length}, 1fr)`,
               gap: '6px',
             }}>
               {GLOW_PALETTES_ORDER.map(id => {
