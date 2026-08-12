@@ -37,6 +37,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useQcfFont } from '../hooks/useQcfFont';
 import { ArabicSkeleton } from './ArabicSkeleton';
+import { SurahPlate } from './SurahPlate';
 import { distinctFontRefs, qcfPageFamily } from '../lib/qcf4';
 import type { QcfPageData, QcfWord } from '../lib/qcf4';
 
@@ -164,6 +165,40 @@ export function QcfMushafPage({
         // Короткие строки (конец суры) в мусхафе тоже стоят по центру.
         const centred = isSurahHeader || isBasmala || line.words.length <= 2;
 
+        const words = line.words.map((word, i) => (
+          <QcfWordSpan
+            key={i}
+            word={word}
+            fontSize={fontSize}
+            isActive={
+              !!word.verse_key
+              && word.verse_key === activeVerseKey
+              && word.position === activeWordPos
+            }
+            isSelected={!!word.verse_key && word.verse_key === selectedVerseKey}
+            onTap={onAyahTap}
+          />
+        ));
+
+        // Название суры — в золочёной рамке, как в печатном издании.
+        // Строка отдаётся плашке целиком: в данных мусхафа заголовок
+        // всегда занимает свою строку и никогда не делит её с аятами.
+        if (isSurahHeader) {
+          return (
+            <SurahPlate key={line.line} height={Math.round(fontSize * LINE_FACTOR * 0.92)}>
+              <div style={{
+                display: 'flex',
+                direction: 'rtl',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '2px',
+              }}>
+                {words}
+              </div>
+            </SurahPlate>
+          );
+        }
+
         return (
           <div
             key={line.line}
@@ -175,20 +210,7 @@ export function QcfMushafPage({
               height: `${fontSize * LINE_FACTOR}px`,
             }}
           >
-            {line.words.map((word, i) => (
-              <QcfWordSpan
-                key={i}
-                word={word}
-                fontSize={fontSize}
-                isActive={
-                  !!word.verse_key
-                  && word.verse_key === activeVerseKey
-                  && word.position === activeWordPos
-                }
-                isSelected={!!word.verse_key && word.verse_key === selectedVerseKey}
-                onTap={onAyahTap}
-              />
-            ))}
+            {words}
           </div>
         );
       })}
@@ -206,6 +228,11 @@ type WordSpanProps = {
 
 function QcfWordSpan({ word, fontSize, isActive, isSelected, onTap }: WordSpanProps) {
   const isHeader = word.type === 'surah_header';
+  // Маркер конца аята — золочёная розетка с номером, как в печатном
+  // издании.  Отделять его цветом важно не только для красоты: глаз
+  // цепляется за границы аятов, когда ищет нужное место, а на странице
+  // из пятнадцати плотных строк без ориентиров это трудно.
+  const isEndMark = word.type === 'end';
   const key = word.verse_key;
 
   return (
@@ -220,8 +247,11 @@ function QcfWordSpan({ word, fontSize, isActive, isSelected, onTap }: WordSpanPr
         fontSize: isHeader ? `${fontSize * 0.82}px` : `${fontSize}px`,
         color: isActive
           ? 'var(--qcf-active, var(--accent, #1a6b3c))'
-          : isHeader
-            ? 'var(--text-secondary)'
+          : isEndMark
+            ? 'var(--gold)'
+            // Название суры внутри плашки — полными чернилами: рамка вокруг
+            // уже золотая, и приглушённый заголовок на её фоне читался
+            // тусклее, чем сам текст суры, хотя должен возглавлять страницу.
             : 'var(--qcf-text, var(--text-primary))',
         // Выбранный аят подсвечивается фоном, а не цветом букв: цвет
         // текста уже занят под караоке, и два смысла на одном канале
