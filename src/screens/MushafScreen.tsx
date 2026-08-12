@@ -309,42 +309,6 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           />
         )}
 
-        {/* Номер страницы в золочёной рамке — как в печатном мусхафе, где
-            он стоит на нижнем поле.  Дублирует счётчик в шапке намеренно:
-            в шапке он кнопка перехода, а здесь — часть страницы, и глаз
-            ищет его именно снизу, по привычке от книги.
-
-            Позиция absolute, потому что страница вписана в свою область
-            целиком и любая строка в потоке отняла бы у неё высоту. */}
-        {data && (
-          <div style={{
-            position: 'absolute',
-            bottom: '2px',
-            left: 0,
-            right: 0,
-            display: 'flex',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}>
-            <span style={{
-              minWidth: '34px',
-              padding: '2px 10px',
-              borderRadius: '6px',
-              border: '1px solid var(--gold)',
-              boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--gold) 22%, transparent)',
-              background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
-              color: 'var(--gold)',
-              fontSize: '12px',
-              fontWeight: 600,
-              fontVariantNumeric: 'tabular-nums',
-              textAlign: 'center',
-              letterSpacing: '0.02em',
-            }}>
-              {page}
-            </span>
-          </div>
-        )}
-
         {/* Зоны листания по краям — для тех, кто читает одной рукой и
             не любит свайп.  Узкие и прозрачные, чтобы не мешать тапу
             по аяту в теле страницы. */}

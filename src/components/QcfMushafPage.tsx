@@ -60,6 +60,18 @@ const BASE_FONT_PX = 22;
 const LINE_FACTOR = 2.0;
 /** Поля страницы по горизонтали. */
 const SIDE_PADDING = 14;
+/**
+ * С какой заполненности строка считается полной и тянется по ширине.
+ *
+ * Замер идёт по естественной ширине слов: у глифов QCF боковые отступы
+ * уже внутри, поэтому своего зазора вёрстка не добавляет — добавленный
+ * заставлял строки переполняться и сбивал подбор кегля.
+ *
+ * 0.9 отделяет набранную строку от короткой: последняя строка суры и
+ * строки Аль-Фатихи заполняют меньше, обычная строка мусхафа — больше.
+ */
+const JUSTIFY_FILL = 0.9;
+
 
 export function QcfMushafPage({
   pageData,
@@ -86,6 +98,18 @@ export function QcfMushafPage({
     : BASE_FONT_PX;
 
   const [fontSize, setFontSize] = useState(guess);
+  /**
+   * Как выключать каждую строку: `true` — по ширине, `false` — по центру.
+   *
+   * В печатном мусхафе по ширине выключены только ЗАПОЛНЕННЫЕ строки, а
+   * короткая (Аль-Фатиха, конец суры) стоит по центру с обычными пробелами.
+   * Раньше по ширине тянулись все, и на первой странице слова расходились
+   * на пол-экрана: «بِسْمِ» у одного края, «ٱلرَّحِيمِ» у другого.
+   *
+   * Решается замером, а не числом слов: слова мусхафа разной длины, и три
+   * длинных слова заполняют строку, а шесть коротких — нет.
+   */
+  const [justified, setJustified] = useState<boolean[]>([]);
   const boxRef = useRef<HTMLDivElement>(null);
   // Сколько поправок уже сделали для этой страницы и этого места.
   const passRef = useRef(0);
@@ -128,6 +152,29 @@ export function QcfMushafPage({
     passRef.current = 2;
   });
 
+  // Какие строки тянуть по ширине.
+  //
+  // Отдельным эффектом, а не внутри подбора кегля: тот выходит досрочно,
+  // как только кегль устоялся, и замер выключки до него не доходил — все
+  // строки оставались по центру, включая полные.
+  //
+  // Считаем сумму ширин слов: у flex-строки scrollWidth этого не покажет,
+  // потому что растянутая по ширине строка по определению занимает всю
+  // ширину, сколько бы в ней ни было слов.
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box || !fontsReady) return;
+    const lines = Array.from(box.children) as HTMLElement[];
+    const next = lines.map(line => {
+      const kids = Array.from(line.children) as HTMLElement[];
+      if (kids.length < 2 || line.clientWidth <= 0) return false;
+      const content = kids.reduce((sum, k) => sum + k.getBoundingClientRect().width, 0);
+      return content / line.clientWidth >= JUSTIFY_FILL;
+    });
+    setJustified(prev =>
+      prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next);
+  }, [fontsReady, fontSize, pageData.page, fitTo?.width, fitTo?.height]);
+
   // Смена страницы или размера окна — считаем заново от прикидки.
   const [lastKey, setLastKey] = useState(fitKey);
   if (lastKey !== fitKey) {
@@ -159,7 +206,7 @@ export function QcfMushafPage({
           fontSize={fontSize}
           align="stretch"
         />
-      ) : pageData.lines.map(line => {
+      ) : pageData.lines.map((line, idx) => {
         const isSurahHeader = line.words.some(w => w.type === 'surah_header');
         const isBasmala = line.words.some(w => w.type === 'bismillah');
         // Короткие строки (конец суры) в мусхафе тоже стоят по центру.
@@ -199,6 +246,10 @@ export function QcfMushafPage({
           );
         }
 
+        // Первый проход измеряет строки в естественном виде — по центру со
+        // зазорами; после замера полные строки переходят на выключку по
+        // ширине.  Порядок именно такой: измерять надо ненатянутую строку.
+        const stretch = !centred && justified[idx] === true;
         return (
           <div
             key={line.line}
@@ -206,7 +257,7 @@ export function QcfMushafPage({
               display: 'flex',
               direction: 'rtl',
               alignItems: 'center',
-              justifyContent: centred ? 'center' : 'space-between',
+              justifyContent: stretch ? 'space-between' : 'center',
               height: `${fontSize * LINE_FACTOR}px`,
             }}
           >
