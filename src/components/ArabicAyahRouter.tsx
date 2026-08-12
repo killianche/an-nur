@@ -29,6 +29,8 @@ import { V1AyahLine } from './V1AyahLine';
 import { TextAyahLine } from './TextAyahLine';
 import { TajweedAyah } from './TajweedAyah';
 import { useEdition } from '../hooks/useArabicEditions';
+import { useTajweedFont } from '../hooks/useTajweedFont';
+import { fontFamilyForPage } from '../content/quran-tajweed-meta';
 import { arabicFontConfig, type ArabicFontId } from '../lib/typography';
 // Lazy: tajweed glyphs (~3 MB) грузятся динамически только когда
 // пользователь реально выбрал Tajweed-шрифт.  useTajweedAyah вернёт
@@ -67,9 +69,19 @@ export function ArabicAyahRouter({
   // альтернативных начертаний им не нужен, а весит он 3.9 МБ.
   const needsEditions = cfg.kind !== 'qcf-v4' && cfg.kind !== 'tajweed';
   const ed = useEdition(verseKey, needsEditions);
+
   const pxOffset = cfg.fontPxOffset ?? 0;
   // Tajweed data — lazy-loaded async; null пока грузится / нет данных.
   const tajweedData = useTajweedAyah(verseKey, cfg.kind === 'tajweed');
+  // Шрифт цветного таджвида — постраничный, ~77 КБ, и подключается по
+  // требованию (см. hooks/useTajweedFont.ts).  Пока он едет, аят рисуется
+  // обычным мусхафом: у цветных глифов PUA запасного шрифта нет, и «текст
+  // без шрифта» здесь означал бы пустое место.
+  const tajweedPage = tajweedData?.page ?? null;
+  const tajweedFamily = tajweedPage ? fontFamilyForPage(tajweedPage) : null;
+  const tajweedFontReady = useTajweedFont(
+    tajweedPage, tajweedFamily, tajweedData?.words[0]?.code ?? null,
+  );
 
   // V4 mushaf default — already in `words` from the QCF feed.
   if (cfg.kind === 'qcf-v4') {
@@ -94,7 +106,7 @@ export function ArabicAyahRouter({
   // данных нет вообще (fresh repo перед запуском
   // scripts/fetch-tajweed-data.ts).
   if (cfg.kind === 'tajweed') {
-    if (tajweedData) {
+    if (tajweedData && tajweedFontReady) {
       return (
         <TajweedAyah
           data={tajweedData}
