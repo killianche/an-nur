@@ -201,6 +201,7 @@ export default function App() {
             theme={theme}
             setTheme={setTheme}
             onBack={goBack}
+            onOpenFeed={(n, ayah) => navigate({ name: 'surah', number: n, initialAyah: ayah })}
           />
         </ErrorBoundary>
       </Shell>

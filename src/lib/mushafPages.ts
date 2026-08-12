@@ -25,7 +25,7 @@
  * ищется двоичным поиском.
  */
 
-import { globalAyahNumber } from './ayahNumbering';
+import { globalAyahNumber, firstGlobalOfSurah, TOTAL_SURAHS } from './ayahNumbering';
 
 export const MUSHAF_PAGES = 604;
 
@@ -98,4 +98,24 @@ export function juzOfPage(page: number): number {
 export function firstAyahOfPage(page: number): number {
   const p = Math.min(MUSHAF_PAGES, Math.max(1, Math.round(page)));
   return FIRST_AYAH_OF_PAGE[p - 1];
+}
+
+/**
+ * С какого места читать, если человек уходит со страницы мусхафа в ленту.
+ *
+ * Нужно переключателю «книга ↔ лента»: он должен вернуть человека туда,
+ * где тот стоял, а не в начало суры.  Считается из той же таблицы, что и
+ * `pageOfAyah`, поэтому переход в обе стороны сходится на одном аяте.
+ */
+export function surahAyahOfPage(page: number): { surah: number; ayah: number } {
+  const global = firstAyahOfPage(page);
+  // Идём от последней суры к первой: первая, чьё начало не позже нашего
+  // аята, и есть нужная.
+  for (let surah = TOTAL_SURAHS; surah >= 1; surah--) {
+    const start = firstGlobalOfSurah(surah);
+    if (start <= global) {
+      return { surah, ayah: global - start + 1 };
+    }
+  }
+  return { surah: 1, ayah: 1 };
 }

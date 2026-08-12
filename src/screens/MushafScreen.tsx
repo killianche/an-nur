@@ -35,7 +35,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Appearance, ChevronLeft, ChevronRight, Close, Play, Pause } from '../components/icons';
+import { Appearance, BookOpen, ChevronLeft, ChevronRight, Close, Play, Pause } from '../components/icons';
 import { QcfMushafPage } from '../components/QcfMushafPage';
 import { FontErrorBanner } from '../components/FontErrorBanner';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
@@ -47,7 +47,7 @@ import { preloadPage, useQcfPage, getPageSync } from '../hooks/useQcfPage';
 import { preloadQcfFonts } from '../hooks/useQcfFont';
 import { distinctFontRefs } from '../lib/qcf4';
 import type { Theme } from '../hooks/useTheme';
-import { juzOfPage } from '../lib/mushafPages';
+import { juzOfPage, surahAyahOfPage } from '../lib/mushafPages';
 import { RECITERS, DEFAULT_RECITER, type ReciterId } from '../lib/reciters';
 import { readPref } from '../lib/typography';
 
@@ -59,6 +59,15 @@ type Props = {
   onBack: () => void;
   theme: Theme;
   setTheme: (t: Theme) => void;
+  /**
+   * Уйти в ленту аятов на том же месте.
+   *
+   * Кнопка книги работает переключателем: в ленте она уводит на страницу
+   * мусхафа, здесь — возвращает к тому же аяту с переводом.  Раньше назад
+   * вела только кнопка «Назад», и это читалось как выход, а не как смена
+   * вида одного и того же текста.
+   */
+  onOpenFeed?: (surah: number, ayah: number) => void;
 };
 
 const PAGE_KEY = 'mushaf.page';
@@ -71,7 +80,7 @@ export function readMushafPage(): number {
     ? n : MUSHAF_FIRST_PAGE;
 }
 
-export function MushafScreen({ initialPage, onBack, theme, setTheme }: Props) {
+export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed }: Props) {
   const [page, setPageS] = useState(() => clampPage(initialPage));
   const [selected, setSelected] = useState<string | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -189,6 +198,15 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme }: Props) {
         subtitle={`Страница ${page} · Джуз ${juzOfPage(page)}`}
         onBack={onBack}
         actions={[
+          ...(onOpenFeed ? [{
+            key: 'feed',
+            label: 'Вернуться к ленте с переводом',
+            icon: <BookOpen size={20} />,
+            onClick: () => {
+              const { surah, ayah } = surahAyahOfPage(page);
+              onOpenFeed(surah, ayah);
+            },
+          }] : []),
           {
             key: 'jump',
             label: 'Перейти к странице',
