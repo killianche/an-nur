@@ -35,6 +35,7 @@ import { ensurePage } from '../hooks/useQcfPage';
 import { qcfPageFamily, distinctFontRefs } from '../lib/qcf4';
 import { useChunkedRender } from '../hooks/useChunkedRender';
 import { ArabicAyahRouter } from '../components/ArabicAyahRouter';
+import { FontErrorBanner } from '../components/FontErrorBanner';
 import { loadArabicEditions } from '../lib/arabicEditions';
 import { ThemeSettings, TypographySettings } from '../components/ReadingSettings';
 import { AyahSearchSheet } from '../components/AyahSearchSheet';
@@ -689,6 +690,10 @@ export function SurahScreen({
             decor={feed?.decor ?? null}
           />
         )}
+
+        {/* Шрифт не приехал — объясняем и даём повтор.  Без этого на
+            месте аятов остались бы одни заготовки строк без причины. */}
+        <FontErrorBanner />
 
         {/* Loading state */}
         {feedLoading && <AyahFeedSkeleton />}

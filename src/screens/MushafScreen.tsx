@@ -37,6 +37,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Appearance, ChevronLeft, ChevronRight, Close, Play, Pause } from '../components/icons';
 import { QcfMushafPage } from '../components/QcfMushafPage';
+import { FontErrorBanner } from '../components/FontErrorBanner';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { QURAN_SOURCES } from '../content/quran-sources';
@@ -270,6 +271,13 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme }: Props) {
             ))}
           </div>
         )}
+
+        {/* Плашка о неприехавшем шрифте — поверх страницы, потому что
+            сама страница в этот момент показывает только заготовки строк
+            и без объяснения выглядит сломанной. */}
+        <div style={{ position: 'absolute', top: 0, left: 12, right: 12, zIndex: 2 }}>
+          <FontErrorBanner />
+        </div>
 
         {!error && data && (
           <QcfMushafPage
