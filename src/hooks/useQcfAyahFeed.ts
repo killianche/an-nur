@@ -16,7 +16,11 @@
  * part of ayah 1:1 and ends up inside the ayah's words instead.
  *
  * Loading strategy: kicks off fetches for every page of the surah in
- * parallel.  Result is set once all pages finish (or fails on any).
+ * parallel.  Начало суры отдаётся, как только приехала её первая
+ * страница (см. buildFeed и showStartEarly) — у Бакары сорок восемь
+ * страниц, и ждать все ради первого экрана незачем.  Полная лента
+ * приходит следом и только она попадает в кэш.
+ *
  * Re-uses the page cache from useQcfPage so already-loaded pages don't
  * round-trip.
  */
@@ -24,7 +28,7 @@
 import { useState, useEffect } from 'react';
 import type { QcfWord, QcfPageData, QcfFontRef } from '../lib/qcf4';
 import { loadVersesJson, distinctFontRefs } from '../lib/qcf4';
-import { ensurePage, preloadPage } from './useQcfPage';
+import { ensurePage } from './useQcfPage';
 
 /** One ayah's worth of QCF data, ready to render. */
 export interface QcfAyahEntry {
@@ -272,17 +276,4 @@ export function useQcfAyahFeed(surahNumber: number, showStartEarly = false): {
   }, [surahNumber, showStartEarly]);
 
   return { feed, loading, error };
-}
-
-/** Fire-and-forget preload of a surah's first page (warms cache for picker). */
-export function preloadSurahFirstPage(surahNumber: number): void {
-  loadVersesJson().then(verses => {
-    const prefix = `${surahNumber}:`;
-    for (const [key, val] of Object.entries(verses)) {
-      if (key.startsWith(prefix)) {
-        preloadPage(val.page);
-        break;
-      }
-    }
-  }).catch(() => { /* ignore */ });
 }
