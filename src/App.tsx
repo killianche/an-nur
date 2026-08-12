@@ -200,7 +200,12 @@ export default function App() {
             initialPage={screen.page}
             theme={theme}
             setTheme={setTheme}
-            onBack={goBack}
+            /* «Назад» из книжного вида ведёт к выбору суры, а не по истории.
+               По истории он возвращал в ленту — то есть делал то же, что
+               кнопка переключения вида, только неявно. Два способа сменить
+               вид сбивают: у переключения есть своя кнопка, а «назад»
+               должен выводить из режима наружу. */
+            onBack={() => navigate({ name: 'tabs', tab: 'quran' })}
             onOpenFeed={(n, ayah) => navigate({ name: 'surah', number: n, initialAyah: ayah })}
           />
         </ErrorBoundary>
