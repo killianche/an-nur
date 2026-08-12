@@ -197,6 +197,10 @@ export function useAzkarAudio() {
 
   return {
     activeId,
+    /** URL звучащей дорожки.  У кораничных азкаров все аяты одной суры
+     *  делят `activeId` карточки, и различить их можно только по URL —
+     *  без этого кнопка у каждого аята подсвечивалась бы одновременно. */
+    activeUrl,
     audioState,
     progress,
     playbackRate,

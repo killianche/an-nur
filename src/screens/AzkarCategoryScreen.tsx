@@ -539,12 +539,11 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                   maxWidth: '680px',
                   margin: '0 auto',
                 }}>
-                  {/* Sura-mode: per-ayah render with the play+tasbih row
-                      placed UNDER EACH ARABIC ayah inside SuraAyahs.
-                      Все ряды шарят один стейт (audio activeId === entry.id
-                      и единый tasbih-счётчик), поэтому работают
-                      синхронно — тап по любому play-кнопке запускает
-                      то же аудио, инкремент tasbih'а апдейтит все ряды. */}
+                  {/* Сура из нескольких аятов.
+                      Под каждым аятом — ссылка и кнопка «слушать аят», как
+                      в Коране; счётчик повторов один на карточку и стоит
+                      ниже, под всей сурой: три раза читают суру целиком, а
+                      не каждый аят по три раза. */}
                   {entry.ayahs && entry.ayahs.length > 0 ? (
                     <SuraAyahs
                       ayahs={entry.ayahs}
@@ -556,25 +555,17 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                       russianScale={russianScale}
                       fontConfig={fontConfig}
                       russianFont={russianFont}
-                      rowProps={{
-                        hasAudio: entryHasAudio(entry),
-                        isPlaying: audio.activeId === entry.id && audio.audioState === 'playing',
-                        isActive: audio.activeId === entry.id && audio.audioState !== 'idle',
-                        isLoading: audio.activeId === entry.id && audio.audioState === 'loading',
-                        playbackRate: audio.playbackRate,
-                        onPlayToggle: () => {
-                          if (audio.activeId === entry.id && audio.audioState === 'playing') {
-                            audio.pause();
-                          } else {
-                            handlePlayEntry(entry.id);
-                          }
-                        },
-                        onCycleRate: audio.cyclePlaybackRate,
-                        tasbihCount: entry.recommended_count,
-                        tasbihCurrent: counts[entry.id] ?? 0,
-                        onTasbihTap: () => incCount(entry.id),
-                        onTasbihReset: () => resetCount(entry.id),
-                      }}
+                      onPlayAyah={entryHasAudio(entry) ? (i => {
+                        const queue = tracksByEntry.get(entry.id);
+                        if (!queue || !queue[i]) return;
+                        // handlePlay сам различает «тот же трек» и ставит
+                        // на паузу — отдельная проверка не нужна.
+                        audio.handlePlay(queue, i);
+                      }) : undefined}
+                      playingIndex={audio.audioState === 'playing'
+                        ? ayahIndexOf(tracksByEntry.get(entry.id), audio.activeUrl) : null}
+                      loadingIndex={audio.audioState === 'loading'
+                        ? ayahIndexOf(tracksByEntry.get(entry.id), audio.activeUrl) : null}
                     />
                   ) : null}
 
@@ -614,9 +605,14 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                   )}
 
                   {/* Flat-mode play+tasbih row — один экземпляр между
-                      арабским и переводами.  Для sura-mode ряд
-                      рендерится внутри SuraAyahs под каждым ayah'ом. */}
-                  {!entry.ayahs && (
+                      арабским и переводами.
+
+                      Для суры из нескольких аятов этот ряд — один на всю
+                      карточку и стоит под последним аятом: счётчик считает
+                      прочтения СУРЫ (её читают три раза), а кнопка играет
+                      суру целиком, аят за аятом.  Отдельные аяты слушаются
+                      своими кнопками внутри SuraAyahs. */}
+                  {(
                     <PlayTasbihRow
                       hasAudio={entryHasAudio(entry)}
                       isPlaying={audio.activeId === entry.id && audio.audioState === 'playing'}
@@ -1008,12 +1004,24 @@ function PlayBtn({
  * as the user taps; on completion the pill flips into a soft "Готово ✓"
  * state.  Tap = +1; right-click / long-press equivalent = reset.
  */
+/**
+ * Какой аят карточки звучит.
+ *
+ * У кораничных азкаров все аяты одной суры делят `activeId` карточки,
+ * поэтому различить их можно только по URL дорожки.  -1 значит «не этот
+ * азкар»: сравнение `playingIndex === i` тогда никогда не сойдётся.
+ */
+function ayahIndexOf(queue: AzkarTrack[] | undefined, activeUrl: string | null): number {
+  if (!queue || !activeUrl) return -1;
+  return queue.findIndex(t => t.url === activeUrl);
+}
+
 function SuraAyahs({
   ayahs, surahNumber, startAyah,
   showArabic, showRussian,
   arabicScale, russianScale,
   fontConfig, russianFont,
-  rowProps,
+  onPlayAyah, playingIndex, loadingIndex,
 }: {
   ayahs: AzkarAyah[];
   surahNumber: number;
@@ -1024,10 +1032,18 @@ function SuraAyahs({
   russianScale: number;
   fontConfig: ReturnType<typeof azkarFontConfig>;
   russianFont: LatinFontId;
-  /** Если задано, под арабским каждого ayah'а рендерится общий
-   *  ряд [tasbih] … [speed][play].  Все ряды одной карточки шарят
-   *  один и тот же стейт — работают синхронно. */
-  rowProps?: PlayTasbihRowProps;
+  /**
+   * Воспроизведение одного аята.
+   *
+   * Раньше под каждым аятом стоял общий ряд [tasbih] … [play]: счётчик
+   * «0 / 3» повторялся у всех аятов, хотя три раза читается ВСЯ сура, а
+   * кнопки делили состояние и загорались все разом.  Теперь под аятом —
+   * то же, что в Коране: ссылка сура:аят и компактная кнопка, которая
+   * играет именно этот аят.  Счётчик остался один, под всей сурой.
+   */
+  onPlayAyah?: (index: number) => void;
+  playingIndex?: number | null;
+  loadingIndex?: number | null;
 }) {
   return (
     <div style={{ marginBottom: '20px' }}>
@@ -1060,9 +1076,38 @@ function SuraAyahs({
             </div>
           )}
 
-          {/* Per-ayah play+tasbih row.  Один и тот же стейт раздаётся
-              на все ayah'и карточки → ряды работают синхронно. */}
-          {rowProps && <PlayTasbihRow {...rowProps} />}
+          {/* Ряд аята — как в Коране: ссылка слева, кнопка справа. */}
+          {onPlayAyah && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              margin: '2px 0 10px',
+            }}>
+              <span style={{
+                fontSize: '12px',
+                fontVariantNumeric: 'tabular-nums',
+                letterSpacing: '0.02em',
+                color: 'var(--text-tertiary)',
+              }}>
+                {surahNumber}:{startAyah + i}
+              </span>
+              <button
+                onClick={() => onPlayAyah(i)}
+                aria-label={playingIndex === i ? 'Пауза' : 'Слушать аят'}
+                title={playingIndex === i ? 'Пауза' : 'Слушать аят'}
+                className="icon-btn"
+                data-active={playingIndex === i || loadingIndex === i}
+                style={{
+                  width: '40px', height: '40px', marginInlineStart: 'auto',
+                  color: (playingIndex === i || loadingIndex === i)
+                    ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                }}
+              >
+                {playingIndex === i ? <Pause size={18} /> : <Play size={18} />}
+              </button>
+            </div>
+          )}
 
           {/* Russian translation. */}
           {showRussian && a.russian && (
@@ -1079,29 +1124,6 @@ function SuraAyahs({
             </p>
           )}
 
-          {/* "N:M" tag — pinned to the left, under both translations.
-              No chrome (no fill, no border) so it reads as a quiet
-              annotation rather than a UI control. */}
-          {surahNumber > 0 && (
-            <div style={{
-              textAlign: 'left',
-            }}>
-              <span style={{
-                display: 'inline-block',
-                padding: 0,
-                background: 'transparent',
-                border: 'none',
-                fontSize: '10px',
-                fontWeight: 500,
-                color: 'var(--text-tertiary)',
-                opacity: 0.55,
-                letterSpacing: '0.08em',
-                fontVariantNumeric: 'tabular-nums',
-              }}>
-                {surahNumber}:{startAyah + i}
-              </span>
-            </div>
-          )}
         </div>
       ))}
     </div>
