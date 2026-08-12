@@ -229,6 +229,11 @@ export function SurahScreen({
   //   2. last-read ayah for this surah from recents
   //   3. nothing (start at the surah header)
   const priorAyahToRestoreRef = useRef<number | null>(null);
+  /** Аят, к которому человек попросил перейти и который ещё не в DOM. */
+  const [pendingJump, setPendingJump] = useState<number | null>(null);
+  /** То же значение для эффектов, которым нельзя перезапускаться. */
+  const pendingJumpRef = useRef<number | null>(null);
+  pendingJumpRef.current = pendingJump;
 
   useEffect(() => {
     const prior = readRecents().find(r => r.surah === surahNumber);
@@ -271,6 +276,14 @@ export function SurahScreen({
   const feedReady = !feedLoading && (feed?.ayahs.length ?? 0) > 0 && feedSurah === surahNumber;
   useEffect(() => {
     if (!feedReady) return;
+    // Человек уже попросил перейти к конкретному аяту — восстановление
+    // здесь лишнее.  Раньше оно молча выигрывало: прыжок, сделанный до
+    // готовности ленты, тут же затирался прокруткой в начало суры, и
+    // выглядело это как «кнопка перехода не работает».
+    if (pendingJumpRef.current != null) {
+      priorAyahToRestoreRef.current = null;
+      return;
+    }
     const target = priorAyahToRestoreRef.current;
     priorAyahToRestoreRef.current = null;
     if (!target || target <= 1) {
@@ -305,6 +318,8 @@ export function SurahScreen({
     const deadline = Date.now() + 5000;
     let timer = 0;
     const tryScroll = () => {
+      // Прыжок мог появиться, пока мы ждали якорь: уступаем ему.
+      if (pendingJumpRef.current != null) return;
       const el = document.querySelector(`[data-ayah-anchor="${target}"]`) as HTMLElement | null;
       if (el) {
         el.scrollIntoView({ behavior: 'auto', block: 'start' });
@@ -458,17 +473,68 @@ export function SurahScreen({
   // referentially stable, so the memoised popover doesn't get re-rendered
   // by every audio-progress tick of SurahScreen (rAF-driven, 60×/s while
   // audio plays) — which is what made the slider feel sluggish.
+  //
+  // Цель прыжка запоминается, а не ищется один раз в следующем кадре.
+  // Раньше искали сразу: `querySelector` по якорю, и если узла в DOM ещё
+  // нет — прыжок молча пропадал.  А его там может не быть по двум
+  // причинам: аяты монтируются батчами в простое, и лента теперь отдаёт
+  // начало суры, не дожидаясь остальных страниц.  Человек выбирал аят
+  // 200 и оставался на первом экране, не понимая, почему.
+  //
+  // Теперь номер живёт в состоянии: он поднимает границу монтирования
+  // (forceUpTo ниже) и ждёт, пока узел появится, — эффект следом
+  // доводит прокрутку до конца.
   const jumpToAyahNumber = useCallback((ayahNum: number) => {
     setJumpOpen(false);
-    requestAnimationFrame(() => {
-      const el = document.querySelector(`[data-ayah-anchor="${ayahNum}"]`) as HTMLElement | null;
+    setPendingJump(ayahNum);
+  }, []);
+  const closeJump = useCallback(() => setJumpOpen(false), []);
+
+  // Доводим отложенный прыжок, как только нужный аят появился в DOM.
+  //
+  // Опрашиваем по таймеру, а не «на изменение ленты»: аяты монтируются
+  // батчами внутри AyahFeedList, и снаружи это не отражается ни в одном
+  // пропе — эффект, завязанный на feed, срабатывал ровно один раз, когда
+  // узла ещё не было, и прыжок так и не доезжал.
+  //
+  // Таймер, а не requestAnimationFrame: rAF не тикает в скрытой вкладке,
+  // и прыжок, начатый перед переключением вкладки, зависал бы до
+  // возвращения.
+  useEffect(() => {
+    if (pendingJump == null) return;
+
+    const started = Date.now();
+    let timer = 0;
+
+    const tryScroll = () => {
+      const el = document.querySelector(
+        `[data-ayah-anchor="${pendingJump}"]`,
+      ) as HTMLElement | null;
+
       if (el) {
         el.scrollIntoView({ behavior: 'auto', block: 'start' });
-        updateRecentAyah(surahNumber, ayahNum);
+        updateRecentAyah(surahNumber, pendingJump);
+        setPendingJump(null);
+        return;
       }
-    });
-  }, [surahNumber]);
-  const closeJump = useCallback(() => setJumpOpen(false), []);
+
+      // Десяти секунд хватает и на догрузку последних страниц Бакары, и
+      // на монтирование всех её аятов.  Дальше держать цель незачем:
+      // либо номер вне суры, либо что-то пошло не так, и вечно ждущий
+      // прыжок сработал бы невпопад.
+      if (Date.now() - started > 10_000) {
+        setPendingJump(null);
+        return;
+      }
+      timer = window.setTimeout(tryScroll, 100);
+    };
+
+    tryScroll();
+    return () => window.clearTimeout(timer);
+  }, [pendingJump, surahNumber]);
+
+  // Смена суры отменяет незавершённый прыжок: номер принадлежал прошлой.
+  useEffect(() => { setPendingJump(null); }, [surahNumber]);
 
   // ── Клавиатура ─────────────────────────────────────────────────────────────
   //
@@ -720,7 +786,12 @@ export function SurahScreen({
           const activeAyahNum = activeVerseKey
             ? parseInt(activeVerseKey.split(':')[1] ?? '0', 10) || null
             : null;
-          const forceTarget = Math.max(targetAyah ?? 0, activeAyahNum ?? 0);
+          // Цель прыжка тоже поднимает границу: без неё аят, до которого
+          // не дошёл постепенный монтаж, никогда не появится в DOM, и
+          // прыжок будет ждать вечно.
+          const forceTarget = Math.max(
+            targetAyah ?? 0, activeAyahNum ?? 0, pendingJump ?? 0,
+          );
           return (
           <AyahFeedList totalAyahs={feed.ayahs.length} forceUpTo={forceTarget}>
           {(visibleCount) => (

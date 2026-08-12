@@ -15,6 +15,7 @@
  * Запуск:  npm test
  */
 
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -546,6 +547,184 @@ group('Скрытые дуа', () => {
   writeHiddenDua(['a', 'b']);
   unhideAllDua();
   check('вернуть всё разом', readHiddenDua(), []);
+});
+
+// ─── Шрифты мусхафа: пара «шрифт + страница» ──────────────────────────
+//
+// Здесь проверяется то, от чего зависит, какое СЛОВО окажется в аяте.
+// QCF V4 переиспользует одни и те же PUA-коды в разных шрифтах: код
+// 0xF103 в Hafs_01 и в Hafs_06 — разные слова.  После нарезки шрифтов по
+// страницам к этому добавилась страница: подмножества обязаны жить в
+// разных семействах, иначе браузер сложит их в одно `font-family` и
+// покажет глиф не той страницы — то есть чужое слово внутри аята.
+//
+// Ошибку такого рода не поймает ни типизация, ни сборка: на экране будет
+// красивый арабский, просто не тот. Отсюда тесты.
+const qcfMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/qcf4.ts')).href);
+const { qcfPageFamily, qcfPageFontUrl, distinctFontRefs, hydratePage } = qcfMod;
+
+group('Шрифты мусхафа: семейство несёт страницу', () => {
+  check('семейство = шрифт + страница',
+    qcfPageFamily('QCF4_Hafs_06', 77), 'QCF4_Hafs_06_p77');
+  check('один шрифт на разных страницах — разные семейства',
+    qcfPageFamily('QCF4_Hafs_06', 77) === qcfPageFamily('QCF4_Hafs_06', 78), false);
+  check('разные шрифты на одной странице — тоже разные',
+    qcfPageFamily('QCF4_Hafs_01', 77) === qcfPageFamily('QCF4_Hafs_06', 77), false);
+
+  check('путь дополняется нулями до трёх цифр',
+    qcfPageFontUrl('QCF4_Hafs_01', 1), '/qcf4/fonts-page/001/QCF4_Hafs_01.woff2');
+  check('трёхзначная страница остаётся как есть',
+    qcfPageFontUrl('QCF4_Hafs_47', 604), '/qcf4/fonts-page/604/QCF4_Hafs_47.woff2');
+  check('служебный шрифт заголовков лежит там же',
+    qcfPageFontUrl('QCF4_QBSML', 77), '/qcf4/fonts-page/077/QCF4_QBSML.woff2');
+});
+
+group('Шрифты мусхафа: какие подмножества нужны словам', () => {
+  const word = (font, page, char = 'X') => ({ font, page, char, code: 1, text: '', type: 'word' });
+
+  check('пустой список слов — пустой список подмножеств',
+    distinctFontRefs([]), []);
+
+  check('одно слово — одна пара',
+    distinctFontRefs([word('QCF4_Hafs_06', 77)]),
+    [{ font: 'QCF4_Hafs_06', page: 77 }]);
+
+  check('повторы схлопываются',
+    distinctFontRefs([
+      word('QCF4_Hafs_06', 77), word('QCF4_Hafs_06', 77), word('QCF4_Hafs_06', 77),
+    ]),
+    [{ font: 'QCF4_Hafs_06', page: 77 }]);
+
+  // Аят на стыке страниц берёт слова с двух — это самый частый случай,
+  // где одной пары «шрифт + аят» не хватило бы.
+  check('аят на стыке страниц требует оба подмножества',
+    distinctFontRefs([word('QCF4_Hafs_06', 77), word('QCF4_Hafs_06', 78)]),
+    [{ font: 'QCF4_Hafs_06', page: 77 }, { font: 'QCF4_Hafs_06', page: 78 }]);
+
+  // Страница с началом суры: основной текст, заголовок и басмала — три
+  // разных шрифта.
+  check('три шрифта одной страницы дают три пары',
+    distinctFontRefs([
+      word('QCF4_Hafs_06', 77), word('QCF4_QBSML', 77), word('QCF4_Hafs_01', 77),
+    ]),
+    [
+      { font: 'QCF4_Hafs_06', page: 77 },
+      { font: 'QCF4_QBSML', page: 77 },
+      { font: 'QCF4_Hafs_01', page: 77 },
+    ]);
+
+  check('порядок сохраняется — первым идёт шрифт первого слова',
+    distinctFontRefs([word('QCF4_QBSML', 5), word('QCF4_Hafs_01', 5)]).map(r => r.font),
+    ['QCF4_QBSML', 'QCF4_Hafs_01']);
+
+  // Слово без страницы просить нечего: семейства для него не существует.
+  // Молча пропускаем, а не подставляем нулевую страницу — иначе получили
+  // бы ссылку на несуществующий файл и вечный скелет.
+  check('слово без страницы пропускается',
+    distinctFontRefs([{ font: 'QCF4_Hafs_06', char: 'X', code: 1, text: '', type: 'word' }]), []);
+  check('слово без шрифта пропускается',
+    distinctFontRefs([{ font: '', page: 77, char: 'X', code: 1, text: '', type: 'word' }]), []);
+});
+
+group('Шрифты мусхафа: страница проставляется каждому слову', () => {
+  const page = {
+    page: 77,
+    font: 'QCF4_Hafs_06',
+    surahs: [],
+    lines: [
+      { line: 1, words: [
+        { font: 'QCF4_QBSML', char: 'A', code: 1, text: '', type: 'surah_header' },
+        { font: 'QCF4_Hafs_06', char: 'B', code: 2, text: '', type: 'word' },
+      ] },
+      { line: 2, words: [
+        { font: 'QCF4_Hafs_06', char: 'C', code: 3, text: '', type: 'word' },
+      ] },
+    ],
+  };
+  const out = hydratePage(page);
+
+  check('каждое слово знает свою страницу',
+    out.lines.flatMap(l => l.words).map(w => w.page), [77, 77, 77]);
+  check('возвращается тот же объект, без копии',
+    out === page, true);
+  check('после hydratePage подмножества считаются',
+    distinctFontRefs(out.lines.flatMap(l => l.words)),
+    [{ font: 'QCF4_QBSML', page: 77 }, { font: 'QCF4_Hafs_06', page: 77 }]);
+
+  // Повторный вызов на той же странице ничего не портит: данные лежат в
+  // общем кэше, и через него проходят оба загрузчика.
+  hydratePage(out);
+  check('повторный вызов идемпотентен',
+    out.lines.flatMap(l => l.words).map(w => w.page), [77, 77, 77]);
+});
+
+// ─── Шрифты мусхафа: все ли файлы на месте ────────────────────────────
+//
+// Самая дешёвая защита от самой дорогой ошибки: данные страниц правятся
+// или обновляются, а перегенерацию шрифтов забывают — и на проде аяты
+// молча остаются пустыми, потому что запрошенного подмножества просто
+// нет на сервере.  Ни типы, ни сборка этого не видят.
+//
+// Проверка идёт по данным, а не по счётчику файлов: для каждой страницы
+// смотрим, какие шрифты она реально просит, и требуем ровно эти файлы.
+// Заодно ловится обратное — осиротевшие подмножества после того, как
+// страница перестала использовать шрифт.
+//
+// Если файлов нет вовсе, проверка не падает, а честно говорит, что
+// пайплайн не запускали: свежий клон без прогона build-page-fonts.py —
+// это не сломанный код.
+group('Шрифты мусхафа: подмножества сгенерированы полностью', () => {
+  const pagesDir = resolve(ROOT, 'public/qcf4/pages');
+  const fontsDir = resolve(ROOT, 'public/qcf4/fonts-page');
+
+  if (!existsSync(fontsDir)) {
+    check('пайплайн шрифтов не запускали — запустите scripts/build-page-fonts.py',
+      'нет каталога fonts-page', 'нет каталога fonts-page');
+    return;
+  }
+
+  const pageFiles = readdirSync(pagesDir).filter(f => /^\d{3}\.json$/.test(f)).sort();
+  const missing = [];
+  const orphans = [];
+  let expected = 0;
+
+  for (const file of pageFiles) {
+    const num = file.slice(0, 3);
+    const data = JSON.parse(readFileSync(resolve(pagesDir, file), 'utf8'));
+    const needed = new Set();
+    for (const line of data.lines) {
+      for (const word of line.words) if (word.font) needed.add(word.font);
+    }
+    expected += needed.size;
+
+    const dir = resolve(fontsDir, num);
+    const have = existsSync(dir)
+      ? new Set(readdirSync(dir).filter(f => f.endsWith('.woff2')).map(f => f.slice(0, -6)))
+      : new Set();
+
+    for (const font of needed) if (!have.has(font)) missing.push(`${num}/${font}`);
+    for (const font of have) if (!needed.has(font)) orphans.push(`${num}/${font}`);
+  }
+
+  check('страниц с данными — 604', pageFiles.length, 604);
+  check('нет страниц без своего шрифта', missing.slice(0, 5), []);
+  check('нет лишних подмножеств', orphans.slice(0, 5), []);
+
+  // Пустой файл — тоже отсутствующий шрифт, только его не видно по списку.
+  const empties = [];
+  for (const num of readdirSync(fontsDir).sort()) {
+    const dir = resolve(fontsDir, num);
+    if (!statSync(dir).isDirectory()) continue;
+    for (const f of readdirSync(dir)) {
+      if (f.endsWith('.woff2') && statSync(resolve(dir, f)).size < 512) {
+        empties.push(`${num}/${f}`);
+      }
+    }
+  }
+  check('нет пустых или обрезанных файлов', empties.slice(0, 5), []);
+  check('число подмножеств совпадает с тем, что просят страницы',
+    missing.length + orphans.length, 0);
+  void expected;
 });
 
 // ─── Итог ─────────────────────────────────────────────────────────────
