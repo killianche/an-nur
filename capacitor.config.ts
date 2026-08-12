@@ -13,8 +13,8 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   // ВНИМАНИЕ: appId после первой публикации в сторах не меняется.
   // Значение временное — подтвердить у владельца до первого релиза.
-  appId: 'app.quranru',
-  appName: 'Коран',
+  appId: 'ru.annur.quran',
+  appName: 'an-Nur',
   webDir: 'dist',
   server: {
     // Без этого Android грузит WebView по http://, что блокирует

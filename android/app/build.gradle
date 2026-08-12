@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "app.quranru"
+    namespace = "ru.annur.quran"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.quranru"
+        applicationId "ru.annur.quran"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
