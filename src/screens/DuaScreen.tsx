@@ -42,7 +42,7 @@ import {
   Appearance, Check, Close, DragHandle, EyeOff, MinusCircleFill, Plus, Typography,
 } from '../components/icons';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
-import { SourceDisclosure, TasbihPill } from '../components/DevotionalBits';
+import { TasbihPill } from '../components/DevotionalBits';
 import { azkarFontConfig, type AzkarFontId } from '../lib/azkarFonts';
 import {
   readDuaPrefs, writeDuaFont, writeDuaLatinFont, writeDuaPref, writeDuaScale,
@@ -89,10 +89,6 @@ export function DuaScreen({ theme, setTheme }: Props) {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const inc = (id: string) => setCounts(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
   const reset = (id: string) => setCounts(c => ({ ...c, [id]: 0 }));
-
-  // Раскрытый источник — общий для всех карточек: раскрыл один раз,
-  // видно у всех.  Так же сделано в азкарах.
-  const [sourceOpen, setSourceOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -351,8 +347,6 @@ export function DuaScreen({ theme, setTheme }: Props) {
                     count={counts[e.id] ?? 0}
                     onCount={() => inc(e.id)}
                     onResetCount={() => reset(e.id)}
-                    sourceOpen={sourceOpen}
-                    setSourceOpen={setSourceOpen}
                   />
                 ))}
               </div>
@@ -376,8 +370,6 @@ export function DuaScreen({ theme, setTheme }: Props) {
                   count={counts[e.id] ?? 0}
                   onCount={() => inc(e.id)}
                   onResetCount={() => reset(e.id)}
-                  sourceOpen={sourceOpen}
-                  setSourceOpen={setSourceOpen}
                 />
               ))}
             </div>
@@ -557,7 +549,7 @@ function CategoryChips({ data, value, onChange }: {
  */
 function DuaCard({
   entry, ordinal, inList, delay, onAdd, onHide,
-  prefs, count, onCount, onResetCount, sourceOpen, setSourceOpen,
+  prefs, count, onCount, onResetCount,
 }: {
   entry: DuaEntry;
   ordinal?: number;
@@ -572,8 +564,6 @@ function DuaCard({
   count: number;
   onCount: () => void;
   onResetCount: () => void;
-  sourceOpen: boolean;
-  setSourceOpen: (v: boolean) => void;
 }) {
   const font = azkarFontConfig(prefs.arabicFont);
   const repeat = entry.repeat && entry.repeat > 1 ? entry.repeat : null;
@@ -746,15 +736,22 @@ function DuaCard({
         )}
 
         {entry.refs && entry.refs.length > 0 && (
-          /* Тот же раскрывающийся блок, что у азкаров.  Список наград у
-             дуа пустой — у них есть только ссылки на источник, и они
-             идут в legacy-строку компонента. */
-          <SourceDisclosure
-            rewards={[]}
-            legacy={entry.refs.join(' · ')}
-            open={sourceOpen}
-            onToggle={setSourceOpen}
-          />
+          /* Ссылка стоит на карточке открыто, а не под кнопкой «Источник».
+             Правило проекта: там, где цитируется аят, на экране должны быть
+             видны и арабский, и перевод, и ссылка сура:аят — читающий обязан
+             видеть, откуда текст, не совершая лишних действий.
+
+             Раскрывающийся блок остаётся у азкаров: там за ним прячется
+             список наград, а у дуа его нет — прятать одну строчку незачем. */
+          <p style={{
+            margin: '14px 0 0',
+            fontSize: '12px',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            color: 'var(--text-tertiary)',
+          }}>
+            {entry.refs.join(' · ')}
+          </p>
         )}
       </div>
     </article>
