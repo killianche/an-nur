@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-upgrade-tajweed-colr-v1.py — convert COLR v0 → COLR v1 in every font.
+upgrade-tajweed-colr-v1.py — LEGACY, DO NOT RUN.
 
 The KFC QPC v4 Tajweed woff2 files ship with a COLR v0 table.  On
 iOS Safari 15.4–16.3 the v0 renderer has a bug where the BASE
@@ -26,11 +26,11 @@ colours.
 Idempotent: a font already at v1 is skipped.  Re-running is safe.
 
 Pipeline order: run AFTER patch-tajweed-default-palette.py, BEFORE
-add-svg-in-ot.py — the SVG-in-OT generator walks the v1 paint tree.
+strip-tajweed-svg.py.
 
 Usage:
-  python3 scripts/upgrade-tajweed-colr-v1.py
-  python3 scripts/upgrade-tajweed-colr-v1.py p001
+  python3 scripts/gen/upgrade-tajweed-colr-v1.py
+  python3 scripts/gen/upgrade-tajweed-colr-v1.py p001
 """
 
 from __future__ import annotations
@@ -39,8 +39,8 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 from fontTools.colorLib.builder import buildCOLR
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-FONTS_DIR = REPO_ROOT / "web" / "public" / "fonts"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+FONTS_DIR = REPO_ROOT / "public" / "fonts"
 
 
 def font_paths(filter_stem: str | None) -> list[Path]:
@@ -97,6 +97,13 @@ def upgrade_one(path: Path) -> str:
 
 
 def main() -> int:
+    print(
+        "disabled: iOS must use the official Quran Foundation COLR v0 files",
+        file=sys.stderr,
+    )
+    return 2
+
+    # Historical implementation retained only for forensic comparison.
     filter_stem = sys.argv[1] if len(sys.argv) > 1 else None
     paths = font_paths(filter_stem)
     if not paths:

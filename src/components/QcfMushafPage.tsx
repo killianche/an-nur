@@ -31,15 +31,20 @@
  * Два независимых уровня:
  *   activeVerseKey + activeWordPos — слово, которое звучит сейчас
  *     (караоке при воспроизведении);
- *   selectedVerseKey — весь аят, по которому человек тапнул.
+ *   selectedVerseKey — весь аят, который человек выбрал удержанием.
  */
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQcfFont } from '../hooks/useQcfFont';
 import { ArabicSkeleton } from './ArabicSkeleton';
 import { SurahPlate } from './SurahPlate';
 import { distinctFontRefs, qcfPageFamily } from '../lib/qcf4';
 import type { QcfPageData, QcfWord } from '../lib/qcf4';
+import { fontFamilyForPage } from '../content/quran-tajweed-meta';
+import { PALETTE_NAME } from '../lib/tajweedPalette';
+import { tajweedVisualWordPosition } from '../lib/tajweedAudioPosition';
+import type { MushafFontId } from '../lib/mushafFont';
+import type { TajweedPageData, TajweedPageWord } from '../lib/tajweedPage';
 
 type Props = {
   pageData: QcfPageData;
@@ -49,9 +54,16 @@ type Props = {
   activeVerseKey?: string | null;
   /** Позиция звучащего слова внутри аята, с единицы. */
   activeWordPos?: number | null;
-  /** «сура:аят», выбранный тапом. */
+  /** У чтеца нет пословных сегментов: выделить весь звучащий аят. */
+  wholeAyahAudioHighlight?: boolean;
+  /** «сура:аят», выбранный удержанием. */
   selectedVerseKey?: string | null;
   onAyahTap?: (verseKey: string) => void;
+  /** Горизонтальный режим: вписываем по ширине и прокручиваем по высоте. */
+  landscapeWide?: boolean;
+  variant?: MushafFontId;
+  tajweedPageData?: TajweedPageData | null;
+  tajweedFontReady?: boolean;
 };
 
 /** Кегль, если вписывать некуда. */
@@ -73,28 +85,47 @@ const SIDE_PADDING = 14;
 const JUSTIFY_FILL = 0.9;
 
 
-export function QcfMushafPage({
+export const QcfMushafPage = memo(function QcfMushafPage({
   pageData,
   fitTo = null,
   activeVerseKey = null,
   activeWordPos = null,
+  wholeAyahAudioHighlight = false,
   selectedVerseKey = null,
   onAyahTap,
+  landscapeWide = false,
+  variant = 'qcf-v4',
+  tajweedPageData = null,
+  tajweedFontReady = false,
 }: Props) {
-  const fontRefs = distinctFontRefs(pageData.lines.flatMap(l => l.words));
+  const tajweedLines = useMemo(() => new Map(
+    (variant === 'qpc-v4-tajweed' ? tajweedPageData?.lines ?? [] : [])
+      .map(line => [line.line, line] as const),
+  ), [variant, tajweedPageData]);
+  const qcfLines = useMemo(() => variant === 'qpc-v4-tajweed'
+    ? pageData.lines.filter(line => !tajweedLines.has(line.line))
+    : pageData.lines, [variant, pageData.lines, tajweedLines]);
+  const fontRefs = useMemo(
+    () => distinctFontRefs(qcfLines.flatMap(l => l.words)),
+    [qcfLines],
+  );
   // @font-face инжектится в фазе рендера, а не в эффекте: браузер должен
   // начать качать шрифт в том же кадре, в котором появился текст.
   //
   // Готовность важна не только против кубиков: подгонка кегля ниже мерит
   // ширину строк, и до прихода шрифта мерила бы запасной — то есть
   // подбирала кегль под чужие метрики.
-  const fontsReady = useQcfFont(fontRefs);
+  const qcfFontsReady = useQcfFont(fontRefs);
+  const fontsReady = qcfFontsReady
+    && (variant !== 'qpc-v4-tajweed' || (!!tajweedPageData && tajweedFontReady));
 
   const lineCount = pageData.lines.length || 15;
   // Прикидка по высоте. Ширину проверим замером — предсказать её нельзя:
   // в строке от двух до десятка слов разной длины.
   const guess = fitTo
-    ? Math.max(9, Math.min(46, fitTo.height / (lineCount * LINE_FACTOR)))
+    ? landscapeWide
+      ? Math.max(18, Math.min(64, fitTo.width / 18))
+      : Math.max(9, Math.min(46, fitTo.height / (lineCount * LINE_FACTOR)))
     : BASE_FONT_PX;
 
   const [fontSize, setFontSize] = useState(guess);
@@ -115,7 +146,7 @@ export function QcfMushafPage({
   const passRef = useRef(0);
   const keyRef = useRef('');
 
-  const fitKey = `${pageData.page}|${fitTo?.width ?? 0}|${fitTo?.height ?? 0}`;
+  const fitKey = `${pageData.page}|${variant}|${landscapeWide ? 'wide' : 'page'}|${fitTo?.width ?? 0}|${fitTo?.height ?? 0}`;
   if (keyRef.current !== fitKey) {
     keyRef.current = fitKey;
     passRef.current = 0;
@@ -138,7 +169,7 @@ export function QcfMushafPage({
         widthRatio = Math.max(widthRatio, line.scrollWidth / line.clientWidth);
       }
     }
-    const heightRatio = box.scrollHeight > fitTo.height
+    const heightRatio = !landscapeWide && box.scrollHeight > fitTo.height
       ? box.scrollHeight / fitTo.height
       : 1;
     const ratio = Math.max(widthRatio, heightRatio);
@@ -175,12 +206,12 @@ export function QcfMushafPage({
       prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next);
   }, [fontsReady, fontSize, pageData.page, fitTo?.width, fitTo?.height]);
 
-  // Смена страницы или размера окна — считаем заново от прикидки.
-  const [lastKey, setLastKey] = useState(fitKey);
-  if (lastKey !== fitKey) {
-    setLastKey(fitKey);
+  // Смена страницы или размера окна — считаем заново от прикидки до
+  // следующего paint, без setState прямо во время render.
+  useLayoutEffect(() => {
+    passRef.current = 0;
     setFontSize(guess);
-  }
+  }, [fitKey, guess]);
 
   return (
     <div
@@ -207,25 +238,44 @@ export function QcfMushafPage({
           align="stretch"
         />
       ) : pageData.lines.map((line, idx) => {
+        const tajweedLine = tajweedLines.get(line.line);
         const isSurahHeader = line.words.some(w => w.type === 'surah_header');
         const isBasmala = line.words.some(w => w.type === 'bismillah');
+        const words = tajweedLine
+          ? tajweedLine.words.map((word, i) => (
+              <TajweedWordSpan
+                key={i}
+                word={word}
+                page={pageData.page}
+                fontSize={fontSize}
+                activeVerseKey={activeVerseKey}
+                activeWordPos={activeWordPos}
+                wholeAyahAudioHighlight={wholeAyahAudioHighlight}
+                selectedVerseKey={selectedVerseKey}
+                onTap={onAyahTap}
+              />
+            ))
+          : line.words.map((word, i) => (
+              <QcfWordSpan
+                key={i}
+                word={word}
+                fontSize={fontSize}
+                isActive={
+                  !!word.verse_key
+                  && word.verse_key === activeVerseKey
+                  && word.position === activeWordPos
+                }
+                isWholeAyahActive={
+                  wholeAyahAudioHighlight
+                  && !!word.verse_key
+                  && word.verse_key === activeVerseKey
+                }
+                isSelected={!!word.verse_key && word.verse_key === selectedVerseKey}
+                onTap={onAyahTap}
+              />
+            ));
         // Короткие строки (конец суры) в мусхафе тоже стоят по центру.
-        const centred = isSurahHeader || isBasmala || line.words.length <= 2;
-
-        const words = line.words.map((word, i) => (
-          <QcfWordSpan
-            key={i}
-            word={word}
-            fontSize={fontSize}
-            isActive={
-              !!word.verse_key
-              && word.verse_key === activeVerseKey
-              && word.position === activeWordPos
-            }
-            isSelected={!!word.verse_key && word.verse_key === selectedVerseKey}
-            onTap={onAyahTap}
-          />
-        ));
+        const centred = isSurahHeader || isBasmala || words.length <= 2;
 
         // Название суры — в золочёной рамке, как в печатном издании.
         // Строка отдаётся плашке целиком: в данных мусхафа заголовок
@@ -267,17 +317,20 @@ export function QcfMushafPage({
       })}
     </div>
   );
-}
+});
 
 type WordSpanProps = {
   word: QcfWord;
   fontSize: number;
   isActive: boolean;
+  isWholeAyahActive: boolean;
   isSelected: boolean;
   onTap?: (verseKey: string) => void;
 };
 
-function QcfWordSpan({ word, fontSize, isActive, isSelected, onTap }: WordSpanProps) {
+function QcfWordSpan({
+  word, fontSize, isActive, isWholeAyahActive, isSelected, onTap,
+}: WordSpanProps) {
   const isHeader = word.type === 'surah_header';
   // Маркер конца аята — золочёная розетка с номером, как в печатном
   // издании.  Отделять его цветом важно не только для красоты: глаз
@@ -289,7 +342,9 @@ function QcfWordSpan({ word, fontSize, isActive, isSelected, onTap }: WordSpanPr
   return (
     <span
       {...(isActive ? { 'data-active-word': '' } : {})}
+      {...(isWholeAyahActive ? { 'data-mushaf-audio-active': '' } : {})}
       {...(key ? { 'data-verse-key': key } : {})}
+      {...(isSelected ? { 'data-mushaf-selected': '' } : {})}
       onClick={key && onTap ? () => onTap(key) : undefined}
       style={{
         // Семейство с суффиксом страницы — см. qcfPageFamily: одни и те же
@@ -304,14 +359,11 @@ function QcfWordSpan({ word, fontSize, isActive, isSelected, onTap }: WordSpanPr
             // уже золотая, и приглушённый заголовок на её фоне читался
             // тусклее, чем сам текст суры, хотя должен возглавлять страницу.
             : 'var(--qcf-text, var(--text-primary))',
-        // Выбранный аят подсвечивается фоном, а не цветом букв: цвет
-        // текста уже занят под караоке, и два смысла на одном канале
-        // читались бы как один.
-        background: isSelected && !isActive
-          ? 'color-mix(in srgb, var(--ink) 12%, transparent)'
-          : 'transparent',
-        borderRadius: isSelected ? '3px' : undefined,
-        transition: 'color 0.15s ease, background 0.15s ease',
+        // Выбранный аят оформляет CSS через data-mushaf-selected: там
+        // единый для обычного и цветного мусхафа «фокус чтения».
+        // Звучащее слово по-прежнему получает пользовательский цвет
+        // караоке через data-active-word.
+        background: 'transparent',
         whiteSpace: 'nowrap',
         letterSpacing: 0,
         wordSpacing: 0,
@@ -323,6 +375,69 @@ function QcfWordSpan({ word, fontSize, isActive, isSelected, onTap }: WordSpanPr
       aria-label={word.text || undefined}
     >
       {word.char}
+    </span>
+  );
+}
+
+function TajweedWordSpan({
+  word,
+  page,
+  fontSize,
+  activeVerseKey,
+  activeWordPos,
+  wholeAyahAudioHighlight,
+  selectedVerseKey,
+  onTap,
+}: {
+  word: TajweedPageWord;
+  page: number;
+  fontSize: number;
+  activeVerseKey: string | null;
+  activeWordPos: number | null;
+  wholeAyahAudioHighlight: boolean;
+  selectedVerseKey: string | null;
+  onTap?: (verseKey: string) => void;
+}) {
+  const visualPosition = tajweedVisualWordPosition(word.verseKey, activeWordPos);
+  const isActive = word.type === 'word'
+    && word.verseKey === activeVerseKey
+    && word.position === visualPosition;
+  const isSelected = word.verseKey === selectedVerseKey;
+  const isWholeAyahActive = wholeAyahAudioHighlight
+    && word.verseKey === activeVerseKey;
+  const family = fontFamilyForPage(page);
+
+  return (
+    <span
+      className="tajweed-theme-ink"
+      data-verse-key={word.verseKey}
+      data-position={word.position}
+      {...(isWholeAyahActive ? { 'data-mushaf-audio-active': '' } : {})}
+      {...(isSelected ? { 'data-mushaf-selected': '' } : {})}
+      onClick={onTap ? () => onTap(word.verseKey) : undefined}
+      style={{
+        fontFamily: family ? `'${family}', serif` : 'serif',
+        fontSize: `${fontSize}px`,
+        fontPalette: PALETTE_NAME,
+        color: 'var(--text-primary)',
+        // text-shadow нельзя: у COLR он рисуется отдельно для каждого
+        // цветного слоя и даёт «двойной» контур. Поэтому аудио и выбор
+        // аята отмечаются фоном, не меняя цвета самого таджвида.
+        background: isActive
+          ? 'color-mix(in srgb, var(--accent) 14%, transparent)'
+          : 'transparent',
+        borderRadius: isActive ? '3px' : undefined,
+        whiteSpace: 'nowrap',
+        letterSpacing: 0,
+        wordSpacing: 0,
+        lineHeight: 1,
+        display: 'inline-block',
+        cursor: onTap ? 'pointer' : 'default',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+      aria-label={word.text || undefined}
+    >
+      {word.code}
     </span>
   );
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-patch-tajweed-default-palette.py — copy palette[1] over palette[0].
+patch-tajweed-default-palette.py — LEGACY, DO NOT RUN.
 
 The KFC QPC v4 Tajweed font ships with palette[0] tuned for a LIGHT
 background (base calligraphy = black, idx 0).  On our dark UI that
@@ -25,8 +25,8 @@ Idempotent: re-running has no effect once palette[0] already matches
 palette[1].
 
 Usage:
-  python3 scripts/patch-tajweed-default-palette.py
-  python3 scripts/patch-tajweed-default-palette.py p001            # one page only
+  python3 scripts/gen/patch-tajweed-default-palette.py
+  python3 scripts/gen/patch-tajweed-default-palette.py p001            # one page only
 """
 
 from __future__ import annotations
@@ -34,8 +34,8 @@ import sys
 from pathlib import Path
 from fontTools.ttLib import TTFont
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-FONTS_DIR = REPO_ROOT / "web" / "public" / "fonts"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+FONTS_DIR = REPO_ROOT / "public" / "fonts"
 
 USABLE_WITH_DARK_BACKGROUND = 0x0002
 
@@ -86,6 +86,13 @@ def patch_one(path: Path) -> str:
 
 
 def main() -> int:
+    print(
+        "disabled: keep the official Quran Foundation CPAL palettes intact",
+        file=sys.stderr,
+    )
+    return 2
+
+    # Historical implementation retained only for forensic comparison.
     filter_stem = sys.argv[1] if len(sys.argv) > 1 else None
     paths = font_paths(filter_stem)
     if not paths:

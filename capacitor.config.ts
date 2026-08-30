@@ -32,15 +32,19 @@ const config: CapacitorConfig = {
     // ~60 pt пустоты над заголовком.  Один источник истины надёжнее:
     // теперь safe-area знает только CSS.
     contentInset: 'never',
-    // Цвет между скрытием сплэша и первым кадром вьюшки (100-200 мс на
-    // iPhone 12).  Тёмно-индиго, чтобы не мигало белым на «Авроре» —
-    // она стоит темой первого запуска.
-    backgroundColor: '#0a0a14',
+    // Исходный бледно-бежевый цвет фирменной плитки. Он совпадает с
+    // LaunchScreen и не даёт вспышки между заставкой и первым кадром.
+    backgroundColor: '#f4dfc0',
   },
   android: {
     backgroundColor: '#0a0a14',
   },
   plugins: {
+    LocalNotifications: {
+      sound: 'prayer_reminder.wav',
+      iconColor: '#9B7B2F',
+      presentationOptions: ['sound', 'banner', 'list'],
+    },
     SplashScreen: {
       // launchAutoHide: false — сплэш убирает приложение само, из
       // App.tsx, когда дерево смонтировано.  Так пользователь не видит
@@ -52,7 +56,7 @@ const config: CapacitorConfig = {
       // есть, см. lib/nativeSplash.ts и App.tsx.
       launchShowDuration: 1000,
       launchAutoHide: false,
-      backgroundColor: '#0a0a14',
+      backgroundColor: '#f4dfc0',
       androidSplashResourceName: 'splash',
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,

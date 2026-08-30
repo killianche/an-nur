@@ -58,6 +58,9 @@
     <!-- Android 13+ требует явного разрешения, чтобы показать
          уведомление-плеер (и любые будущие напоминания о намазе). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Напоминания о намазе должны срабатывать в точную минуту, а не в
+         ближайшее удобное системе окно. Android 12+ даёт это право отдельно. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>

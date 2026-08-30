@@ -15,11 +15,11 @@
  *
  * ── Почему цвет не задаётся из CSS ────────────────────────────────────
  *
- * Цвет живёт внутри шрифта: COLR-таблица для Chrome и Firefox, SVG-таблица
- * для Safari. Поэтому `color` на span не влияет на буквы — им управляет
- * `font-palette` (см. lib/tajweedPalette.ts), а на iOS палитра запечена в
- * SVG. Отсюда же ограничение: шрифты лежат в пакете, а не качаются с
- * публичного CDN, — тот отдаёт только COLRv1, который Safari не рисует.
+ * Цвет живёт в исходных COLR v0/CPAL-таблицах шрифта. `font-palette` выбирает светлую
+ * или тёмную палитру (см. lib/tajweedPalette.ts), включая основной штрих:
+ * чёрный на светлой теме и белый на тёмной. Legacy SVG-in-OpenType удалён:
+ * WKWebView выбирал его вместо COLR, не наследовал foreground стабильно и
+ * тратил заметно больше времени на разбор тяжёлых SVG-документов.
  *
  * ── unicode-range ─────────────────────────────────────────────────────
  *
@@ -30,27 +30,43 @@
  */
 
 import { useEffect, useState } from 'react';
+import { registerTajweedPaletteFamily } from '../lib/tajweedPalette';
 
-/** Уже подключённые семейства: правило вставляется один раз. */
-const injected = new Set<string>();
+type TajweedFontRef = { page: number; sample: string };
+export type TajweedFontStatus = 'idle' | 'loading' | 'ready' | 'failed';
+
+/** Уже подключённые семейства и данные, нужные для повторной загрузки. */
+const injected = new Map<string, TajweedFontRef>();
 /** Загрузки в полёте — не просим один файл дважды. */
 const inFlight = new Map<string, Promise<void>>();
 /** Готовые к отрисовке. */
 const ready = new Set<string>();
+/** Семейства, которые браузер не смог загрузить. */
+const failed = new Set<string>();
 
 const READY_EVENT = 'tajweed-font-ready';
+const FAILED_EVENT = 'tajweed-font-failed';
 
-/** /fonts/qpc-v4-tajweed-p077.woff2 */
+/** Любой код из unicode-range правила — запускает файл до прихода JSON. */
+export const TAJWEED_FONT_SAMPLE = '\uFC00';
+
+/** Версия меняется при любой несовместимой правке бинарного шрифта.
+ *  Нужна вебу: без query старый белый SVG может остаться в Safari cache. */
+export const TAJWEED_FONT_VERSION = 'official-colrv0-cpal-v6';
+
+/** /fonts/qpc-v4-tajweed-p077.woff2?v=official-colrv0-cpal-v6 */
 function fontUrl(page: number): string {
-  return `/fonts/qpc-v4-tajweed-p${String(page).padStart(3, '0')}.woff2`;
+  return `/fonts/qpc-v4-tajweed-p${String(page).padStart(3, '0')}.woff2?v=${TAJWEED_FONT_VERSION}`;
 }
 
-function inject(family: string, page: number): void {
+function inject(family: string, page: number, sample: string): void {
   if (injected.has(family) || typeof document === 'undefined') return;
-  injected.add(family);
+  injected.set(family, { page, sample });
+  registerTajweedPaletteFamily(family);
 
   const style = document.createElement('style');
   style.dataset.tajweedFont = family;
+  style.dataset.tajweedPage = String(page);
   style.textContent = [
     `@font-face {`,
     `  font-family: '${family}';`,
@@ -71,6 +87,8 @@ function waitFor(family: string, sample: string): Promise<void> {
   const existing = inFlight.get(family);
   if (existing) return existing;
 
+  if (ready.has(family) || failed.has(family)) return Promise.resolve();
+
   if (typeof document === 'undefined' || !document.fonts) {
     ready.add(family);
     return Promise.resolve();
@@ -88,16 +106,85 @@ function waitFor(family: string, sample: string): Promise<void> {
       // ошибка означают, что цветных глифов не будет.
       if (faces.length > 0 && faces.every(f => f.status === 'loaded')) {
         ready.add(family);
+      } else {
+        failed.add(family);
       }
     })
-    .catch(() => { /* останемся на обычном мусхафе */ })
+    .catch(() => { failed.add(family); })
     .then(() => {
       inFlight.delete(family);
-      window.dispatchEvent(new CustomEvent(READY_EVENT, { detail: family }));
+      const ok = ready.has(family);
+      window.dispatchEvent(
+        new CustomEvent(ok ? READY_EVENT : FAILED_EVENT, { detail: family }),
+      );
     });
 
   inFlight.set(family, promise);
   return promise;
+}
+
+/** Текущее состояние семейства — используется UI и регрессионными тестами. */
+export function getTajweedFontStatus(family: string): TajweedFontStatus {
+  if (ready.has(family)) return 'ready';
+  if (failed.has(family)) return 'failed';
+  if (inFlight.has(family)) return 'loading';
+  return 'idle';
+}
+
+/** Подключить одно семейство и дождаться результата загрузки. */
+export async function loadTajweedFont(
+  page: number,
+  family: string,
+  sample: string,
+): Promise<TajweedFontStatus> {
+  inject(family, page, sample);
+  await waitFor(family, sample);
+  return getTajweedFontStatus(family);
+}
+
+/**
+ * Повторить все неудавшиеся загрузки.
+ *
+ * Правило создаётся заново: после сетевой ошибки браузер может помнить
+ * неудачу старого `@font-face` и не отправить повторный запрос.
+ */
+export async function retryFailedTajweedFonts(): Promise<void> {
+  if (typeof document === 'undefined') return;
+  const again = Array.from(failed);
+  failed.clear();
+
+  await Promise.all(again.map(async family => {
+    const ref = injected.get(family);
+    document.head
+      .querySelectorAll<HTMLStyleElement>(`style[data-tajweed-font="${family}"]`)
+      .forEach(el => el.remove());
+    injected.delete(family);
+    if (!ref) return;
+    inject(family, ref.page, ref.sample);
+    await waitFor(family, ref.sample);
+  }));
+
+  window.dispatchEvent(new CustomEvent(FAILED_EVENT, { detail: '' }));
+}
+
+/** Есть ли хотя бы один не загрузившийся цветной шрифт. */
+export function useTajweedFontFailure(): { failed: boolean; retry: () => void } {
+  const [, bump] = useState(0);
+
+  useEffect(() => {
+    const onChange = () => bump(n => n + 1);
+    window.addEventListener(FAILED_EVENT, onChange);
+    window.addEventListener(READY_EVENT, onChange);
+    return () => {
+      window.removeEventListener(FAILED_EVENT, onChange);
+      window.removeEventListener(READY_EVENT, onChange);
+    };
+  }, []);
+
+  return {
+    failed: failed.size > 0,
+    retry: () => { void retryFailedTajweedFonts(); },
+  };
 }
 
 /**
@@ -110,13 +197,15 @@ export function useTajweedFont(
   family: string | null,
   /** Любой глиф этой страницы — им проверяется готовность шрифта. */
   sample: string | null,
+  /** Далёкие от экрана аяты не должны занимать канал первыми. */
+  enabled = true,
 ): boolean {
-  if (page != null && family) inject(family, page);
-  const isReady = !!family && ready.has(family);
+  if (enabled && page != null && family && sample) inject(family, page, sample);
+  const isReady = enabled && !!family && ready.has(family);
 
   const [, bump] = useState(0);
   useEffect(() => {
-    if (!family || !sample || isReady) return;
+    if (!enabled || page == null || !family || !sample || isReady) return;
     let cancelled = false;
     const onReady = (e: Event) => {
       if (!cancelled && (e as CustomEvent<string>).detail === family) {
@@ -124,12 +213,14 @@ export function useTajweedFont(
       }
     };
     window.addEventListener(READY_EVENT, onReady);
-    void waitFor(family, sample);
+    window.addEventListener(FAILED_EVENT, onReady);
+    void loadTajweedFont(page, family, sample);
     return () => {
       cancelled = true;
       window.removeEventListener(READY_EVENT, onReady);
+      window.removeEventListener(FAILED_EVENT, onReady);
     };
-  }, [family, sample, isReady]);
+  }, [enabled, page, family, sample, isReady]);
 
   return isReady;
 }
@@ -141,6 +232,5 @@ export function useTajweedFont(
  * должна раскраситься сразу, а не после того, как доедет 77 КБ.
  */
 export function preloadTajweedFont(page: number, family: string, sample: string): void {
-  inject(family, page);
-  if (!ready.has(family)) void waitFor(family, sample);
+  if (!ready.has(family)) void loadTajweedFont(page, family, sample);
 }

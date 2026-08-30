@@ -54,6 +54,7 @@ const RECITER_MAP = {
   hanirifai:  5,    // Hani ar-Rifai
   shuraim:   10,    // Sa'ud ash-Shuraim
   yasser:    97,    // Yasser Ad-Dussary
+  ajmi:      19,    // Ahmed ibn Ali al-Ajmy
   tunaiji:  161,    // Khalifah Al Tunaiji
   // Removed at user request (May 2026):
   //   sudais (id 3)        — taking off the picker
@@ -67,14 +68,11 @@ function activeReciterIds() {
   const m = src.match(/export type ReciterId =([\s\S]*?);/);
   if (!m) throw new Error('ReciterId union not found in reciters.ts');
   const ids = [...m[1].matchAll(/'([a-z]+)'/g)].map(x => x[1]);
-  const unknown = ids.filter(id => !(id in RECITER_MAP));
-  if (unknown.length) {
-    throw new Error(
-      `нет quran.com recitation_id для: ${unknown.join(', ')}. ` +
-      'Добавь их в RECITER_MAP в этом скрипте.',
-    );
+  const skipped = ids.filter(id => !(id in RECITER_MAP));
+  if (skipped.length) {
+    console.warn(`без пословных quran.com-таймингов: ${skipped.join(', ')}`);
   }
-  return ids;
+  return ids.filter(id => id in RECITER_MAP);
 }
 
 function extractSurahsWithContent() {
@@ -174,7 +172,10 @@ async function main() {
         let count = 0;
         for (const vt of verseTimings) {
           const { key, segments } = normaliseVerse(vt);
-          byReciter[rec][key] = segments;
+          // Some quran.com reciters expose verse boundaries but no word
+          // segments at all (currently Ahmed Al-Ajmi beta). Empty entries
+          // only bloat the lazy chunk and must not masquerade as karaoke data.
+          if (segments.length > 0) byReciter[rec][key] = segments;
           count++;
         }
         console.log(`  ${rec.padEnd(12)} ch ${ch}: ${count} ayahs`);
@@ -184,10 +185,13 @@ async function main() {
       }
     }
     console.log(`  ${rec.padEnd(12)} TOTAL: ${total} ayah(s)`);
+    if (Object.keys(byReciter[rec]).length === 0) delete byReciter[rec];
   }
 
   writeFileSync(OUT_PATH, emitTs(byReciter), 'utf-8');
-  const sizes = reciterIds.map(r => `${r}=${Object.keys(byReciter[r]).length}`).join(', ');
+  const sizes = reciterIds
+    .map(r => `${r}=${Object.keys(byReciter[r] ?? {}).length}`)
+    .join(', ');
   console.log(`wrote ${OUT_PATH}`);
   console.log(`buckets: ${sizes}`);
 }

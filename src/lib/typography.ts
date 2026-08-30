@@ -138,9 +138,9 @@ const ALL_ARABIC_FONTS: ArabicFont[] = [
   },
   {
     // QPC v4 Tajweed — official King Fahd Complex coloured-glyph mushaf.
-    // Glyphs carry their tajweed-rule colours in the font itself (COLR /
-    // SVG-in-OpenType tables).  See web/src/components/TajweedAyah.tsx
-    // for the renderer and scripts/{fetch,patch,upgrade,add-svg-in-ot}
+    // Glyphs carry their tajweed-rule colours in COLR/CPAL tables.
+    // See components/TajweedAyah.tsx for the renderer and
+    // scripts/gen/{fetch,patch,upgrade,strip-tajweed-svg}
     // for the data pipeline that produced the 604 page-scoped fonts.
     // `stack` is the picker-chip preview stack (Unicode "بسم الله"),
     // since the page-scoped tajweed faces have no Unicode coverage —

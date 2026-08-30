@@ -196,9 +196,9 @@ function AuroraImpl({
   //    быстрое затухание (~14-20% от viewport) → transparent;
   //  - 4 малых радиальных «пятнышка» по серединам краёв для лёгкой
   //    органической неравномерности (фог не идеально ровный);
-  //  - без движения.  Дыхание рамки и бегущая по периметру волна были
-  //    сделаны и сняты по решению владельца: в читалке любое движение
-  //    на периферии через полчаса начинает мешать.  Код — в истории git.
+  //  - рамка очень медленно дышит, а по самой кромке проходит одна
+  //    рассеянная волна. Оба движения compositor-only; reduced-motion,
+  //    Save Data и медленная сеть получают эту же сцену статичной.
   // ── Занавес снизу вверх ─────────────────────────────────────────────
   //
   // Вторая «Аврора»: свет поднимается от нижней кромки, лучи доходят
@@ -279,41 +279,36 @@ function AuroraImpl({
 
   if (direction === 'frame') {
     /*
-     * Дымка светит мягче, чем ядро аврор, — это конденсат по кромке, а
-     * не лампа.  Но мягче не значит «на грани видимости»: было 0.32 при
-     * общей прозрачности 0.42, то есть на пике 0.13, и по замеру кромка
-     * давала (18,24,28) против фона (17,17,17) — прибавка в 7–11
-     * уровней, которую на телефоне днём просто не видно.
-     *
-     * Поднято так, чтобы свет читался, а центр экрана остался чистым:
-     * спад по краю не тронут, растут только сами alpha.
+     * Дымка должна читаться как свет за пределами экрана, не как яркая
+     * LED-рамка. Насыщенность у самой кромки сохранена, но градиент
+     * теперь занимает только 8–9% экрана вместо прежних 22%.
      */
     const mistStrong = withAlpha(colors.layer1, 0.55);
     const mistMid = withAlpha(colors.layer1, 0.30);
     const mistAccent = withAlpha(colors.layer2, 0.36);
 
-    // 4 ободка по краям. Узкие — ~18% viewport — чтобы остался большой
+    // 4 ободка по краям. Узкие — ~8% viewport — чтобы остался большой
     // прозрачный центр. Кривая stop'ов: сильное у кромки, плавный спад.
     const topMist = `linear-gradient(to bottom,
       ${mistStrong} 0%,
-      ${mistMid} 6%,
-      ${withAlpha(colors.layer1, 0.07)} 14%,
-      transparent 22%)`;
+      ${mistMid} 2.5%,
+      ${withAlpha(colors.layer1, 0.07)} 5.5%,
+      transparent 9%)`;
     const bottomMist = `linear-gradient(to top,
       ${mistStrong} 0%,
-      ${mistMid} 6%,
-      ${withAlpha(colors.layer1, 0.07)} 14%,
-      transparent 22%)`;
+      ${mistMid} 2.5%,
+      ${withAlpha(colors.layer1, 0.07)} 5.5%,
+      transparent 9%)`;
     const leftMist = `linear-gradient(to right,
       ${mistAccent} 0%,
-      ${withAlpha(colors.layer2, 0.18)} 6%,
-      ${withAlpha(colors.layer2, 0.055)} 14%,
-      transparent 22%)`;
+      ${withAlpha(colors.layer2, 0.18)} 2.5%,
+      ${withAlpha(colors.layer2, 0.055)} 5.5%,
+      transparent 8%)`;
     const rightMist = `linear-gradient(to left,
       ${mistAccent} 0%,
-      ${withAlpha(colors.layer2, 0.18)} 6%,
-      ${withAlpha(colors.layer2, 0.055)} 14%,
-      transparent 22%)`;
+      ${withAlpha(colors.layer2, 0.18)} 2.5%,
+      ${withAlpha(colors.layer2, 0.055)} 5.5%,
+      transparent 8%)`;
 
     // Лёгкая органическая патчёвость: маленькие радиалы на серединах
     // краёв. Очень мягкие, дают ощущение «конденсат лёг неравномерно».
@@ -329,16 +324,17 @@ function AuroraImpl({
         style={{ opacity: brightness, ...AURORA_CONTAINER_STYLE_BASE }}
       >
         <div
+          className={reduced ? undefined : 'aurora-frame-breathe'}
           style={{
             position: 'absolute',
             inset: 0,
             background: `
-              ${patchEdge('35%', '0%', '40vw', '12vh', mistMid)},
-              ${patchEdge('70%', '0%', '35vw', '10vh', mistAccent)},
-              ${patchEdge('30%', '100%', '38vw', '12vh', mistAccent)},
-              ${patchEdge('72%', '100%', '40vw', '10vh', mistMid)},
-              ${patchEdge('0%', '40%', '10vw', '35vh', mistMid)},
-              ${patchEdge('100%', '65%', '10vw', '35vh', mistAccent)},
+              ${patchEdge('35%', '0%', '25vw', '4.5vh', mistMid)},
+              ${patchEdge('70%', '0%', '22vw', '4vh', mistAccent)},
+              ${patchEdge('30%', '100%', '24vw', '4.5vh', mistAccent)},
+              ${patchEdge('72%', '100%', '25vw', '4vh', mistMid)},
+              ${patchEdge('0%', '40%', '4vw', '22vh', mistMid)},
+              ${patchEdge('100%', '65%', '4vw', '22vh', mistAccent)},
               ${topMist},
               ${bottomMist},
               ${leftMist},
@@ -347,7 +343,25 @@ function AuroraImpl({
             ...AURORA_INNER_STYLE_BASE,
           }}
         />
-
+        {!reduced && (
+          <div
+            className="aurora-frame-wave"
+            style={{
+              position: 'absolute',
+              left: '-11vw',
+              top: '-6vh',
+              width: '22vw',
+              height: '12vh',
+              borderRadius: '50%',
+              background: `radial-gradient(ellipse at center,
+                ${mistAccent} 0%,
+                ${withAlpha(colors.layer1, 0.12)} 38%,
+                transparent 72%)`,
+              ...AURORA_INNER_STYLE_BASE,
+              willChange: 'transform, opacity',
+            }}
+          />
+        )}
       </div>
     );
   }

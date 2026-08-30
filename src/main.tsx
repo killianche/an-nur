@@ -7,6 +7,7 @@ import { initGlobalErrorHandlers } from './lib/globalErrors';
 import { initAudioStore } from './lib/audioStore';
 import { armAutoDownload } from './lib/audioAutoDownload';
 import { Capacitor } from '@capacitor/core';
+import { lockReaderOrientation } from './lib/screenOrientation';
 
 // Отметка «мы внутри нативной обёртки» на <html>.
 //
@@ -17,6 +18,9 @@ import { Capacitor } from '@capacitor/core';
 // от обычной страницы.
 if (Capacitor.isNativePlatform()) {
   document.documentElement.setAttribute('data-native', '');
+  // Физический поворот телефона сам по себе ничего не меняет. Горизонтальный
+  // мусхаф включается отдельной кнопкой и при выходе возвращает портрет.
+  void lockReaderOrientation('portrait');
 }
 
 // Sentry init — no-op без VITE_SENTRY_DSN.  На прод DSN передаётся

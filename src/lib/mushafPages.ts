@@ -29,6 +29,23 @@ import { globalAyahNumber, firstGlobalOfSurah, TOTAL_SURAHS } from './ayahNumber
 
 export const MUSHAF_PAGES = 604;
 
+/**
+ * Открытая и соседние страницы в порядке приоритета отрисовки.
+ *
+ * Полноэкранный режим держит это маленькое окно смонтированным: текущая
+ * страница видима, соседние уже получили данные, шрифты и рассчитанный кегль.
+ * Поэтому свайп меняет только видимость готовых слоёв, а не строит 15 строк
+ * Корана в момент, когда палец уже отпущен.
+ */
+export function mushafPageWindow(page: number): number[] {
+  const current = Math.min(MUSHAF_PAGES, Math.max(1, Math.round(page)));
+  return [
+    current,
+    current < MUSHAF_PAGES ? current + 1 : null,
+    current > 1 ? current - 1 : null,
+  ].filter((candidate): candidate is number => candidate != null);
+}
+
 /** Сквозной номер первого аята каждой из 604 страниц. */
 const FIRST_AYAH_OF_PAGE: number[] = [
   1, 8, 13, 24, 32, 37, 45, 56, 65, 69, 77, 84, 91, 96, 101, 109, 113, 120, 127, 134,

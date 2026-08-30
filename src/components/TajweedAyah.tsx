@@ -2,8 +2,8 @@
  * TajweedAyah — renders a single ayah using the QPC v4 Tajweed
  * coloured-glyph mushaf.  Each word is a single PUA codepoint
  * (U+FC00..FFFF) painted by a page-scoped font (one of 604
- * `QPC4Tajweed-{NNN}` families).  Colours come from the font's
- * COLR/SVG tables — no CSS colouring on the spans themselves.
+ * `QPC4Tajweed-{NNN}` families). Colours come from the font's COLR/CPAL
+ * tables; CSS only selects the palette appropriate to the active theme.
  *
  * Structure mirrors QcfAyahLine — same bidi-isolation strategy,
  * same chunking rule (last word + end-marker share a nowrap chunk),
@@ -14,8 +14,8 @@
  *      colour layer ("ghost outline" effect).  Word-level highlight
  *      is handled through the layer-2 dome only.
  *   2. font-palette: --asr-tajweed routes through the rule overrides
- *      built by lib/tajweedPalette.ts (Chrome / Firefox path; iOS
- *      Safari uses the SVG table with palette baked in).
+ *      built by lib/tajweedPalette.ts. Safari/WKWebView uses this same
+ *      native colour-font path; no SVG renderer is involved.
  *
  * Falls back silently to QcfAyahLine when the verseKey is missing
  * from TAJWEED_GLYPHS (e.g. before the auto-generated data file is
@@ -35,6 +35,7 @@ import {
   type TajweedWord,
 } from '../content/quran-tajweed-meta';
 import { PALETTE_NAME, subscribeTajweedPalette } from '../lib/tajweedPalette';
+import { tajweedVisualWordPosition } from '../lib/tajweedAudioPosition';
 
 type Props = {
   /** Готовые данные аята (lazy-загружены родителем из
@@ -93,6 +94,8 @@ export function TajweedAyah({
 
   const fontSize = BASE_FONT_PX * scale;
   const chunks = chunkWordsWithEnd(data.words, data.endMarker);
+  const verseKey = `${data.surah}:${data.ayah}`;
+  const visualWordPos = tajweedVisualWordPosition(verseKey, activeWordPos);
 
   // Refs for the layer-2 glow dome.  We register ONE ref per logical
   // word position so useAyahGlow can map activeWordPos → bbox.  The
@@ -106,7 +109,7 @@ export function TajweedAyah({
   const activeBox = useAyahGlow({
     containerRef,
     wordRefs,
-    activeWordPos,
+    activeWordPos: visualWordPos,
     isActive,
     wordCount: data.words.length,
     fontSize,
@@ -115,6 +118,7 @@ export function TajweedAyah({
   return (
     <div
       ref={containerRef}
+      className="tajweed-theme-ink"
       onClick={onTap}
       dir="rtl"
       style={{
@@ -125,11 +129,10 @@ export function TajweedAyah({
         fontSize: `${fontSize}px`,
         fontFamily: `'${fontFamily}', serif`,
         // CSS `font-palette` picks the @font-palette-values block built
-        // by lib/tajweedPalette.ts.  Browsers without support ignore it
-        // and fall back to palette[0] verbatim — which we've already
-        // patched into dark-mode colours via patch-tajweed-default-palette.py,
-        // so the result is still readable.
+        // by lib/tajweedPalette.ts. Browsers without support fall back to
+        // palette[0], which is patched to the readable dark palette.
         fontPalette: PALETTE_NAME,
+        color: 'var(--text-primary)',
         userSelect: 'none',
         cursor: onTap ? 'pointer' : 'default',
         padding: '4px 2px',
@@ -156,7 +159,7 @@ export function TajweedAyah({
                 <span
                   key={wi}
                   ref={el => { wordRefs.current[globalIdx] = el; }}
-                  data-verse-key={`${data.surah}:${data.ayah}`}
+                  data-verse-key={verseKey}
                   data-position={globalIdx + 1}
                   dir="rtl"
                   // Deliberately no data-active-word — see header comment.

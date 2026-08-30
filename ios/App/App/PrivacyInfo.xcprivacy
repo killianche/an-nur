@@ -7,8 +7,8 @@
 
   Состояние QuranRu:
    • Аккаунтов, логина, рекламы и трекинга нет — PII не собираем.
-   • Sentry (если включён через VITE_SENTRY_DSN) шлёт только данные о
-     падениях, без идентификатора пользователя: send_default_pii=false.
+   • В App Store-сборке VITE_SENTRY_DSN не задан, поэтому Sentry не
+     инициализируется и crash-данные не отправляются.
    • UserDefaults — через @capacitor/preferences: настройки чтения и
      прогресс офлайн-загрузки, всё внутри песочницы приложения.
    • File timestamp — через @capacitor/filesystem: работа с папкой
@@ -25,21 +25,7 @@
     <key>NSPrivacyTrackingDomains</key>
     <array/>
     <key>NSPrivacyCollectedDataTypes</key>
-    <array>
-        <!-- Crash data (Sentry) — не связана с личностью, не для трекинга. -->
-        <dict>
-            <key>NSPrivacyCollectedDataType</key>
-            <string>NSPrivacyCollectedDataTypeCrashData</string>
-            <key>NSPrivacyCollectedDataTypeLinked</key>
-            <false/>
-            <key>NSPrivacyCollectedDataTypeTracking</key>
-            <false/>
-            <key>NSPrivacyCollectedDataTypePurposes</key>
-            <array>
-                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-            </array>
-        </dict>
-    </array>
+    <array/>
     <key>NSPrivacyAccessedAPITypes</key>
     <array>
         <!-- UserDefaults: @capacitor/preferences хранит настройки чтения

@@ -24,23 +24,24 @@
  * metrics.
  */
 
+import { useRef } from 'react';
 import { QcfAyahLine } from './QcfAyahLine';
 import { V1AyahLine } from './V1AyahLine';
 import { TextAyahLine } from './TextAyahLine';
 import { TajweedAyah } from './TajweedAyah';
 import { useEdition } from '../hooks/useArabicEditions';
 import { useTajweedFont } from '../hooks/useTajweedFont';
+import { useNearViewport } from '../hooks/useNearViewport';
 import { fontFamilyForPage } from '../content/quran-tajweed-meta';
 import { arabicFontConfig, type ArabicFontId } from '../lib/typography';
-// Lazy: tajweed glyphs (~3 MB) грузятся динамически только когда
-// пользователь реально выбрал Tajweed-шрифт.  useTajweedAyah вернёт
-// null пока модуль грузится — рендерим V4-fallback это время.
-import { useTajweedAyah } from '../content/quran-tajweed-lazy';
+import { useTajweedAyahPage } from '../hooks/useTajweedPage';
 import type { QcfWord, QcfFontRef } from '../lib/qcf4';
 
 type Props = {
   verseKey: string;
   ayahNumber: number;
+  /** Страница мединского мусхафа, которой принадлежит аят. */
+  pageNum: number;
   /** QCF V4 word data (default rendering path) */
   words: QcfWord[];
   /** Подмножества шрифтов для слов аята — пары «шрифт + страница» */
@@ -56,6 +57,7 @@ type Props = {
 export function ArabicAyahRouter({
   verseKey,
   ayahNumber,
+  pageNum,
   words,
   fonts,
   arabicFont,
@@ -71,16 +73,25 @@ export function ArabicAyahRouter({
   const ed = useEdition(verseKey, needsEditions);
 
   const pxOffset = cfg.fontPxOffset ?? 0;
-  // Tajweed data — lazy-loaded async; null пока грузится / нет данных.
-  const tajweedData = useTajweedAyah(verseKey, cfg.kind === 'tajweed');
   // Шрифт цветного таджвида — постраничный, ~77 КБ, и подключается по
   // требованию (см. hooks/useTajweedFont.ts).  Пока он едет, аят рисуется
   // обычным мусхафом: у цветных глифов PUA запасного шрифта нет, и «текст
   // без шрифта» здесь означал бы пустое место.
-  const tajweedPage = tajweedData?.page ?? null;
-  const tajweedFamily = tajweedPage ? fontFamilyForPage(tajweedPage) : null;
+  const tajweedViewportRef = useRef<HTMLDivElement | null>(null);
+  const tajweedNear = useNearViewport(
+    tajweedViewportRef,
+    cfg.kind === 'tajweed' && !eager,
+  );
+  const shouldLoadTajweed = cfg.kind === 'tajweed'
+    && (!!eager || isActive || tajweedNear);
+  // Загружаем только JSON страницы этого аята (несколько КБ), а не
+  // прежний общий словарь всех 6236 аятов (~3.3 МБ).
+  const tajweedResult = useTajweedAyahPage(pageNum, verseKey, shouldLoadTajweed);
+  const tajweedData = tajweedResult.data;
+  const tajweedFamily = fontFamilyForPage(pageNum);
   const tajweedFontReady = useTajweedFont(
-    tajweedPage, tajweedFamily, tajweedData?.words[0]?.code ?? null,
+    pageNum, tajweedFamily, tajweedData?.words[0]?.code ?? null,
+    shouldLoadTajweed,
   );
 
   // V4 mushaf default — already in `words` from the QCF feed.
@@ -97,34 +108,36 @@ export function ArabicAyahRouter({
     );
   }
 
-  // QPC v4 Tajweed — coloured-glyph mushaf.  Data lives in the
-  // auto-generated TAJWEED_GLYPHS table (one entry per verse_key,
-  // 6236 total).  Lazy-load: useTajweedAyah вернёт null пока модуль
-  // ещё грузится (одноразовая загрузка на первый рендер tajweed-режима)
-  // — в это время рендерим обычный V4-fallback (визуально неотличим
-  // для первых ~100 мс).  Та же fallback-логика для случая, когда
-  // данных нет вообще (fresh repo перед запуском
-  // scripts/fetch-tajweed-data.ts).
+  // QPC v4 Tajweed — coloured-glyph mushaf. Пока JSON страницы или её
+  // шрифт едут, сохраняем обычный V4 как визуальный fallback; экран
+  // одновременно показывает явную плашку загрузки.
   if (cfg.kind === 'tajweed') {
-    if (tajweedData && tajweedFontReady) {
-      return (
-        <TajweedAyah
-          data={tajweedData}
-          isActive={isActive}
-          activeWordPos={activeWordPos}
-          scale={scale}
-        />
-      );
-    }
     return (
-      <QcfAyahLine
-        words={words}
-        fonts={fonts}
-        activeWordPos={activeWordPos}
-        isActive={isActive}
-        scale={scale}
-        eager={eager}
-      />
+      <div
+        ref={tajweedViewportRef}
+        aria-busy={shouldLoadTajweed && (!tajweedData || !tajweedFontReady)}
+        data-tajweed-loading={
+          shouldLoadTajweed && (!tajweedData || !tajweedFontReady) ? '' : undefined
+        }
+      >
+        {tajweedData && tajweedFontReady ? (
+          <TajweedAyah
+            data={tajweedData}
+            isActive={isActive}
+            activeWordPos={activeWordPos}
+            scale={scale}
+          />
+        ) : (
+          <QcfAyahLine
+            words={words}
+            fonts={fonts}
+            activeWordPos={activeWordPos}
+            isActive={isActive}
+            scale={scale}
+            eager={eager}
+          />
+        )}
+      </div>
     );
   }
 

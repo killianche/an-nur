@@ -3,9 +3,10 @@
  * auto-generated CSS / TS sources.
  *
  * Output paths (relative to repo root):
- *   web/public/fonts/qpc-v4-tajweed-p{001..604}.woff2  (604 files, ~250 KB each AFTER svg-in-ot)
- *   web/src/styles/tajweed-fonts.css                    (604 @font-face declarations)
- *   web/src/content/quran-tajweed-glyphs.ts             (TAJWEED_GLYPHS map for 6236 ayahs)
+ *   public/fonts/qpc-v4-tajweed-p{001..604}.woff2  (604 official COLR v0/CPAL files)
+ *   src/styles/tajweed-fonts.css                    (604 @font-face declarations)
+ *   src/content/quran-tajweed-glyphs.ts             (TAJWEED_GLYPHS map for 6236 ayahs)
+ *   public/tajweed/pages/{001..604}.json             (fixed page lines for Mushaf mode)
  *
  * Sources:
  *   Fonts — https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p{N}.woff2
@@ -14,12 +15,11 @@
  * Idempotent: re-running skips files that already exist (use --force
  * to re-download).  Concurrency tuned for a typical broadband link.
  *
- * Run with: npx tsx scripts/fetch-tajweed-data.ts
+ * Run with: npx tsx scripts/gen/fetch-tajweed-data.ts
  *
- * Pipeline reminder — after this script, run in order:
- *   python3 scripts/patch-tajweed-default-palette.py
- *   python3 scripts/upgrade-tajweed-colr-v1.py
- *   python3 scripts/add-svg-in-ot.py
+ * Keep the downloaded font binaries intact. Do not run the historical
+ * palette patch, COLR conversion or SVG generator: WKWebView renders the
+ * official COLR v0 layers and selects their CPAL palettes correctly.
  */
 
 import { mkdir, writeFile, access, readdir } from 'node:fs/promises';
@@ -27,10 +27,11 @@ import { existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT  = resolve(fileURLToPath(import.meta.url), '../..');
-const FONTS_DIR  = join(REPO_ROOT, 'web/public/fonts');
-const CSS_PATH   = join(REPO_ROOT, 'web/src/styles/tajweed-fonts.css');
-const GLYPHS_TS  = join(REPO_ROOT, 'web/src/content/quran-tajweed-glyphs.ts');
+const REPO_ROOT  = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const FONTS_DIR  = join(REPO_ROOT, 'public/fonts');
+const CSS_PATH   = join(REPO_ROOT, 'src/styles/tajweed-fonts.css');
+const GLYPHS_TS  = join(REPO_ROOT, 'src/content/quran-tajweed-glyphs.ts');
+const PAGES_DIR  = join(REPO_ROOT, 'public/tajweed/pages');
 
 const TOTAL_PAGES      = 604;
 const FONT_BASE        = 'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p';
@@ -100,6 +101,7 @@ type APIWord = {
   verse_key: string;
   char_type_name: 'word' | 'end';
   page_number: number;
+  line_number: number;
 };
 type APIVerse = {
   verse_key: string;
@@ -118,22 +120,64 @@ type TajweedAyahData = {
   endMarker: string;
 };
 
-async function fetchGlyphs(): Promise<Record<string, TajweedAyahData>> {
+type TajweedPageWord = {
+  code: string;
+  text: string;
+  verseKey: string;
+  position: number;
+  type: 'word' | 'end';
+};
+type TajweedPageData = {
+  page: number;
+  lines: Array<{ line: number; words: TajweedPageWord[] }>;
+};
+
+async function fetchGlyphs(): Promise<{
+  ayahs: Record<string, TajweedAyahData>;
+  pages: Record<number, TajweedPageData>;
+}> {
   const pages = Array.from({ length: TOTAL_PAGES }, (_, i) => i + 1);
-  const wordFields = 'code_v2,text_qpc_hafs,position,page_number,verse_key,char_type_name';
+  const wordFields = 'code_v2,text_qpc_hafs,position,page_number,line_number,verse_key,char_type_name';
   const all: Record<string, TajweedAyahData> = {};
+  const pageLayouts: Record<number, TajweedPageData> = {};
   let done = 0;
   await pMap(pages, API_CONCURRENCY, async (page) => {
-    const url = `${API_BASE}${page}?words=true&word_fields=${wordFields}&per_page=50`;
+    // mushaf=19 — QPC V4 Tajweed. Без него API отдаёт line_number
+    // стандартного QCF V2: коды глифов совпадают, но часть переносов строк
+    // отличается, и полноэкранная страница перестаёт быть мусхафом.
+    const url = `${API_BASE}${page}?words=true&word_fields=${wordFields}&per_page=50&mushaf=19`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`page ${page} HTTP ${res.status}`);
     const data = (await res.json()) as APIResp;
+    const lines = new Map<number, TajweedPageWord[]>();
     for (const v of data.verses) {
       const [surahStr, ayahStr] = v.verse_key.split(':');
       const surah = parseInt(surahStr, 10);
       const ayah  = parseInt(ayahStr,  10);
       const words: TajweedWord[] = [];
       let endMarker = '';
+
+      // Полноэкранный мусхаф строится по фиксированным строкам источника.
+      // Нельзя восстанавливать их по количеству слов: один цветной глиф
+      // иногда содержит два аудиослова (37:130), а аят может пересекать
+      // границу страницы. Берём line_number/page_number буквально.
+      for (const w of v.words) {
+        if (w.page_number !== page || !Number.isFinite(w.line_number)) continue;
+        // В API Аль-Фатиха и начало Аль-Бакары расположены на строках
+        // 9..15/10..15 физического листа. Наши QCF JSON хранят только
+        // видимые строки страницы (1..8), поэтому у первых двух страниц
+        // одинаково снимаем семь пустых верхних строк.
+        const displayLine = page <= 2 ? w.line_number - 7 : w.line_number;
+        const lineWords = lines.get(displayLine) ?? [];
+        lineWords.push({
+          code: w.code_v2,
+          text: w.text_qpc_hafs,
+          verseKey: w.verse_key,
+          position: w.position,
+          type: w.char_type_name,
+        });
+        lines.set(displayLine, lineWords);
+      }
       // API sometimes splits a single verse across two pages (notably
       // in Al-Baqarah).  We only see the slice that lives on `page`,
       // so merge into any existing record under the same verse_key.
@@ -153,19 +197,39 @@ async function fetchGlyphs(): Promise<Record<string, TajweedAyahData>> {
       }
       all[v.verse_key] = { surah, ayah, page, words, endMarker };
     }
+    pageLayouts[page] = {
+      page,
+      lines: Array.from(lines.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([line, words]) => ({ line, words })),
+    };
     done++;
     if (done % 50 === 0) console.log(`  glyphs: ${done}/${TOTAL_PAGES} pages`);
   });
   const verseCount = Object.keys(all).length;
   console.log(`glyphs: ${verseCount} verse entries across ${TOTAL_PAGES} pages`);
-  return all;
+  return { ayahs: all, pages: pageLayouts };
+}
+
+async function emitPageJson(pages: Record<number, TajweedPageData>) {
+  await mkdir(PAGES_DIR, { recursive: true });
+  const pageNumbers = Array.from({ length: TOTAL_PAGES }, (_, i) => i + 1);
+  await pMap(pageNumbers, 32, async page => {
+    const data = pages[page];
+    if (!data) throw new Error(`missing Tajweed page layout ${page}`);
+    await writeFile(
+      join(PAGES_DIR, `${pad3(page)}.json`),
+      `${JSON.stringify(data)}\n`,
+    );
+  });
+  console.log(`wrote ${PAGES_DIR} (${pageNumbers.length} pages)`);
 }
 
 // ── 3. emit auto-gen CSS ─────────────────────────────────────────────────────
 async function emitCss() {
   await mkdir(dirname(CSS_PATH), { recursive: true });
   const lines: string[] = [
-    '/* AUTO-GENERATED by scripts/fetch-tajweed-data.ts — do not edit by hand. */',
+    '/* AUTO-GENERATED by scripts/gen/fetch-tajweed-data.ts — do not edit by hand. */',
     '/* 604 page-scoped @font-face declarations for the QPC v4 Tajweed mushaf. */',
     '/* unicode-range narrows them to the PUA block U+FC00..U+FFFF so they cannot */',
     '/* accidentally apply to normal Arabic text in the rest of the app. */',
@@ -187,7 +251,7 @@ async function emitGlyphsTs(glyphs: Record<string, TajweedAyahData>) {
     return a1 - b1 || a2 - b2;
   });
   const lines: string[] = [
-    '// AUTO-GENERATED by scripts/fetch-tajweed-data.ts — do not edit by hand.',
+    '// AUTO-GENERATED by scripts/gen/fetch-tajweed-data.ts — do not edit by hand.',
     '// Sources: verses.quran.foundation/fonts + api.qurancdn.com/api/qdc',
     '',
     'export type TajweedWord = { code: string; text: string };',
@@ -232,10 +296,11 @@ async function emitGlyphsTs(glyphs: Record<string, TajweedAyahData>) {
   }
   if (!SKIP_GLYPHS) {
     console.log('— step 2/3: glyph data (604 pages, ~6236 verses)');
-    const glyphs = await fetchGlyphs();
-    console.log('— step 3/3: regenerate CSS + TS');
+    const { ayahs, pages } = await fetchGlyphs();
+    console.log('— step 3/3: regenerate CSS + TS + page JSON');
     await emitCss();
-    await emitGlyphsTs(glyphs);
+    await emitGlyphsTs(ayahs);
+    await emitPageJson(pages);
   } else {
     console.log('— skipping CSS / TS (--skip-glyphs)');
   }

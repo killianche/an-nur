@@ -1,8 +1,7 @@
 import UIKit
 import Capacitor
 
-/// Подкласс моста Capacitor — нужен ровно ради одной вещи: отключить
-/// «резинку» прокрутки WKWebView.
+/// Подкласс моста Capacitor для нативной настройки WKWebView.
 ///
 /// Проблема, которую он решает. Если оттянуть страницу у верхнего края,
 /// WebKit сдвигает вместе с содержимым и элементы `position: fixed` —
@@ -15,10 +14,9 @@ import Capacitor
 /// Прокрутку саму по себе не трогаем — выключается только пружина на
 /// границах документа.
 ///
-/// Класс подставляется в `Base.lproj/Main.storyboard` вместо
-/// `CAPBridgeViewController`. Если когда-нибудь `npx cap add ios`
-/// переигрывается с нуля, storyboard вернётся к базовому классу и эту
-/// правку нужно будет повторить.
+/// Класс используется и в `Base.lproj/Main.storyboard`, и напрямую из
+/// `SceneDelegate`. Если когда-нибудь `npx cap add ios` переигрывается с
+/// нуля, обе нативные правки нужно будет повторить.
 class MainViewController: CAPBridgeViewController {
 
     override func viewDidLoad() {
@@ -32,5 +30,20 @@ class MainViewController: CAPBridgeViewController {
         webView?.scrollView.bouncesZoom = false
         webView?.scrollView.maximumZoomScale = 1.0
         webView?.scrollView.minimumZoomScale = 1.0
+
+        // Убираем системную полосу над клавиатурой с кнопками перехода
+        // между полями и галочкой «Готово». Саму клавиатуру, подсказки и
+        // работу поля поиска это не меняет.
+        disableKeyboardShortcutBar()
+        DispatchQueue.main.async { [weak self] in
+            self?.disableKeyboardShortcutBar()
+        }
+    }
+
+    private func disableKeyboardShortcutBar() {
+        inputAssistantItem.leadingBarButtonGroups = []
+        inputAssistantItem.trailingBarButtonGroups = []
+        webView?.inputAssistantItem.leadingBarButtonGroups = []
+        webView?.inputAssistantItem.trailingBarButtonGroups = []
     }
 }

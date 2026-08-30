@@ -29,15 +29,17 @@
  *     so word-level isolation never touches letter shaping.
  *
  * Karaoke highlighting:
- *   activeWordPos === word.position → [data-active-word] attribute,
- *   which CSS targets for the colour-change effect.
+ *   activeWordPos === word.position → [data-active-word] attribute.
+ *   В glow-режиме QCF намеренно не использует общий движущийся
+ *   AyahGlowLayer и text-shadow: iOS Safari при их анимации повторно
+ *   растрировал PUA-шрифт и на отдельных кадрах терял части глифов.
+ *   CSS рисует неподвижную подложку за тем же DOM-элементом, поэтому
+ *   содержимое и слой арабского текста вообще не меняются.
  */
 
 import { Fragment, useRef } from 'react';
 import { useQcfFont } from '../hooks/useQcfFont';
 import { useNearViewport } from '../hooks/useNearViewport';
-import { useAyahGlow } from '../hooks/useAyahGlow';
-import { AyahGlowLayer } from './AyahGlowLayer';
 import { ArabicSkeleton } from './ArabicSkeleton';
 import { qcfPageFamily, type QcfWord, type QcfFontRef } from '../lib/qcf4';
 
@@ -106,25 +108,7 @@ export function QcfAyahLine({
   const fontSize = BASE_FONT_PX * scale;
   const chunks = chunkWords(words);
 
-  // Layer-2 glow plumbing. We collect a ref per word in the SAME order
-  // as `words` (positions 1..N → indices 0..N-1) so useAyahGlow can map
-  // activeWordPos directly. End-marker entries (type === 'end') don't
-  // claim a slot — they ride alongside the previous word in a chunk.
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const wordRefs = useRef<Array<HTMLSpanElement | null>>([]);
-  // Resize the ref array to match current word count — keeps stale refs
-  // from a previous (longer) ayah from leaking into measure().
-  if (wordRefs.current.length !== words.length) {
-    wordRefs.current = new Array(words.length).fill(null);
-  }
-  const activeBox = useAyahGlow({
-    containerRef,
-    wordRefs,
-    activeWordPos,
-    isActive,
-    wordCount: words.length,
-    fontSize,
-  });
 
   // Шрифт просим, только когда аят подошёл к экрану.  Сура смонтирована
   // целиком (см. useChunkedRender), и без этого условия Ан-Ниса разом
@@ -139,13 +123,10 @@ export function QcfAyahLine({
   return (
     <div
       ref={containerRef}
+      className="qcf-ayah-line"
       onClick={onTap}
       dir="rtl"
       style={{
-        // Layer-2 dome lives inside this container as position:absolute,
-        // so the container must establish a positioning context. Other
-        // layout/visual properties are unchanged.
-        position: 'relative',
         direction: 'rtl',
         textAlign: 'right',
         lineHeight: 1.85,
@@ -155,14 +136,6 @@ export function QcfAyahLine({
         padding: '4px 2px',
       }}
     >
-      {/* Layer 2 — radial-gradient "dome" under the active word. Renders
-          BELOW the text via z-index: 0 (text spans default to z=auto and
-          paint above absolutely-positioned siblings of equal stacking
-          context). In color mode and when reduced-motion is set, CSS
-          hides the dome — but useAyahGlow also returns null in those
-          cases so no measure work is wasted. */}
-      <AyahGlowLayer box={activeBox} />
-
       {/* Шрифт ещё едет — держим место скелетом.  Кубики вместо слов аята
           недопустимы, а скелет той же высоты не даёт странице прыгнуть,
           когда текст появится.  Оценка строк: около пяти с половиной слов
@@ -181,28 +154,17 @@ export function QcfAyahLine({
               // orders chunks right-to-left.  See file header for full rationale.
               unicodeBidi: 'isolate',
               whiteSpace: 'nowrap',
-              // Lift text above Layer 2 inside the same stacking context.
-              position: 'relative',
-              zIndex: 1,
             }}
             dir="rtl"
           >
             {chunk.map((word, i) => {
-              // End-markers don't have a `position` field and aren't part
-              // of the karaoke timeline — skip the ref / active-state
-              // computation for them.
-              const refIdx =
-                word.position && word.position >= 1
-                  ? word.position - 1
-                  : null;
+              // End-markers don't have a `position` field, so they never
+              // receive the active-word attribute.
               return (
                 <QcfWordSpan
                   key={i}
                   word={word}
                   isActive={isActive && word.position === activeWordPos}
-                  innerRef={el => {
-                    if (refIdx != null) wordRefs.current[refIdx] = el;
-                  }}
                 />
               );
             })}
@@ -223,15 +185,12 @@ export function QcfAyahLine({
 type WordSpanProps = {
   word: QcfWord;
   isActive: boolean;
-  /** Callback ref — used to register the word's <span> with the parent
-   *  for layer-2 bbox measurement. Optional (end-markers skip it). */
-  innerRef?: (el: HTMLSpanElement | null) => void;
 };
 
-function QcfWordSpan({ word, isActive, innerRef }: WordSpanProps) {
+function QcfWordSpan({ word, isActive }: WordSpanProps) {
   return (
     <span
-      ref={innerRef}
+      className="qcf-word-glyph"
       {...(isActive ? { 'data-active-word': '' } : {})}
       {...(word.verse_key ? { 'data-verse-key': word.verse_key } : {})}
       {...(word.position  ? { 'data-position':  word.position  } : {})}
@@ -247,7 +206,6 @@ function QcfWordSpan({ word, isActive, innerRef }: WordSpanProps) {
         // colour-pick from settings can change it at runtime without
         // re-rendering the spans.
         color: 'var(--qcf-text, var(--text-primary))',
-        transition: 'color 0.15s ease',
         // Each word is its own bidi unit so that, inside a multi-word chunk
         // (e.g. last-word + end-marker), the words are still ordered RTL.
         // Without this, two PUA chars sharing one isolated chunk merge into a

@@ -31,6 +31,10 @@
  */
 
 import * as adhan from 'adhan';
+import {
+  timetableRow,
+  type PrayerTimetableId,
+} from '../content/nazranPrayerTimetables';
 import type { Coords } from './location';
 
 export type PrayerKey = 'fajr' | 'sunrise' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
@@ -134,10 +138,17 @@ export const ZERO_ADJUSTMENTS: Adjustments = {
 };
 
 export type PrayerSettings = {
+  source: PrayerTimeSource;
   method: MethodId;
   madhab: Madhab;
   adjustments: Adjustments;
 };
+
+export type PrayerTimeSource = 'calculated' | PrayerTimetableId;
+
+export function isTimetableSource(source: PrayerTimeSource): source is PrayerTimetableId {
+  return source === 'nazran-1' || source === 'nazran-2';
+}
 
 /**
  * Дефолт — ДУМ России, шафиитский аср.
@@ -151,6 +162,7 @@ export type PrayerSettings = {
  * ханафитским доходит до часа, поэтому переключатель на экране.
  */
 export const DEFAULT_SETTINGS: PrayerSettings = {
+  source: 'calculated',
   method: 'dumrf',
   madhab: 'shafi',
   adjustments: ZERO_ADJUSTMENTS,
@@ -165,6 +177,8 @@ export function readSettings(): PrayerSettings {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const p = JSON.parse(raw) as Partial<PrayerSettings>;
+    const source: PrayerTimeSource = p.source === 'nazran-1' || p.source === 'nazran-2'
+      ? p.source : 'calculated';
     const method = METHODS.some(m => m.id === p.method) ? p.method! : DEFAULT_SETTINGS.method;
     const madhab: Madhab = p.madhab === 'hanafi' ? 'hanafi' : 'shafi';
     const adj = { ...ZERO_ADJUSTMENTS };
@@ -174,7 +188,7 @@ export function readSettings(): PrayerSettings {
       // от пользователя: больше часа поправки не бывает.
       if (typeof v === 'number' && Number.isFinite(v)) adj[k] = Math.max(-60, Math.min(60, Math.round(v)));
     }
-    return { method, madhab, adjustments: adj };
+    return { source, method, madhab, adjustments: adj };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -221,7 +235,27 @@ function buildParams(s: PrayerSettings): adhan.CalculationParameters {
 
 export type DayTimes = Record<PrayerKey, Date>;
 
+export function hasTimetableDate(source: PrayerTimeSource, date: Date): boolean {
+  return isTimetableSource(source)
+    && timetableRow(source, date.getMonth() + 1, date.getDate()) !== null;
+}
+
+function dateAt(date: Date, hhmm: string): Date {
+  const [hours, minutes] = hhmm.split(':').map(Number);
+  const result = new Date(date);
+  result.setHours(hours, minutes, 0, 0);
+  return result;
+}
+
 export function timesFor(coords: Coords, date: Date, s: PrayerSettings): DayTimes {
+  if (isTimetableSource(s.source)) {
+    const row = timetableRow(s.source, date.getMonth() + 1, date.getDate());
+    if (row) {
+      return Object.fromEntries(
+        PRAYER_ORDER.map(key => [key, dateAt(date, row[key])]),
+      ) as DayTimes;
+    }
+  }
   const t = new adhan.PrayerTimes(
     new adhan.Coordinates(coords.lat, coords.lon),
     date,

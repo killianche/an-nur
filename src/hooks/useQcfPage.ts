@@ -118,5 +118,18 @@ export function useQcfPage(pageNum: number | null): {
     return () => { cancelled = true; };
   }, [pageNum]);
 
-  return { data, loading, error };
+  // После смены pageNum эффект обновит state только после первого кадра.
+  // Не отдаём в этот кадр данные предыдущей страницы: иначе шапка уже
+  // показывает новый номер, а под ней на мгновение остаётся старый текст.
+  const currentData = pageNum === null
+    ? null
+    : data?.page === pageNum
+      ? data
+      : pageCache.get(pageNum) ?? null;
+
+  return {
+    data: currentData,
+    loading: pageNum !== null && !currentData ? true : loading,
+    error: currentData ? null : error,
+  };
 }

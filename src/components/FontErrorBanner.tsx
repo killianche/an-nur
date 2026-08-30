@@ -21,10 +21,23 @@
  */
 
 import { useQcfFontFailure } from '../hooks/useQcfFont';
+import { useTajweedFontFailure } from '../hooks/useTajweedFont';
 
-export function FontErrorBanner() {
-  const { failed, retry } = useQcfFontFailure();
+type Props = {
+  source?: 'qcf' | 'both';
+};
+
+export function FontErrorBanner({ source = 'qcf' }: Props) {
+  const qcf = useQcfFontFailure();
+  const tajweed = useTajweedFontFailure();
+  const tajweedFailed = source === 'both' && tajweed.failed;
+  const failed = qcf.failed || tajweedFailed;
   if (!failed) return null;
+
+  const retry = () => {
+    if (qcf.failed) qcf.retry();
+    if (tajweedFailed) tajweed.retry();
+  };
 
   return (
     <div
@@ -47,8 +60,9 @@ export function FontErrorBanner() {
         lineHeight: 1.4,
         color: 'var(--text-secondary)',
       }}>
-        Не удалось загрузить шрифт мусхафа. Арабский текст появится, когда
-        файл дойдёт.
+        {tajweedFailed
+          ? 'Не удалось загрузить цветной шрифт таджвида. Пока показан обычный шрифт мусхафа.'
+          : 'Не удалось загрузить шрифт мусхафа. Арабский текст появится, когда файл дойдёт.'}
       </span>
       <button
         onClick={retry}

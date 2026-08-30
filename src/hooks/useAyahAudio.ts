@@ -1,14 +1,18 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { ayahAudioUrl } from '../lib/quranUtils';
+import { ayahAudioRange } from '../lib/ayahAudioRange';
 import { cacheAyah } from '../lib/audioDownloads';
-import { DEFAULT_RECITER, type ReciterId } from '../lib/reciters';
+import {
+  DEFAULT_RECITER, RECITERS_WITH_SEGMENTS, requiresSurahAudioStream, surahAudioUrl,
+  type ReciterId,
+} from '../lib/reciters';
 import {
   setMediaSessionMetadata, setMediaSessionPlaybackState,
   setMediaSessionPosition, clearMediaSessionMetadata,
 } from '../lib/mediaSession';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 
-// Lazy-import: quran-segments.ts ~9.5 МБ.  Раньше sync-импорт тащил
+// Lazy-import: quran-segments.ts ~4 МБ.  Раньше sync-импорт тащил
 // в main bundle всю карту word-timings 8 чтецов × 6236 аятов.  Теперь
 // модуль грузится только при ПЕРВОМ воспроизведении аята — пока промис
 // не разрешён, word-маркер просто не двигается (приемлемая деградация
@@ -47,9 +51,11 @@ function readStoredRate(): PlaybackRate {
  *  WebView начинает терять аудио-декодеры после ~40-50 элементов
  *  (HTMLAudioElement держит ссылку на raw audio buffer; iOS WebView
  *  имеет жёсткий лимит ~75 одновременных audio decoders).
- *  6 = текущий аят + 2 prefetch'а вперёд + small buffer. */
+ *  6 = текущий аят + prefetch вперёд + небольшой запас. */
 const AUDIO_CACHE_MAX = 6;
 const audioCache = new Map<string, HTMLAudioElement>();
+const logicalKeyForAudio = new WeakMap<HTMLAudioElement, string>();
+const completedRange = new WeakSet<HTMLAudioElement>();
 
 function touchCache(key: string, audio: HTMLAudioElement) {
   // LRU touch: удалить старую запись чтобы переместить в end (Map
@@ -73,6 +79,36 @@ function cacheKey(reciter: ReciterId, surah: number, ayah: number) {
   return `${reciter}:${surah}:${ayah}`;
 }
 
+/** Полную запись суры открываем только тогда, когда у чтеца нет отдельного
+ * файла выбранного аята. Иначе холодный запуск в середине Аль-Бакары сначала
+ * открывал 100+ МБ и лишь затем делал seek. Все пять источников теперь
+ * стартуют из короткого MP3, а следующий файл прогревается заранее. */
+function usesContinuousAudio(reciter: ReciterId) {
+  return requiresSurahAudioStream(reciter);
+}
+
+function rangeForMedia(reciter: ReciterId, surah: number, ayah: number) {
+  return usesContinuousAudio(reciter) ? ayahAudioRange(reciter, surah, ayah) : null;
+}
+
+/** Continuous-only sources reuse one decoder per surah. Reciters with an
+ * ayah CDN keep one short element per ayah both online and offline. */
+function mediaCacheKey(reciter: ReciterId, surah: number, ayah: number) {
+  return usesContinuousAudio(reciter)
+    ? `${reciter}:${surah}:surah`
+    : cacheKey(reciter, surah, ayah);
+}
+
+function seekAudio(audio: HTMLAudioElement, seconds: number) {
+  const apply = () => {
+    try { audio.currentTime = seconds; } catch { /* metadata is still unavailable */ }
+  };
+  apply();
+  if (audio.readyState === HTMLMediaElement.HAVE_NOTHING) {
+    audio.addEventListener('loadedmetadata', apply, { once: true });
+  }
+}
+
 /** Build (or reuse) the <audio> for a given ayah.
  *
  * `eager` controls preload aggression:
@@ -82,12 +118,9 @@ function cacheKey(reciter: ReciterId, surah: number, ayah: number) {
  *     network round-trip before the first byte arrives, adding a
  *     noticeable "tap → silence → audio" gap on every fresh ayah.
  *   - 'lazy' (used by prefetchAyah for the NEXT ayah while the current
- *     one is playing) — `preload='auto'` too, but conceptually we
- *     don't need it ready instantly; the browser will throttle
- *     parallel preloads anyway, and we don't want to fight the
- *     active stream for bandwidth.  Same setting today, kept as a
- *     hook for future tuning (e.g. switch lazy → 'metadata' on slow
- *     networks once the Network Information API is wider-available).
+ *     one is playing) — `preload='auto'` too, so bytes and decoder are
+ *     ready before the logical boundary. Only one neighbour is warmed,
+ *     therefore this does not start downloading the rest of the surah.
  */
 function getOrCreateAudio(
   key: string,
@@ -105,7 +138,8 @@ function getOrCreateAudio(
     // Bump preload up if the cached element was created lazily and we
     // now need it ready to play.  Going the other way (eager → lazy)
     // is pointless: the bytes are already in flight or in cache.
-    if (eager === 'eager' && cached.preload !== 'auto') {
+    if (eager === 'eager' && !usesContinuousAudio(reciter)
+      && cached.preload !== 'auto') {
       cached.preload = 'auto';
       // Touching `load()` after a preload bump kicks the browser into
       // actually fetching — without it Safari leaves preload='auto'
@@ -117,8 +151,16 @@ function getOrCreateAudio(
     return cached;
   }
   const a = new Audio();
-  a.preload = 'auto';
-  a.src = ayahAudioUrl(surah, ayah, reciter);
+  const continuous = usesContinuousAudio(reciter);
+  // Полная сура может быть большой. `metadata` разрешает браузеру начать
+  // поток с нужного byte-range, а последовательное чтение затем идёт тем же
+  // декодером. Поаятные офлайн-файлы по-прежнему прогружаем целиком заранее.
+  a.preload = continuous ? 'metadata' : 'auto';
+  a.src = continuous
+    ? (surahAudioUrl(reciter, surah) ?? ayahAudioUrl(surah, ayah, reciter))
+    : ayahAudioUrl(surah, ayah, reciter);
+  // Safari/WebView не всегда начинает preload сразу после присваивания src.
+  a.load();
   touchCache(key, a);  // вставить + эвикция самых старых при превышении.
   return a;
 }
@@ -127,11 +169,25 @@ function getOrCreateAudio(
  *  one is playing.  When auto-advance fires, the bytes are already in
  *  the HTTP cache so the transition is gap-free. */
 function prefetchAyah(surah: number, ayah: number, reciter: ReciterId) {
-  const key = cacheKey(reciter, surah, ayah);
+  const key = mediaCacheKey(reciter, surah, ayah);
   if (audioCache.has(key)) return;                         // already cached
   // 'lazy' so we don't compete with the currently-playing element for
   // bandwidth on slow connections; the browser will still pre-fetch.
   getOrCreateAudio(key, surah, ayah, reciter, 'lazy');
+}
+
+/** Stop every Quran audio element without touching React state.
+ *
+ * Нужен отдельно от stopAll(): cleanup размонтированного экрана не должен
+ * вызывать setState, но обязан погасить общий module-level cache. Иначе при
+ * переходе «лента ↔ мусхаф» старый экран исчезает, а его HTMLAudioElement
+ * продолжает читать невидимо уже под новым экраном. */
+function stopCachedAyahAudio() {
+  audioCache.forEach(audio => {
+    audio.pause();
+    try { audio.currentTime = 0; } catch { /* metadata may be unavailable */ }
+  });
+  clearMediaSessionMetadata();
 }
 
 export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
@@ -150,6 +206,18 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
   reciterRef.current = reciter;
   const playbackRateRef = useRef(playbackRate);
   playbackRateRef.current = playbackRate;
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Каждый режим Корана владеет своим экземпляром useAyahAudio, тогда как
+  // сами <audio> лежат в общем кэше модуля. При размонтировании экрана явно
+  // останавливаем этот кэш. Выбранная политика перехода — «полный stop», а
+  // не попытка незаметно передать живой декодер другому React-дереву: так
+  // кнопки, очередь и Media Session никогда не расходятся со слышимым звуком.
+  useEffect(() => () => {
+    stopCachedAyahAudio();
+    queueRef.current = null;
+    activeAudioRef.current = null;
+  }, []);
 
   /** Cycle 1.0 → 1.25 → 0.75 → 1.0 (order from PLAYBACK_RATES starting
    *  at the current rate). Persists to localStorage and applies
@@ -167,25 +235,37 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
 
   const pauseCurrent = useCallback(() => {
     if (activeKey) {
-      audioCache.get(activeKey)?.pause();
+      activeAudioRef.current?.pause();
       setAudioState('paused');
       setMediaSessionPlaybackState('paused');
     }
   }, [activeKey]);
 
   const stopAll = useCallback(() => {
-    audioCache.forEach(a => { a.pause(); a.currentTime = 0; });
+    stopCachedAyahAudio();
     setActiveKey(null);
     setAudioState('idle');
     setProgress(0);
     setCurrentWordPos(null);
-    clearMediaSessionMetadata();
     queueRef.current = null;
+    activeAudioRef.current = null;
   }, []);
 
-  const playOne = useCallback(async (surah: number, ayah: number) => {
+  const playOne = useCallback(async (
+    surah: number,
+    ayah: number,
+    transition: 'manual' | 'automatic' = 'manual',
+  ) => {
     const r = reciterRef.current;
     const k = cacheKey(r, surah, ayah);
+    const mediaK = mediaCacheKey(r, surah, ayah);
+    const range = rangeForMedia(r, surah, ayah);
+    const cachedMedia = audioCache.get(mediaK);
+    const seamlessSameMedia = transition === 'automatic'
+      && range !== null
+      && cachedMedia === activeAudioRef.current
+      && cachedMedia !== undefined
+      && !cachedMedia.paused;
 
     // Switching ayahs is explicit user intent ("I'm done with that one,
     // play this instead"), so every OTHER cached ayah snaps back to 0.
@@ -196,13 +276,19 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // anywhere you re-enter a previously-played ayah, it starts fresh.
     if (activeKey && activeKey !== k) {
       audioCache.forEach((a, otherKey) => {
-        if (otherKey === k) return;
+        // При автоматическом переходе внутри одной непрерывной записи
+        // нельзя даже на мгновение вызвать pause(): звук продолжает идти,
+        // меняются только логический аят, прогресс и подсветка.
+        if (seamlessSameMedia && otherKey === mediaK) return;
         a.pause();
-        a.currentTime = 0;
+        if (otherKey !== mediaK) a.currentTime = 0;
       });
     }
 
-    const audio = getOrCreateAudio(k, surah, ayah, r);
+    const audio = getOrCreateAudio(mediaK, surah, ayah, r);
+    activeAudioRef.current = audio;
+    logicalKeyForAudio.set(audio, k);
+    completedRange.delete(audio);
 
     // Switching to a different ayah → restart from 0. We also need this
     // when `activeKey` is null but the cached <audio> for `k` was left
@@ -212,12 +298,14 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // surah).  Resume-after-pause on the SAME ayah (activeKey === k)
     // deliberately skips this branch — that's the natural play / pause
     // behaviour and stays as is.
-    if (activeKey !== k) {
-      audio.currentTime = 0;
+    if (activeKey !== k && !seamlessSameMedia) {
+      seekAudio(audio, range?.startSeconds ?? 0);
     }
 
     setActiveKey(k);
-    setAudioState('loading');
+    // На автоматической границе непрерывного потока плеер уже звучит.
+    // Не показываем промежуточный loading и не заставляем док мигать.
+    setAudioState(prev => transition === 'automatic' && prev === 'playing' ? 'playing' : 'loading');
     setProgress(0);                                          // reset for the new ayah
     setCurrentWordPos(null);                                 // clear stale word from previous ayah
 
@@ -234,36 +322,59 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     });
     setMediaSessionPlaybackState('playing');
 
-    // If autoplay rolls over a transient network failure for one ayah, we want
-    // the queue to keep marching forward. Silently dying on a single bad mp3
-    // strands the dock at `audioState: idle, currentAyah: N, progress: 0`,
-    // which is exactly the symptom we hit on 67:10.
+    // Only a REAL end of the recording may advance the queue.  Treating a
+    // network/media error as `ended` is dangerous: while offline every MP3
+    // fails immediately, so the old implementation ran through the whole
+    // surah and SurahScreen's audio auto-scroll followed it to the bottom.
     const advanceOrStop = () => {
       const q = queueRef.current;
       if (q && ayah < q.last) {
         q.current = ayah + 1;
-        playOne(q.surah, q.current);
+        playOne(q.surah, q.current, 'automatic');
       } else {
         setAudioState('idle');
         setActiveKey(null);
         queueRef.current = null;
         setProgress(0);
+        activeAudioRef.current = null;
       }
     };
 
-    audio.onended = () => {
-      setProgress(1);
-      advanceOrStop();
-    };
-    audio.onerror = () => {
-      console.warn('[ayah-audio] error on', surah + ':' + ayah, {
+    // WebKit can report the same failed load twice: first via `error`, then by
+    // rejecting play().  Keep one terminal path and make sure a late failure
+    // from an obsolete element cannot stop a newer ayah selected by the user.
+    let failed = false;
+    const failAndStop = (reason: unknown) => {
+      if (failed) return;
+      failed = true;
+
+      console.warn('[ayah-audio] playback failed on', `${surah}:${ayah}`, {
+        reason,
         code: audio.error?.code,
         message: audio.error?.message,
         src: audio.src,
       });
-      // Drop the broken element so the next attempt starts fresh.
-      audioCache.delete(k);
+
+      if (activeAudioRef.current !== audio || logicalKeyForAudio.get(audio) !== k) {
+        return;
+      }
+
+      // Stop the queue on the SAME ayah.  A downloaded local file still plays
+      // normally offline because ayahAudioUrl() chooses it before the network
+      // URL; this branch is reached only when the selected source truly fails.
+      stopAll();
+      if (audioCache.get(mediaK) === audio) audioCache.delete(mediaK);
+      audio.onended = null;
+      audio.onerror = null;
+    };
+
+    audio.onended = () => {
+      if (failed) return;
+      setProgress(1);
       advanceOrStop();
+    };
+    audio.onerror = () => {
+      failAndStop('media-error');
     };
 
     // Apply the user-selected playback rate before kicking off play() —
@@ -272,7 +383,14 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     audio.playbackRate = playbackRateRef.current;
 
     try {
-      await audio.play();
+      // Тот же audio уже играет через границу аята — повторный play() не
+      // нужен и в некоторых WebView сам создаёт короткий щелчок/задержку.
+      if (!seamlessSameMedia) await audio.play();
+      // `error` may have fired while WebKit was settling the play() promise.
+      // Do not resurrect a queue that failAndStop() has already cleared.
+      if (failed || activeAudioRef.current !== audio || logicalKeyForAudio.get(audio) !== k) {
+        return;
+      }
       setAudioState('playing');
       // Кэш по воспроизведению: аят, который только что зазвучал со
       // стрима, тихо оседает на устройстве.  Так офлайн-библиотека
@@ -292,11 +410,9 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
         prefetchAyah(surah, nextAyah, r);
       }
     } catch (err) {
-      console.warn('[ayah-audio] play() rejected for', surah + ':' + ayah, err);
-      audioCache.delete(k);
-      advanceOrStop();
+      failAndStop(err);
     }
-  }, [activeKey]);
+  }, [activeKey, stopAll]);
 
   /** Tap on an ayah — play / pause that ayah, joining the queue. */
   const handlePlay = useCallback((surah: number, ayah: number, lastAyah?: number) => {
@@ -329,7 +445,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
   // karaoke highlight (single source of truth, no second rAF per ayah).
   useEffect(() => {
     if (audioState !== 'playing' || !activeKey) return;
-    const audio = audioCache.get(activeKey);
+    const audio = activeAudioRef.current;
     if (!audio) return;
 
     // activeKey is "reciter:surah:ayah" — split it. Segments are now
@@ -342,8 +458,15 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // marker stays put — no false sync.
     const [reciterId, ...rest] = activeKey.split(':');
     const verseKey = rest.join(':');
+    const [surahPart, ayahPart] = rest;
+    const range = rangeForMedia(
+      reciterId as ReciterId,
+      Number(surahPart),
+      Number(ayahPart),
+    );
+    const rangeStart = range?.startSeconds ?? 0;
 
-    // Lazy-loaded segments: на первой воспроизведении модуль ещё может
+    // Lazy-loaded segments: при первом воспроизведении модуль ещё может
     // быть в загрузке (промис не resolved).  Используем cached если уже
     // есть, иначе fire-and-forget загрузку и подхватим segments сразу
     // после resolve.  rAF-tick между этим работает без segments, marker
@@ -353,7 +476,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       segmentsModuleCached
         ? (segmentsModuleCached.getQuranSegments(reciterId as ReciterId, verseKey)?.segments ?? null)
         : null;
-    if (!segmentsModuleCached) {
+    if (!segmentsModuleCached && RECITERS_WITH_SEGMENTS.has(reciterId as ReciterId)) {
       loadSegmentsModule().then(m => {
         segs = m.getQuranSegments(reciterId as ReciterId, verseKey)?.segments ?? null;
       });
@@ -361,20 +484,57 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
 
     let raf = 0;
     let positionUpdateTick = 0;
+    let lastProgressWrite = -Infinity;
     const tick = () => {
-      const d = audio.duration;
+      // The same HTMLAudioElement is reused between Luhaidan ayahs in one
+      // surah. An old rAF must stop immediately when the logical ayah changes,
+      // otherwise it can finish the newly selected ayah using the old range.
+      if (logicalKeyForAudio.get(audio) !== activeKey) return;
+
+      if (range && audio.currentTime >= range.endSeconds) {
+        if (!completedRange.has(audio)) {
+          completedRange.add(audio);
+          setProgress(1);
+          const q = queueRef.current;
+          const hasNextInSameSurah = q?.surah === Number(surahPart)
+            && q.current === Number(ayahPart)
+            && Number(ayahPart) < q.last;
+          // В непрерывном файле суры не останавливаем звук на границе.
+          // onended здесь означает конец ЛОГИЧЕСКОГО аята; физический
+          // HTMLAudioElement продолжает читать следующий байт потока.
+          if (!hasNextInSameSurah) {
+            audio.pause();
+            seekAudio(audio, range.endSeconds);
+          }
+          audio.onended?.(new Event('ended'));
+        }
+        return;
+      }
+
+      const d = range
+        ? range.endSeconds - range.startSeconds
+        : audio.duration;
+      const elapsed = Math.max(0, audio.currentTime - rangeStart);
       if (d && isFinite(d) && d > 0) {
-        setProgress(Math.min(1, Math.max(0, audio.currentTime / d)));
+        // Progress нужен только тонкой полосе плеера. Обновление React-state
+        // 60 раз/с заставляло заново рендерить всю тяжёлую суру и страницу
+        // мусхафа. 12–13 раз/с визуально плавны для полосы, но освобождают
+        // главный поток для прокрутки и арабского шейпинга.
+        const now = performance.now();
+        if (now - lastProgressWrite >= 80) {
+          lastProgressWrite = now;
+          setProgress(Math.min(1, Math.max(0, elapsed / d)));
+        }
         // MediaSession position info — но не на каждый кадр (60 раз/с
         // расходует battery впустую); раз в ~10 кадров (~6 раз/с).
         positionUpdateTick = (positionUpdateTick + 1) % 10;
         if (positionUpdateTick === 0) {
-          setMediaSessionPosition(audio.currentTime, d, audio.playbackRate);
+          setMediaSessionPosition(Math.min(elapsed, d), d, audio.playbackRate);
         }
       }
       // Word-position lookup. Linear scan is fine — 30 words max per ayah.
       if (segs) {
-        const ms = audio.currentTime * 1000;
+        const ms = elapsed * 1000;
         let found: number | null = null;
         for (let i = 0; i < segs.length; i++) {
           const [w, s, e] = segs[i];
@@ -419,7 +579,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     ms.setActionHandler('play', () => {
       // Resume — если paused, продолжить.  Без queue'а pause-pусто.
       if (activeKey) {
-        audioCache.get(activeKey)?.play().catch(() => {});
+        activeAudioRef.current?.play().catch(() => {});
         setAudioState('playing');
         setMediaSessionPlaybackState('playing');
       }
@@ -450,11 +610,17 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
 
   const getRemainingSeconds = useCallback(() => {
     if (!activeKey) return Infinity;
-    const audio = audioCache.get(activeKey);
+    const audio = activeAudioRef.current;
     if (!audio) return Infinity;
-    const d = audio.duration;
-    if (!isFinite(d) || d <= 0) return Infinity;
-    const remaining = (d - audio.currentTime) / Math.max(0.1, audio.playbackRate);
+    const [reciterId, surahPart, ayahPart] = activeKey.split(':');
+    const range = rangeForMedia(
+      reciterId as ReciterId,
+      Number(surahPart),
+      Number(ayahPart),
+    );
+    const end = range?.endSeconds ?? audio.duration;
+    if (!isFinite(end) || end <= 0) return Infinity;
+    const remaining = (end - audio.currentTime) / Math.max(0.1, audio.playbackRate);
     return remaining > 0 ? remaining : 0;
   }, [activeKey]);
 

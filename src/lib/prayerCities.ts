@@ -69,14 +69,30 @@ function sameSpot(a: Coords, b: Coords): boolean {
   return Math.abs(a.lat - b.lat) < 0.005 && Math.abs(a.lon - b.lon) < 0.005;
 }
 
+function isNazranSpot(place: Coords): boolean {
+  return Math.abs(place.lat - DEFAULT_PLACE.lat) < 0.005
+    && Math.abs(place.lon - DEFAULT_PLACE.lon) < 0.005;
+}
+
+/** Fresh installs open the first exact timetable. Existing stored settings
+ * are preserved because only the shared untouched default is promoted. */
+export function settingsForNewPrayerPlace(place: Coords): PrayerSettings {
+  return isNazranSpot(place)
+    ? { ...DEFAULT_SETTINGS, source: 'nazran-1' }
+    : DEFAULT_SETTINGS;
+}
+
 function cityFromPlace(place: Place, settings: PrayerSettings): PrayerCity {
+  const initialSettings = settings === DEFAULT_SETTINGS
+    ? settingsForNewPrayerPlace(place)
+    : settings;
   return {
     id: makeId(),
     name: place.name,
     lat: place.lat,
     lon: place.lon,
     source: place.source,
-    settings,
+    settings: initialSettings,
   };
 }
 
@@ -105,6 +121,8 @@ function normaliseSettings(s: unknown): PrayerSettings {
   // localStorage.  Здесь дублируем только то, что нужно: остальное
   // (диапазон поправок, существование метода) проверит buildParams.
   return {
+    source: base.source === 'nazran-1' || base.source === 'nazran-2'
+      ? base.source : 'calculated',
     method: base.method ?? DEFAULT_SETTINGS.method,
     madhab: base.madhab === 'hanafi' ? 'hanafi' : 'shafi',
     adjustments: { ...DEFAULT_SETTINGS.adjustments, ...(p.adjustments ?? {}) },
@@ -202,7 +220,7 @@ export function addCity(place: Place): string {
     return existing.id;
   }
   if (list.length >= MAX_CITIES) return readActiveId(list);
-  const city = cityFromPlace(place, DEFAULT_SETTINGS);
+  const city = cityFromPlace(place, settingsForNewPrayerPlace(place));
   writeCities([...list, city]);
   setActiveId(city.id);
   return city.id;

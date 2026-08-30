@@ -53,7 +53,7 @@
  */
 
 import type { ReciterId } from './reciters';
-import { reciterById } from './reciters';
+import { reciterById, supportsAyahOffline } from './reciters';
 import {
   globalAyahNumber, ayahsInSurah, firstGlobalOfSurah, juzRange,
   TOTAL_AYAHS, TOTAL_SURAHS,
@@ -62,6 +62,7 @@ import {
   hasAyah, markDownloaded, ayahFilePath, isOfflineSupported, persistNow,
   downloadedCount, downloadedInSurah,
 } from './audioStore';
+import { remoteAyahAudioUrl } from './quranUtils';
 
 /** Сколько аятов качаем одновременно. */
 const CONCURRENCY = 4;
@@ -124,10 +125,11 @@ function patch(reciter: ReciterId, next: Partial<DownloadState>) {
  * берём это как более честное среднее.
  * CHECK: уточнить после первой полной загрузки на устройстве.
  */
-export const AVG_AYAH_BYTES = 139 * 1024;
+export const AVG_AYAH_BYTES_64KBPS = 139 * 1024;
 
-export function estimateBytes(ayahCount: number): number {
-  return AVG_AYAH_BYTES * ayahCount;
+export function estimateBytes(reciter: ReciterId, ayahCount: number): number {
+  const bitrateRatio = reciterById(reciter).bitrateKbps / 64;
+  return AVG_AYAH_BYTES_64KBPS * bitrateRatio * ayahCount;
 }
 
 export function formatBytes(n: number): string {
@@ -237,15 +239,7 @@ export function missingCount(reciter: ReciterId, scope: DownloadScope): number {
 
 /** URL аята у CDN — тот же, что использует стриминг. */
 function cdnUrl(reciter: ReciterId, surah: number, ayah: number): string {
-  const r = reciterById(reciter);
-  if (r.slug) {
-    return `https://cdn.islamic.network/quran/audio/64/${r.slug}/${globalAyahNumber(surah, ayah)}.mp3`;
-  }
-  if (r.everyayahDir) {
-    const p3 = (n: number) => String(n).padStart(3, '0');
-    return `https://everyayah.com/data/${r.everyayahDir}/${p3(surah)}${p3(ayah)}.mp3`;
-  }
-  throw new Error(`нет источника аудио для чтеца ${reciter}`);
+  return remoteAyahAudioUrl(surah, ayah, reciter);
 }
 
 /** Длина исходных данных по длине base64 — чтобы не декодировать
@@ -296,6 +290,7 @@ async function fetchAndStore(reciter: ReciterId, surah: number, ayah: number): P
  */
 export function cacheAyah(reciter: ReciterId, surah: number, ayah: number): void {
   if (!isOfflineSupported()) return;
+  if (!supportsAyahOffline(reciter)) return;
   if (hasAyah(reciter, globalAyahNumber(surah, ayah))) return;
   void fetchAndStore(reciter, surah, ayah).catch(() => { /* не мешаем чтению */ });
 }
@@ -314,6 +309,13 @@ export async function startDownload(reciter: ReciterId, scope: DownloadScope): P
     patch(reciter, {
       status: 'error',
       error: 'Скачивание доступно только в приложении для iOS и Android.',
+    });
+    return;
+  }
+  if (!supportsAyahOffline(reciter)) {
+    patch(reciter, {
+      status: 'error',
+      error: 'Для этого чтеца пока доступно только потоковое воспроизведение.',
     });
     return;
   }

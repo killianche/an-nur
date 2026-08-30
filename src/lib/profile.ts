@@ -60,10 +60,10 @@ export const LOCAL_DATA_KEYS: readonly string[] = [
   // Кто я
   'profile.name',
   // Что читал
-  'recentReads', 'ayahBookmarks', 'bookmarks', 'mushaf.page',
+  'recentReads', 'ayahBookmarks', 'bookmarks', 'mushaf.page', 'mushaf.font',
   // Как читаю Коран
   'theme', 'reciter', 'arabicFont', 'ruFont', 'arabicScale', 'ruScale',
-  'showArabic', 'showRu', 'fontScale',
+  'showArabic', 'showRu', 'fontScale', 'quran.feedMode',
   // Азкары
   'azkar.showArabic', 'azkar.showRussian', 'azkar.showTranslit',
   'azkar.arabicFont', 'azkar.russianFont', 'azkar.translitFont',
@@ -76,6 +76,7 @@ export const LOCAL_DATA_KEYS: readonly string[] = [
   'dua.arabicScale', 'dua.russianScale', 'dua.translitScale',
   // Намаз и кибла
   'prayer.cities', 'prayer.activeCity', 'prayer.settings', 'place',
+  'prayer.primary-source.v1', 'prayer.alarms.v1',
 ];
 
 /**

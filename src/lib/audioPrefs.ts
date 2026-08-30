@@ -245,7 +245,7 @@ export function getHighlightStyle(): HighlightStyle {
  * Resolved highlight style, accounting for theme.  Светлая тема всегда
  * сводится к 'color', какой бы ни была сохранённая настройка: свечение
  * на белой бумаге читается как грязное пятно, а не как сияние.  Тёмная
- * и «Аврора» используют выбор пользователя как есть.
+ * и «Аврора 2» используют выбор пользователя как есть.
  *
  * Pass `theme` explicitly (from useTheme) when known — falls back to
  * reading the data-theme attribute on :root when not.
@@ -267,9 +267,8 @@ export function setHighlightStylePref(s: HighlightStyle) {
 
 export function getHighlightColor(): HighlightColor {
   const v = localStorage.getItem(KEY_HIGHLIGHT_COLOR) as HighlightColor | null;
-  // Fallback to 'teal' (sky-blue) — the user-requested default marker.
-  // Older saved values like the legacy neutral 'theme' fall through
-  // this guard the same way.
+  // Fallback to 'teal' (sky-blue) — спокойный и хорошо различимый
+  // стандарт на светлой и тёмной теме.
   if (!v || !(v in COLOR_LIGHT)) return 'teal';
   return v;
 }
@@ -281,9 +280,6 @@ export function setHighlightColorPref(c: HighlightColor) {
 
 export function getGlowPalette(): GlowPalette {
   const v = localStorage.getItem(KEY_GLOW_PALETTE) as GlowPalette | null;
-  // Default 'mint' — the spec's recommended pick for dark themes (where
-  // glow is most visible); on light themes mint still reads as a soft
-  // green halo and doesn't fight the page.
   if (!v || !(v in AURORA_PALETTES)) return 'mint';
   return v;
 }
