@@ -29,16 +29,42 @@
  * по решению владельца: экран открывают, чтобы найти суру, и лишний
  * орган управления над списком только отвлекает.  Разрез по джузам
  * лежит в истории git — вернуть можно одним коммитом.
+ *
+ * ── Типографика ───────────────────────────────────────────────────────
+ *
+ * Все кегли, веса, радиусы и отступы — ступени шкалы из src/index.css.
+ * Строки списка и заголовки секций выровнены по одному отступу
+ * (--space-hair), чтобы номер суры стоял ровно под словом «Суры».
  */
 
 import { useState, useMemo, useRef, useDeferredValue } from 'react';
 import { SURAHS, SURAH_BY_NUMBER, type SurahMeta } from '../content/surahs';
 import { readRecents } from '../lib/recents';
 import { search, snippet, type AyahHit } from '../lib/search';
-import { Appearance, Search, Close, Bookmark as BookmarkIcon } from '../components/icons';
+import { useQuranSources } from '../content/quran-sources-lazy';
+import {
+  Appearance, Search, Close, Bookmark as BookmarkIcon, ICON_SIZE,
+} from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
+import { HitArea } from '../components/HitArea';
+
+/**
+ * Единственная форма капс-подзаголовка на экране: «Продолжить чтение»
+ * и заголовки секций выдачи.
+ *
+ * В шкале нет трекинга для прописных — `--tracking-loose` (0.01em)
+ * рассчитан на мелкий строчный текст.  На капсе 11px он слипается,
+ * поэтому разряд задан явно, одним значением на весь файл.
+ */
+const CAP_LABEL: React.CSSProperties = {
+  fontSize: 'var(--font-caption2)',
+  lineHeight: 'var(--leading-caption2)',
+  fontWeight: 'var(--weight-semibold)',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+};
 
 type Props = {
   onSelectSurah: (number: number, ayah?: number) => void;
@@ -66,8 +92,17 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
   // отдаёт вводу приоритет: буквы появляются сразу, список
   // догоняет следующим кадром.
   const deferredQuery = useDeferredValue(query);
-  const results = useMemo(() => search(deferredQuery), [deferredQuery]);
   const searching = query.trim().length > 0;
+  // Словарь переводов лежит отдельным чанком, чтобы не задерживать старт.
+  // Начинаем тянуть его при первом же вводе; обычно он уже прогрет в простое
+  // (см. warmQuranSources в App.tsx), и ждать не приходится.
+  const sourcesReady = useQuranSources(searching) != null;
+  const results = useMemo(
+    () => search(deferredQuery),
+    // sourcesReady в зависимостях намеренно: как только словарь доехал,
+    // выдачу нужно пересчитать — сам запрос при этом не менялся.
+    [deferredQuery, sourcesReady],
+  );
 
   const recents = useMemo(
     () => readRecents().map(r => ({ ...r, meta: SURAH_BY_NUMBER[r.surah] })).filter(r => r.meta),
@@ -80,7 +115,7 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
       minHeight: '100dvh',
       maxWidth: 'min(100%, 720px)',
       margin: '0 auto',
-      padding: `0 16px calc(${TAB_BAR_HEIGHT}px + 36px + env(safe-area-inset-bottom))`,
+      padding: `0 var(--space-margin) calc(${TAB_BAR_HEIGHT}px + var(--space-section) + env(safe-area-inset-bottom))`,
       position: 'relative',
       zIndex: 1,
     }}>
@@ -100,16 +135,16 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
       <header style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '10px',
-        paddingTop: 'calc(env(safe-area-inset-top) + 18px)',
-        paddingBottom: '16px',
+        gap: 'var(--space-snug)',
+        paddingTop: 'calc(env(safe-area-inset-top) + var(--space-margin))',
+        paddingBottom: 'var(--space-margin)',
       }}>
         <h1
           className="display-serif"
           style={{
             margin: 0, flex: 1, minWidth: 0,
             fontSize: 'clamp(30px, 8vw, 40px)',
-            fontWeight: 400,
+            fontWeight: 'var(--weight-regular)',
             letterSpacing: '-0.03em',
             color: 'var(--text-primary)',
             lineHeight: 1.05,
@@ -120,7 +155,7 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
 
         {onBookmarks && (
           <IconAction label="Закладки" onClick={onBookmarks}>
-            <BookmarkIcon size={19} />
+            <BookmarkIcon size={ICON_SIZE.md} />
           </IconAction>
         )}
         <IconAction
@@ -129,21 +164,22 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
           active={themeOpen}
           btnRef={themeBtnRef}
         >
-          <Appearance size={19} />
+          <Appearance size={ICON_SIZE.md} />
         </IconAction>
       </header>
 
       {/* ── Поиск ─────────────────────────────────────────────────────── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '10px',
-        height: '48px', padding: '0 14px',
-        borderRadius: '14px',
+        display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+        height: 'calc(var(--hit-min) + var(--space-tight))',
+        padding: '0 var(--space-cozy)',
+        borderRadius: 'var(--radius-control)',
         background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
         border: '1px solid var(--hairline)',
-        marginBottom: '20px',
+        marginBottom: 'var(--space-margin)',
       }}>
         <span aria-hidden style={{ color: 'var(--text-tertiary)', display: 'inline-flex', flexShrink: 0 }}>
-          <Search size={18} />
+          <Search size={ICON_SIZE.md} />
         </span>
         <input
           ref={inputRef}
@@ -156,8 +192,10 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
             flex: 1, minWidth: 0,
             border: 'none', outline: 'none', background: 'transparent',
             color: 'var(--text-primary)',
-            fontFamily: 'inherit', fontSize: '15px',
-            letterSpacing: '0.005em',
+            fontFamily: 'inherit',
+            fontSize: 'var(--font-subhead)',
+            lineHeight: 'var(--leading-subhead)',
+            letterSpacing: 'var(--tracking-loose)',
           }}
         />
         {query && (
@@ -165,9 +203,14 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
             onClick={() => { setQuery(''); inputRef.current?.focus(); }}
             aria-label="Очистить"
             className="icon-btn"
-            style={{ width: '30px', height: '30px', flexShrink: 0, color: 'var(--text-tertiary)' }}
+            style={{
+              position: 'relative',
+              width: '30px', height: '30px', flexShrink: 0,
+              color: 'var(--text-tertiary)',
+            }}
           >
-            <Close size={16} />
+            <Close size={ICON_SIZE.sm} />
+            <HitArea />
           </button>
         )}
       </div>
@@ -211,7 +254,7 @@ function IconAction({ label, onClick, children, active, btnRef }: {
       data-active={active}
       style={{
         width: '42px', height: '42px', flexShrink: 0,
-        borderRadius: '12px',
+        borderRadius: 'var(--radius-control)',
         border: '1px solid var(--hairline)',
         background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
         color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
@@ -238,40 +281,45 @@ function ContinueCard({ title, ayah, total, onClick }: {
       onPointerCancel={() => setPressed(false)}
       style={{
         display: 'block', width: '100%', textAlign: 'left',
-        padding: '16px 18px 14px',
-        marginBottom: '26px',
-        borderRadius: '16px',
+        padding: 'var(--space-margin) var(--space-margin) var(--space-cozy)',
+        marginBottom: 'var(--space-section)',
+        borderRadius: 'var(--radius-card)',
         border: '1px solid var(--hairline)',
         background: 'var(--surface)',
         cursor: 'pointer',
         fontFamily: 'inherit', color: 'inherit',
         transform: pressed ? 'scale(0.99)' : 'scale(1)',
-        transition: 'transform 180ms cubic-bezier(0.4,0,0.2,1)',
+        transition: 'transform var(--dur-base) var(--ease-standard)',
       }}
     >
-      <div style={{
-        fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.14em',
-        textTransform: 'uppercase', color: 'var(--text-tertiary)',
-      }}>
+      <div style={{ ...CAP_LABEL, color: 'var(--text-tertiary)' }}>
         Продолжить чтение
       </div>
       <div
         className="display-serif"
         style={{
-          marginTop: '8px', fontSize: '22px', fontWeight: 500,
-          letterSpacing: '-0.015em', color: 'var(--text-primary)', lineHeight: 1.15,
+          marginTop: 'var(--space-snug)',
+          fontSize: 'var(--font-title2)',
+          lineHeight: 'var(--leading-title2)',
+          fontWeight: 'var(--weight-regular)',
+          letterSpacing: 'var(--tracking-tight)',
+          color: 'var(--text-primary)',
         }}
       >
         {title}
       </div>
       <div style={{
-        marginTop: '4px', fontSize: '12.5px', color: 'var(--text-secondary)',
+        marginTop: 'var(--space-tight)',
+        fontSize: 'var(--font-caption1)',
+        lineHeight: 'var(--leading-caption1)',
+        color: 'var(--text-secondary)',
         fontVariantNumeric: 'tabular-nums',
       }}>
         Аят {ayah} из {total}
       </div>
       <div style={{
-        marginTop: '12px', height: '3px', borderRadius: '2px',
+        marginTop: 'var(--space-cozy)', height: '3px',
+        borderRadius: 'var(--radius-pill)',
         background: 'var(--hairline)', overflow: 'hidden',
       }}>
         <div style={{
@@ -301,12 +349,12 @@ function SurahList({ surahs, onSelect }: {
 function SectionHeading({ text }: { text: string }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: '12px',
-      padding: '22px 2px 10px',
+      display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
+      padding: 'var(--space-section) var(--space-hair) var(--space-snug)',
     }}>
       <span style={{
-        fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.14em',
-        textTransform: 'uppercase', color: 'var(--text-tertiary)',
+        ...CAP_LABEL,
+        color: 'var(--text-tertiary)',
         flexShrink: 0,
       }}>
         {text}
@@ -326,9 +374,9 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
       onPointerLeave={() => setPressed(false)}
       onPointerCancel={() => setPressed(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: '14px',
+        display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
         width: '100%', minHeight: '64px',
-        padding: '10px 6px',
+        padding: 'var(--space-snug) var(--space-hair)',
         border: 'none',
         borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
         background: pressed
@@ -336,7 +384,7 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
           : 'transparent',
         cursor: 'pointer', textAlign: 'left',
         fontFamily: 'inherit', color: 'inherit',
-        transition: 'background 120ms ease',
+        transition: 'background var(--dur-fast) var(--ease-standard)',
       }}
     >
       {/* Номер в ромбе — форма из мусхафа, где номер аята стоит в
@@ -349,12 +397,14 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           transform: 'rotate(45deg)',
           border: '1px solid var(--hairline-strong)',
-          borderRadius: '9px',
+          borderRadius: 'var(--radius-chip)',
         }}
       >
         <span style={{
           transform: 'rotate(-45deg)',
-          fontSize: '12px', fontWeight: 600,
+          fontSize: 'var(--font-caption1)',
+          lineHeight: 'var(--leading-caption1)',
+          fontWeight: 'var(--weight-semibold)',
           color: 'var(--text-secondary)',
           fontVariantNumeric: 'tabular-nums',
         }}>
@@ -365,15 +415,20 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{
           display: 'block',
-          fontSize: '15.5px', fontWeight: 500,
-          color: 'var(--text-primary)', letterSpacing: '-0.005em',
+          fontSize: 'var(--font-subhead)',
+          lineHeight: 'var(--leading-subhead)',
+          fontWeight: 'var(--weight-regular)',
+          color: 'var(--text-primary)',
+          letterSpacing: 'var(--tracking-tight)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {meta.transliteration}
         </span>
         <span style={{
-          display: 'block', marginTop: '2px',
-          fontSize: '12px', color: 'var(--text-tertiary)',
+          display: 'block', marginTop: 'var(--space-hair)',
+          fontSize: 'var(--font-caption1)',
+          lineHeight: 'var(--leading-caption1)',
+          color: 'var(--text-tertiary)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {meta.russian} · {meta.ayahs} {ayahWord(meta.ayahs)}
@@ -386,7 +441,10 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
         style={{
           flexShrink: 0,
           fontFamily: "'KFGQPC Uthmanic Hafs v22', serif",
-          fontSize: '19px',
+          // Ступень Title 3.  Межстрочный оставлен коэффициентом:
+          // у арабского выносные элементы и огласовки выше латинских,
+          // и жёсткие 25px из шкалы срезали бы их сверху.
+          fontSize: 'var(--font-title3)',
           color: 'var(--text-secondary)',
           lineHeight: 1.6,
         }}
@@ -403,18 +461,23 @@ function SearchResults({ results, onOpen }: {
   results: ReturnType<typeof search>;
   onOpen: (surah: number, ayah?: number) => void;
 }) {
-  const { surahs, ayahs, truncated, tooShortForText } = results;
+  const { surahs, ayahs, truncated, tooShortForText, notReady } = results;
   const nothing = surahs.length === 0 && ayahs.length === 0;
 
   if (nothing) {
     return (
       <p style={{
-        textAlign: 'center', padding: '48px 16px',
-        fontSize: '14px', color: 'var(--text-tertiary)', lineHeight: 1.6,
+        textAlign: 'center',
+        padding: 'calc(var(--space-section) * 2) var(--space-margin)',
+        fontSize: 'var(--font-subhead)',
+        lineHeight: 'var(--leading-subhead)',
+        color: 'var(--text-tertiary)',
       }}>
-        {tooShortForText
-          ? 'Введите хотя бы три буквы, чтобы искать по переводу'
-          : 'Ничего не найдено'}
+        {notReady
+          ? 'Готовим перевод…'
+          : tooShortForText
+            ? 'Введите хотя бы три буквы, чтобы искать по переводу'
+            : 'Ничего не найдено'}
       </p>
     );
   }
@@ -442,8 +505,10 @@ function SearchResults({ results, onOpen }: {
           ))}
           {truncated && (
             <p style={{
-              padding: '14px 6px 0', fontSize: '12px',
-              color: 'var(--text-tertiary)', lineHeight: 1.5,
+              padding: 'var(--space-cozy) var(--space-hair) 0',
+              fontSize: 'var(--font-caption1)',
+              lineHeight: 'var(--leading-caption1)',
+              color: 'var(--text-tertiary)',
             }}>
               Показаны первые {ayahs.length}. Уточните запрос, чтобы
               совпадений стало меньше.
@@ -454,8 +519,10 @@ function SearchResults({ results, onOpen }: {
 
       {tooShortForText && surahs.length > 0 && (
         <p style={{
-          padding: '18px 6px 0', fontSize: '12px',
-          color: 'var(--text-tertiary)', lineHeight: 1.5,
+          padding: 'var(--space-margin) var(--space-hair) 0',
+          fontSize: 'var(--font-caption1)',
+          lineHeight: 'var(--leading-caption1)',
+          color: 'var(--text-tertiary)',
         }}>
           Для поиска по переводу введите хотя бы три буквы.
         </p>
@@ -476,21 +543,24 @@ function AyahHitRow({ hit, onClick }: { hit: AyahHit; onClick: () => void }) {
       onPointerCancel={() => setPressed(false)}
       style={{
         display: 'block', width: '100%', textAlign: 'left',
-        padding: '12px 6px',
+        padding: 'var(--space-cozy) var(--space-hair)',
         border: 'none',
         borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
         background: pressed
           ? 'color-mix(in srgb, var(--ink) 5%, transparent)'
           : 'transparent',
         cursor: 'pointer', fontFamily: 'inherit', color: 'inherit',
-        transition: 'background 120ms ease',
+        transition: 'background var(--dur-fast) var(--ease-standard)',
       }}
     >
       <span style={{
-        display: 'inline-block', marginBottom: '6px',
-        padding: '3px 9px', borderRadius: '9999px',
+        display: 'inline-block', marginBottom: 'var(--space-snug)',
+        padding: 'var(--space-tight) var(--space-snug)',
+        borderRadius: 'var(--radius-pill)',
         border: '1px solid var(--hairline)',
-        fontSize: '11px', fontWeight: 500, lineHeight: 1,
+        fontSize: 'var(--font-caption2)',
+        fontWeight: 'var(--weight-regular)',
+        lineHeight: 1,
         color: 'var(--text-tertiary)',
         fontVariantNumeric: 'tabular-nums',
       }}>
@@ -498,20 +568,26 @@ function AyahHitRow({ hit, onClick }: { hit: AyahHit; onClick: () => void }) {
       </span>
       <span style={{
         display: 'block',
-        fontSize: '14px', lineHeight: 1.5,
+        fontSize: 'var(--font-subhead)',
+        lineHeight: 'var(--leading-subhead)',
         color: 'var(--text-secondary)',
-        letterSpacing: '-0.005em',
+        letterSpacing: 'var(--tracking-tight)',
       }}>
         {s.before}
         {/* Подсветка совпадения — фоном, а не цветом текста: цвет уже
             занят под караоке-подсветку в чтении, и два разных смысла
-            одного приёма путали бы. */}
+            одного приёма путали бы.
+
+            Скругление 3px намеренно вне шкалы радиусов: она начинается
+            с --radius-chip (8px), а это не плашка, а подложка под два-три
+            слова внутри строки — на восьми пикселях она превращается в
+            капсулу и рвёт строку на куски. */}
         <mark style={{
           background: 'color-mix(in srgb, var(--ink) 14%, transparent)',
           color: 'var(--text-primary)',
           borderRadius: '3px',
-          padding: '0 2px',
-          fontWeight: 600,
+          padding: '0 var(--space-hair)',
+          fontWeight: 'var(--weight-semibold)',
         }}>
           {s.match}
         </mark>

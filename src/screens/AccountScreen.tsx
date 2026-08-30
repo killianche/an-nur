@@ -28,13 +28,21 @@
  * правообладатель, контактный e-mail и публичный URL документов для
  * App Store Connect.  Они перечислены в STATUS.md как блокеры релиза, и
  * подставлять сюда выдуманный e-mail нельзя — он попадёт в магазин.
+ *
+ * ── Типографика ───────────────────────────────────────────────────────
+ *
+ * Кегли, веса, радиусы и отступы берутся из шкалы в src/index.css —
+ * своих чисел экран не заводит.  Заголовок «Аккаунт» набран той же
+ * формой, что и «Коран» в SurahPicker: это корневой экран вкладки, а не
+ * панель с кнопкой «назад».
  */
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  Appearance, ChevronRight, Document, Person, Trash,
+  Appearance, ChevronRight, Document, ICON_SIZE, Person, Trash,
 } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
+import { FullQuranAudioManager } from '../components/OfflineAudioCard';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
 import { THEME_LABELS } from '../hooks/useTheme';
@@ -46,6 +54,22 @@ import type { DocumentId } from './DocumentScreen';
 
 /** Версия из package.json, подставляется при сборке (см. vite.config.ts). */
 declare const __APP_VERSION__: string;
+
+/**
+ * Единственная форма капс-подзаголовка на экране.
+ *
+ * В шкале нет трекинга для прописных: `--tracking-loose` (0.01em)
+ * рассчитан на мелкий СТРОЧНЫЙ текст — им набрана подпись в
+ * ScreenHeader.  На капсе 11px такой разряд слипается, поэтому значение
+ * задано явно и ровно одно на весь файл.
+ */
+const CAP_LABEL: React.CSSProperties = {
+  fontSize: 'var(--font-caption2)',
+  lineHeight: 'var(--leading-caption2)',
+  fontWeight: 'var(--weight-semibold)',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+};
 
 type Props = {
   theme: Theme;
@@ -73,7 +97,7 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
       minHeight: '100dvh',
       maxWidth: 'min(100%, 720px)',
       margin: '0 auto',
-      padding: `0 16px calc(${TAB_BAR_HEIGHT}px + 28px + env(safe-area-inset-bottom))`,
+      padding: `0 var(--space-margin) calc(${TAB_BAR_HEIGHT}px + var(--space-section) + env(safe-area-inset-bottom))`,
       position: 'relative',
       zIndex: 1,
     }}>
@@ -86,13 +110,13 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
       )}
 
       <header style={{
-        display: 'flex', alignItems: 'center', gap: '10px',
-        paddingTop: 'calc(env(safe-area-inset-top) + 18px)',
-        paddingBottom: '18px',
+        display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+        paddingTop: 'calc(env(safe-area-inset-top) + var(--space-margin))',
+        paddingBottom: 'var(--space-margin)',
       }}>
         <h1 className="display-serif" style={{
           margin: 0, flex: 1, minWidth: 0,
-          fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 400,
+          fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 'var(--weight-regular)',
           letterSpacing: '-0.03em', color: 'var(--text-primary)', lineHeight: 1.05,
         }}>
           Аккаунт
@@ -103,37 +127,38 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
           aria-label="Оформление" title="Оформление"
           className="icon-btn" data-active={themeOpen}
           style={{
-            width: '42px', height: '42px', flexShrink: 0, borderRadius: '12px',
+            width: '42px', height: '42px', flexShrink: 0,
+            borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
             color: themeOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
-          <Appearance size={19} />
+          <Appearance size={ICON_SIZE.md} />
         </button>
       </header>
 
       {/* ── Имя ──────────────────────────────────────────────────────── */}
       <Card>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '14px',
-          padding: '16px 16px 14px',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
+          padding: 'var(--space-margin) var(--space-margin) var(--space-cozy)',
         }}>
           <span style={{
             flexShrink: 0,
-            width: '52px', height: '52px', borderRadius: '9999px',
+            width: '52px', height: '52px', borderRadius: 'var(--radius-pill)',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
             color: 'var(--text-secondary)',
           }}>
-            <Person size={24} />
+            <Person size={ICON_SIZE.lg} />
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <label style={{
-              display: 'block', marginBottom: '5px',
-              fontSize: '10px', fontWeight: 600, letterSpacing: '0.10em',
-              textTransform: 'uppercase', color: 'var(--text-tertiary)',
+              ...CAP_LABEL,
+              display: 'block', marginBottom: 'var(--space-tight)',
+              color: 'var(--text-tertiary)',
             }}>
               Имя
             </label>
@@ -147,8 +172,11 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
                 width: '100%', minHeight: '30px',
                 border: 'none', background: 'transparent',
                 color: 'var(--text-primary)',
-                fontFamily: 'inherit', fontSize: '16.5px', fontWeight: 500,
-                letterSpacing: '-0.01em', padding: 0,
+                fontFamily: 'inherit',
+                fontSize: 'var(--font-body)',
+                lineHeight: 'var(--leading-body)',
+                fontWeight: 'var(--weight-regular)',
+                letterSpacing: 'var(--tracking-tight)', padding: 0,
                 outline: 'none',
               }}
             />
@@ -175,17 +203,23 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
         </Hint>
       </Card>
 
+      {/* ── Полные записи чтецов ─────────────────────────────────────── */}
+      <SectionTitle>Офлайн-аудио</SectionTitle>
+      <Card>
+        <FullQuranAudioManager />
+      </Card>
+
       {/* ── Документы ────────────────────────────────────────────────── */}
       <SectionTitle>Документы</SectionTitle>
       <Card>
         <Row
-          icon={<Document size={18} />}
+          icon={<Document size={ICON_SIZE.md} />}
           label="Политика конфиденциальности"
           onClick={() => onOpenDocument('privacy')}
         />
         <Divider />
         <Row
-          icon={<Document size={18} />}
+          icon={<Document size={ICON_SIZE.md} />}
           label="Условия использования"
           onClick={() => onOpenDocument('terms')}
         />
@@ -200,17 +234,23 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
             <button
               onClick={() => setWipeArmed(v => !v)}
               style={{
-                display: 'flex', alignItems: 'center', gap: '10px',
-                width: '100%', minHeight: '50px', padding: '10px 16px',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+                width: '100%', minHeight: '50px',
+                padding: 'var(--space-snug) var(--space-margin)',
                 border: 'none', background: 'transparent',
                 color: 'var(--danger)', cursor: 'pointer',
-                fontFamily: 'inherit', fontSize: '15px', textAlign: 'left',
+                fontFamily: 'inherit',
+                fontSize: 'var(--font-subhead)',
+                lineHeight: 'var(--leading-subhead)',
+                textAlign: 'left',
               }}
             >
-              <Trash size={18} />
+              <Trash size={ICON_SIZE.md} />
               <span style={{ flex: 1 }}>Удалить мои данные</span>
               <span style={{
-                fontSize: '13px', color: 'var(--text-tertiary)',
+                fontSize: 'var(--font-footnote)',
+                lineHeight: 'var(--leading-footnote)',
+                color: 'var(--text-tertiary)',
                 fontVariantNumeric: 'tabular-nums',
               }}>
                 {stored}
@@ -224,26 +264,32 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
             */}
             {wipeArmed && (
               <div style={{
-                padding: '0 16px 14px',
-                animation: 'card-in 0.2s ease both',
+                padding: '0 var(--space-margin) var(--space-cozy)',
+                animation: 'card-in var(--dur-base) var(--ease-standard) both',
               }}>
                 <p style={{
-                  margin: '0 0 12px', fontSize: '13px', lineHeight: 1.55,
+                  margin: '0 0 var(--space-cozy)',
+                  fontSize: 'var(--font-footnote)',
+                  lineHeight: 'var(--leading-footnote)',
                   color: 'var(--text-secondary)',
                 }}>
                   Удалятся имя, закладки, история чтения, список и скрытые
                   дуа, города намаза и все настройки текста. Отменить будет
-                  нельзя. Скачанное аудио останется — его убирают в
-                  настройках чтения.
+                  нельзя. Скачанное аудио останется — его можно удалить в
+                  разделе «Офлайн-аудио» выше.
                 </p>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: 'var(--space-snug)' }}>
                   <button
                     onClick={() => { setWiped(wipeLocalData()); setWipeArmed(false); }}
                     style={{
-                      flex: 1, minHeight: '44px', borderRadius: '12px',
+                      flex: 1, minHeight: 'var(--hit-min)',
+                      borderRadius: 'var(--radius-control)',
                       border: 'none', background: 'var(--danger)',
                       color: '#fff', cursor: 'pointer',
-                      fontFamily: 'inherit', fontSize: '14.5px', fontWeight: 600,
+                      fontFamily: 'inherit',
+                      fontSize: 'var(--font-subhead)',
+                      lineHeight: 'var(--leading-subhead)',
+                      fontWeight: 'var(--weight-semibold)',
                     }}
                   >
                     Удалить
@@ -251,10 +297,14 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
                   <button
                     onClick={() => setWipeArmed(false)}
                     style={{
-                      flex: 1, minHeight: '44px', borderRadius: '12px',
+                      flex: 1, minHeight: 'var(--hit-min)',
+                      borderRadius: 'var(--radius-control)',
                       border: '1px solid var(--hairline)', background: 'transparent',
                       color: 'var(--text-primary)', cursor: 'pointer',
-                      fontFamily: 'inherit', fontSize: '14.5px', fontWeight: 500,
+                      fontFamily: 'inherit',
+                      fontSize: 'var(--font-subhead)',
+                      lineHeight: 'var(--leading-subhead)',
+                      fontWeight: 'var(--weight-regular)',
                     }}
                   >
                     Отмена
@@ -264,15 +314,19 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
             )}
           </>
         ) : (
-          <div style={{ padding: '16px' }}>
+          <div style={{ padding: 'var(--space-margin)' }}>
             <p style={{
-              margin: 0, fontSize: '14.5px', lineHeight: 1.55,
+              margin: 0,
+              fontSize: 'var(--font-subhead)',
+              lineHeight: 'var(--leading-subhead)',
               color: 'var(--text-primary)',
             }}>
               Удалено записей: {wiped}.
             </p>
             <p style={{
-              margin: '6px 0 0', fontSize: '13px', lineHeight: 1.55,
+              margin: 'var(--space-snug) 0 0',
+              fontSize: 'var(--font-footnote)',
+              lineHeight: 'var(--leading-footnote)',
               color: 'var(--text-tertiary)',
             }}>
               Часть экранов покажет прежние значения, пока приложение не
@@ -303,9 +357,9 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <p style={{
-      margin: '22px 2px 8px',
-      fontSize: '10px', fontWeight: 600, letterSpacing: '0.10em',
-      textTransform: 'uppercase', color: 'var(--text-tertiary)',
+      ...CAP_LABEL,
+      margin: 'var(--space-section) var(--space-hair) var(--space-snug)',
+      color: 'var(--text-tertiary)',
     }}>
       {children}
     </p>
@@ -315,7 +369,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <section style={{
-      borderRadius: '18px',
+      borderRadius: 'var(--radius-card)',
       border: '1px solid var(--hairline)',
       background: `
         radial-gradient(120% 130% at 100% 0%,
@@ -335,7 +389,7 @@ function Divider() {
     <div
       aria-hidden
       style={{
-        height: '1px', marginLeft: '16px',
+        height: '1px', marginLeft: 'var(--space-margin)',
         background: 'color-mix(in srgb, var(--ink) 8%, transparent)',
       }}
     />
@@ -361,29 +415,35 @@ function Row({ icon, label, value, onClick }: {
       )}
       <span style={{
         flex: 1, minWidth: 0,
-        fontSize: '15px', color: 'var(--text-primary)',
+        fontSize: 'var(--font-subhead)',
+        lineHeight: 'var(--leading-subhead)',
+        color: 'var(--text-primary)',
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}>
         {label}
       </span>
       {value && (
         <span style={{
-          flexShrink: 0, fontSize: '14px', color: 'var(--text-tertiary)',
+          flexShrink: 0,
+          fontSize: 'var(--font-footnote)',
+          lineHeight: 'var(--leading-footnote)',
+          color: 'var(--text-tertiary)',
         }}>
           {value}
         </span>
       )}
       {onClick && (
         <span style={{ flexShrink: 0, display: 'inline-flex', color: 'var(--text-tertiary)' }}>
-          <ChevronRight size={15} />
+          <ChevronRight size={ICON_SIZE.sm} />
         </span>
       )}
     </>
   );
 
   const style: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: '10px',
-    width: '100%', minHeight: '50px', padding: '10px 16px',
+    display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+    width: '100%', minHeight: '50px',
+    padding: 'var(--space-snug) var(--space-margin)',
     fontFamily: 'inherit', textAlign: 'left',
   };
 
@@ -402,8 +462,10 @@ function Row({ icon, label, value, onClick }: {
 function Hint({ children }: { children: React.ReactNode }) {
   return (
     <p style={{
-      margin: 0, padding: '0 16px 14px',
-      fontSize: '11.5px', lineHeight: 1.55, color: 'var(--text-tertiary)',
+      margin: 0, padding: '0 var(--space-margin) var(--space-cozy)',
+      fontSize: 'var(--font-caption1)',
+      lineHeight: 'var(--leading-caption1)',
+      color: 'var(--text-tertiary)',
     }}>
       {children}
     </p>

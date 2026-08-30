@@ -28,6 +28,12 @@
    кириллица и латиница: греческий и вьетнамский в приложении не
    встречаются.  unicode-range сохранён как у Google — браузер
    качает подсет только когда на странице реально есть его символы. */
+/* Inter здесь — ОДИН вариативный файл на подсет, а не два начертания.
+   Комплекты «400» и «600» от Google побайтово идентичны: это один и тот же
+   вариативный шрифт (в нём есть fvar/HVAR/STAT), а нужный вес задаёт
+   дескриптор font-weight у @font-face. Раньше на оба веса стояли отдельные
+   URL, и устройство скачивало одни и те же 174 КБ дважды. Файлы
+   Inter-600-*.woff2 удалены как дубликаты. */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -65,7 +71,7 @@
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url('/latin-fonts/inter/Inter-600-cyrillic-ext.woff2') format('woff2');
+  src: url('/latin-fonts/inter/Inter-400-cyrillic-ext.woff2') format('woff2');
   unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
 }
 @font-face {
@@ -73,7 +79,7 @@
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url('/latin-fonts/inter/Inter-600-cyrillic.woff2') format('woff2');
+  src: url('/latin-fonts/inter/Inter-400-cyrillic.woff2') format('woff2');
   unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
 }
 @font-face {
@@ -81,7 +87,7 @@
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url('/latin-fonts/inter/Inter-600-latin-ext.woff2') format('woff2');
+  src: url('/latin-fonts/inter/Inter-400-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
@@ -89,7 +95,7 @@
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url('/latin-fonts/inter/Inter-600-latin.woff2') format('woff2');
+  src: url('/latin-fonts/inter/Inter-400-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -188,15 +194,16 @@
 /* ─── Design tokens ─────────────────────────────────────────── */
 
 /*
- * Три темы, по одной на режим:
+ * Пять самостоятельных тем:
  *   light   — чистая белая бумага, чёрные чернила
- *   dark    — мягкий графит, тёплый off-white текст
- *   aurora  — чёрная канва + слой звёзд и сияния (CosmicLayer)
+ *   dark    — чистая чёрная канва, нейтральные почти чёрные панели
+ *   aurora  — светло-бежевый фон с редкой сеткой точек
+ *   aurora2 — чёрная канва + сияние (CosmicLayer)
  *
  * В QuranIng тем было двенадцать плюс одиннадцать пресетов, бумажные
  * паттерны и фото-обои.  Здесь всё это снято: тема = один
  * самодостаточный набор переменных.  Единственный дополнительный
- * слой — аврора, и она рисуется компонентом, а не CSS-фоном.
+ * дополнительный слой — «Аврора 2», и он рисуется компонентом.
  *
  * :root дублирует light, чтобы у страницы были валидные токены
  * до того, как useTheme проставит data-theme на <html>.
@@ -227,15 +234,15 @@
   --danger-soft: rgba(215, 0, 21, 0.10);
 }
 
-/* Мягкий графит, а не чистый чёрный: на чистом #000 белый текст даёт
-   резкий контраст и тонкие штрихи арабской каллиграфии «звенят» при
-   скролле.  #1a1a1c — та самая тёмная тема, что была дефолтной в
-   QuranIng. */
+/* Чёрная тема без синего или графитового оттенка. Канва — настоящий #000,
+   поэтому весь свободный фон и iOS scroll-bounce остаются чёрными. Панели
+   отделяются только небольшими нейтральными ступенями яркости; текст оставлен
+   мягким off-white, чтобы арабская каллиграфия не мерцала при скролле. */
 [data-theme="dark"] {
-  --canvas:        #1a1a1c;
-  --canvas-soft:   #232326;
-  --surface:       #232326;
-  --surface-strong:#2c2c30;
+  --canvas:        #000000;
+  --canvas-soft:   #050505;
+  --surface:       #0a0a0a;
+  --surface-strong:#141414;
 
   --ink:           #ececec;
   --ink-soft:      #d4d4d4;
@@ -243,21 +250,20 @@
   --muted:         #828287;
   --muted-soft:    #5e5e62;
 
-  --hairline:        #2e2e32;
-  --hairline-soft:   #26262a;
-  --hairline-strong: #3a3a3f;
+  --hairline:        #202020;
+  --hairline-soft:   #151515;
+  --hairline-strong: #333333;
 
   --danger:      #ff453a;
   --danger-soft: rgba(255, 69, 58, 0.14);
 }
 
-/* Аврора — канва держится чисто чёрной: поверх неё <CosmicLayer>
+/* «Аврора 2» — канва держится чисто чёрной: поверх неё <CosmicLayer>
    аддитивно кладёт звёзды и сияние, и любой не-чёрный субстрат
    замутнял бы свечение.  Чёрный ещё и правильно ведёт себя при
    scroll-bounce в iOS Safari — за краем вьюпорта не мелькает полоса
    другого цвета.  Поверхности карточек уводим в тёплый графит, чтобы
    они читались как панели над пустотой. */
-[data-theme="aurora"],
 [data-theme="aurora2"] {
   --canvas:        #000000;
   --canvas-soft:   #08080b;
@@ -276,6 +282,30 @@
 
   --danger:      #ff453a;
   --danger-soft: rgba(255, 69, 58, 0.14);
+}
+
+/* «Бежевая» заменила прежнюю первую «Аврору». Рисунок точек лежит на
+   общей оболочке экрана (App/Shell), а здесь хранится её светлая тёплая
+   палитра. Внутренний id `aurora` сохранён для бесшовной миграции уже
+   установленного iOS-приложения. */
+[data-theme="aurora"] {
+  --canvas:        #f7f4ec;
+  --canvas-soft:   #f2eee4;
+  --surface:       #f7f4ec;
+  --surface-strong:#ebe5d8;
+
+  --ink:           #1f1b17;
+  --ink-soft:      #332d27;
+  --body:          #4d463d;
+  --muted:         #756d62;
+  --muted-soft:    #a39b90;
+
+  --hairline:        #ded7ca;
+  --hairline-soft:   #ebe6dc;
+  --hairline-strong: #c8beae;
+
+  --danger:      #d70015;
+  --danger-soft: rgba(215, 0, 21, 0.10);
 }
 
 /* «Мусхаф» — разворот печатного Корана.
@@ -325,6 +355,12 @@
   --accent:         var(--ink-soft);
   --accent-dim:     color-mix(in srgb, var(--ink) 16%, transparent);
 
+  /* Подложка целого аята для чтецов без пословных таймингов. Цвет
+     спокойный и самостоятельный: это навигационный сигнал, а не ещё
+     один цвет таджвида. Значения ниже адаптируются к каждой канве. */
+  --ayah-audio-fill: rgba(22, 101, 78, 0.095);
+  --ayah-audio-halo: rgba(22, 101, 78, 0.07);
+
   /* QCF V4 Mushaf page tokens */
   --mushaf-bg:     var(--surface);
   --qcf-text:      var(--ink);
@@ -346,18 +382,200 @@
   --gold-soft: #8d7220;
 }
 
+/* ─── Метрика: типографика, геометрия, время ──────────────────────────────
+ *
+ * Цветовые токены выше отвечают на вопрос «каким цветом», этот блок — на
+ * «какого размера», «насколько скруглено» и «как быстро».  До него в
+ * вёрстке жило 23 кегля (восемь из них с половинным пикселем), 24 радиуса
+ * и 24 межстрочных интервала: каждый экран назначал их на глаз, и одна и
+ * та же роль (подпись под иконкой, мелкая строка в шапке) на разных
+ * экранах получала разный размер.
+ *
+ * ── Кегли ────────────────────────────────────────────────────────────
+ * Ступени iOS Dynamic Type на дефолтном шаге Large (HIG → Typography →
+ * Specifications).  Пары «кегль / межстрочный» перенесены целиком, а не
+ * пересчитаны одним множителем: у Apple отношение плавает от 1.21 на
+ * крупных ступенях до 1.38 на мелких — крупный текст живёт плотнее.
+ * Базовый кегль системы — 17 (Body), минимальный допустимый — 11
+ * (Caption 2); ничего мельче в интерфейсе быть не должно.
+ *
+ * ── Начертания ───────────────────────────────────────────────────────
+ * Локально подключены ровно два подсета Inter: 400 и 600.  Всё, что
+ * между ними (500, 650 и прочая самодеятельность), браузер сводит к
+ * ближайшему доступному — то есть к тем же 400 и 600, только менее
+ * предсказуемо.  Apple отдельно просит не уходить легче Regular.
+ *
+ * ── Радиусы, отступы ─────────────────────────────────────────────────
+ * Пять ступеней радиуса и шесть отступа, названы по роли, а не по числу:
+ * значение можно будет поправить в одном месте, не переименовывая токен.
+ * 16 — системное поле экрана в iOS, от него шкала отступов и строится.
+ *
+ * ── Время ────────────────────────────────────────────────────────────
+ * Три длительности и две кривые.  `--ease-panel` — кривая выезда
+ * системных панелей iOS (резкий старт, длинное затухание), `--ease-standard`
+ * — для смены цвета и фона, где важна ровность, а не «пружина».
+ *
+ * ── Материал ─────────────────────────────────────────────────────────
+ * Одно значение размытия на всю навигацию.  Apple просит применять
+ * размытие экономно и не собирать «стекло» вручную: чем шире радиус, тем
+ * дороже каждый кадр прокрутки в WKWebView, а разницу между 16 и 32
+ * пикселями на полупрозрачной панели глазом не поймать.
+ */
+:root {
+  /* Кегль и межстрочный — ступени iOS Dynamic Type, шаг Large */
+  --font-largetitle: 34px;  --leading-largetitle: 41px;  /* Large Title */
+  --font-title1:     28px;  --leading-title1:     34px;  /* Title 1 */
+  --font-title2:     22px;  --leading-title2:     28px;  /* Title 2 */
+  --font-title3:     20px;  --leading-title3:     25px;  /* Title 3 */
+  --font-headline:   17px;  --leading-headline:   22px;  /* Headline, semibold */
+  --font-body:       17px;  --leading-body:       22px;  /* Body — базовый кегль */
+  --font-callout:    16px;  --leading-callout:    21px;  /* Callout */
+  --font-subhead:    15px;  --leading-subhead:    20px;  /* Subhead */
+  --font-footnote:   13px;  --leading-footnote:   18px;  /* Footnote */
+  --font-caption1:   12px;  --leading-caption1:   16px;  /* Caption 1 */
+  --font-caption2:   11px;  --leading-caption2:   13px;  /* Caption 2 — минимум */
+
+  /* Начертания: подключены только эти два подсета Inter */
+  --weight-regular:  400;
+  --weight-semibold: 600;
+
+  /* Трекинг: крупному тексту его поджимают, мелкому — распускают */
+  --tracking-tight: -0.01em;
+  --tracking-loose:  0.01em;
+
+  /* Радиусы — по роли элемента */
+  --radius-chip:    8px;    /* мелкая плашка, счётчик, скелет */
+  --radius-control: 12px;   /* одиночная кнопка, поле */
+  --radius-card:    16px;   /* карточка, встроенный плеер */
+  --radius-shell:   20px;   /* обойма из нескольких контролов */
+  --radius-pill:    9999px; /* капсула и любая дорожка-хайрлайн */
+
+  /* Отступы — 16 это системное поле экрана iOS */
+  --space-hair:    2px;   /* зазор внутри одного элемента */
+  --space-tight:   4px;   /* между соседними контролами */
+  --space-snug:    8px;   /* внутреннее поле контрола */
+  --space-cozy:   12px;   /* внутреннее поле панели */
+  --space-margin: 16px;   /* поле экрана */
+  --space-section:24px;   /* между смысловыми блоками */
+
+  /* Время */
+  --dur-fast: 120ms;  /* смена цвета, фона, нажатие */
+  --dur-base: 180ms;  /* появление и уход панели */
+  --dur-slow: 300ms;  /* нижний лист, крупное перемещение */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-panel:    cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Материал навигации */
+  --blur-chrome:     16px;
+  --saturate-chrome: 180%;
+
+  /* Иконки и зона касания.  44 — рекомендованный Apple минимум. */
+  --icon-nav:  24px;  /* глиф в шапке */
+  --icon-tab:  28px;  /* глиф во вкладке */
+  --icon-dock: 22px;  /* глиф в плеере */
+  --hit-min:   44px;
+}
+
+/* QPC V4 Tajweed uses COLR/CPAL on iOS and every other supported engine.
+   The active palette owns both the neutral ink and the coloured rules.
+   Explicit text colour remains a safe monochrome fallback if a platform
+   cannot render the colour tables at all. */
+.tajweed-theme-ink {
+  color: var(--text-primary);
+}
+
 /* На светлой бумаге приглушённое золото сливается с фоном — берём тон
    темнее, как в печатных изданиях с золотой краской по белому. */
 [data-theme="light"],
+[data-theme="aurora"],
 [data-theme="mushaf"] {
   --gold:      #a4841c;
   --gold-soft: #6f5a13;
 }
 
 [data-theme="dark"],
-[data-theme="aurora"],
 [data-theme="aurora2"] {
   --qcf-active: #4ade80;
+}
+
+[data-theme="dark"] {
+  --ayah-audio-fill: rgba(110, 231, 183, 0.12);
+  --ayah-audio-halo: rgba(52, 211, 153, 0.075);
+}
+
+[data-theme="aurora"] {
+  --ayah-audio-fill: rgba(166, 122, 58, 0.14);
+  --ayah-audio-halo: rgba(166, 122, 58, 0.08);
+}
+
+[data-theme="aurora2"] {
+  --ayah-audio-fill: rgba(196, 181, 253, 0.14);
+  --ayah-audio-halo: rgba(167, 139, 250, 0.10);
+}
+
+/* ─── Выбранный аят в полноэкранном мусхафе ───────────────────────────
+   Без подчёркивания, рамки и затемнения остальной страницы. Только лёгкая
+   полупрозрачная подложка: внешний spread у box-shadow выводит её чуть
+   выше и ниже глифов, не меняя высоту фиксированной строки мусхафа. */
+.mushaf-page [data-verse-key] {
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+/* ─── Интерактивное перелистывание мусхафа ────────────────────────────
+   Текущая и две соседние страницы уже смонтированы. Во время жеста
+   меняется только одна CSS-переменная на контейнере, поэтому WebKit
+   композитит готовые слои и не пересобирает арабский текст. */
+.mushaf-page-track {
+  --mushaf-drag-x: 0px;
+  --mushaf-turn-duration: 0ms;
+  isolation: isolate;
+}
+
+.mushaf-page-layer {
+  transform: translate3d(
+    calc(var(--mushaf-page-offset, 0%) + var(--mushaf-drag-x, 0px)),
+    0,
+    0
+  );
+  transition: transform var(--mushaf-turn-duration) cubic-bezier(.22, 1, .36, 1);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.mushaf-page-layer[data-current] {
+  box-shadow: 0 0 22px color-mix(in srgb, var(--ink) 11%, transparent);
+}
+
+.mushaf-page [data-mushaf-selected] {
+  border-radius: 0.2em;
+  background: color-mix(in srgb, var(--gold) 15%, transparent) !important;
+  box-shadow:
+    0 0 0 0.11em color-mix(in srgb, var(--gold) 9%, transparent),
+    0 0.04em 0.42em color-mix(in srgb, var(--gold) 11%, transparent);
+}
+
+/* В страничном мусхафе аят может начаться и закончиться посреди строки,
+   поэтому подсвечиваем только принадлежащие ему цельные глифы. Небольшой
+   spread соединяет соседние слова в мягкую ленту, не закрашивая другой
+   аят на той же строке и не меняя печатную геометрию страницы. */
+.mushaf-page [data-mushaf-audio-active] {
+  border-radius: 0.28em;
+  background: var(--ayah-audio-fill) !important;
+  box-shadow:
+    0 0 0 0.12em var(--ayah-audio-fill),
+    0 0.05em 0.48em var(--ayah-audio-halo);
+}
+
+:root[style*="--highlight-disabled: 1"]
+  .mushaf-page [data-mushaf-audio-active] {
+  background: transparent !important;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mushaf-page [data-verse-key] { transition: none; }
 }
 
 
@@ -505,11 +723,13 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
-  border-radius: 12px;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+  border-radius: var(--radius-control);
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color      var(--dur-fast) var(--ease-standard),
+    transform  var(--dur-fast) var(--ease-standard);
   -webkit-tap-highlight-color: transparent;
 }
-.icon-btn:hover { background: var(--accent-dim); color: var(--text-primary); }
 .icon-btn:active { transform: scale(0.94); }
 .icon-btn[aria-pressed="true"], .icon-btn[data-active="true"] {
   color: var(--text-primary);
@@ -518,6 +738,88 @@ body {
   opacity: 0.4;
   cursor: not-allowed;
   background: transparent;
+}
+
+/* Навигационные панели iOS: крупная зона касания, единый rounded-набор
+   и короткая пружинная реакция. Материал живёт только в слое навигации. */
+.ios-header-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: var(--space-hair);
+  border: 0.5px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-radius: var(--radius-shell);
+  background: color-mix(in srgb, var(--surface-strong) 68%, transparent);
+  box-shadow: inset 0 0.5px 0 color-mix(in srgb, white 20%, transparent);
+}
+/* Единый размер глифа в шапке.
+   Правило выглядит как грубость — оно перебивает проп `size` у иконки, —
+   но снимать его нельзя, пока размер приходит с места вызова: экраны
+   передают кто 24, кто 20, кнопка «назад» — 27, и один и тот же по роли
+   значок оказывается на трёх экранах разного размера.  Здесь размер
+   принадлежит роли («глиф навигационной панели»), а не вызову. */
+.ios-header-button svg {
+  width: var(--icon-nav);
+  height: var(--icon-nav);
+}
+.ios-header-back {
+  border: 0.5px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 68%, transparent);
+  box-shadow: inset 0 0.5px 0 color-mix(in srgb, white 20%, transparent);
+}
+.ios-tab-item:active,
+.ios-header-button:active {
+  transform: scale(0.92);
+  opacity: 0.78;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .icon-btn:hover {
+    background: var(--accent-dim);
+    color: var(--text-primary);
+  }
+  .ios-tab-item:hover .ios-tab-icon {
+    background: color-mix(in srgb, var(--text-primary) 8%, transparent) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ios-tab-item,
+  .ios-tab-icon,
+  .ios-header-button {
+    transition: none !important;
+  }
+  /* Apple просит подменять перемещение затуханием, а не просто обрывать
+     анимацию: шапка перестаёт уезжать вверх и только гаснет на месте.
+     `transform` приходит инлайном из ScreenHeader, отсюда !important. */
+  .screen-header {
+    transform: none !important;
+    transition: opacity var(--dur-fast) linear !important;
+  }
+}
+
+/* Шапка экрана держит backdrop-filter, и постоянный will-change на том же
+   элементе заставлял WebKit вечно хранить отдельный композиторский слой с
+   размытием — плата за прокрутку, на которой ничего не анимируется.
+   Флаг ставит сама шапка на время перехода показа/скрытия. */
+.screen-header[data-animating="true"] {
+  will-change: transform, opacity;
+}
+
+/* Кнопки плеера: во встроенном мусхаф-варианте кружок 40×40 по рисунку,
+   а Apple просит не мельче 44×44 под палец.  Прозрачный «доводчик»
+   расширяет зону касания, не трогая видимый размер и фон нажатия. */
+.dock-btn {
+  position: relative;
+}
+.dock-btn::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--hit-min);
+  height: var(--hit-min);
+  transform: translate(-50%, -50%);
 }
 
 .icon-pill {
@@ -557,6 +859,52 @@ body {
   position: relative;
   padding: 14px 0;
   border-bottom: 1px solid var(--hairline);
+}
+
+/* Люхайдан и Аль-Аджми: точные границы аятов есть, пословных таймингов
+ * нет. Поэтому
+ * вместо выдуманного караоке мягко отмечаем весь арабский аят. Подложка
+ * лежит отдельным слоем и не меняет ни размер строки, ни переносы, ни
+ * позицию текста при автоматическом переходе. Цвет строится из токенов
+ * активной темы, поэтому одинаково читается на бумаге, тёмной и аврорах. */
+.arabic-ayah-audio-frame {
+  position: relative;
+  isolation: isolate;
+}
+
+.arabic-ayah-audio-frame::before {
+  content: '';
+  position: absolute;
+  inset: -0.34rem -0.55rem;
+  z-index: -1;
+  border-radius: 0.9rem;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--ayah-audio-fill) 7%,
+      var(--ayah-audio-fill) 93%,
+      transparent 100%
+    );
+  box-shadow: 0 0.18rem 0.85rem var(--ayah-audio-halo);
+  opacity: 0;
+  transform: scale(0.996) translateY(0.08rem);
+  transition: opacity 220ms ease, transform 240ms ease;
+  pointer-events: none;
+}
+
+.arabic-ayah-audio-frame[data-whole-ayah-active="true"]::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+:root[style*="--highlight-disabled: 1"]
+  .arabic-ayah-audio-frame[data-whole-ayah-active="true"]::before {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arabic-ayah-audio-frame::before { transition: none; }
 }
 
 /* ─── Range slider ──────────────────────────────────────────── */
@@ -633,15 +981,14 @@ body {
 /* ── 'color' mode ─────────────────────────────────────────────────────────
    Text recolour gated on data-highlight-style="color" so the rules don't
    leak into glow mode.  Светлая тема берёт глубокий '-color-light',
-   тёмная и аврора — более яркий '-color-dark', чтобы контраст держался
-   на обоих типах канвы.  «Аврора» перечислена явно: её имя не
-   начинается на "dark", хотя визуально она тёмная. */
+   тёмная и «Аврора 2» — более яркий '-color-dark', чтобы контраст
+   держался на обоих типах канвы. */
 [data-highlight-style="color"][data-theme="light"] [data-active-word],
+[data-highlight-style="color"][data-theme="aurora"] [data-active-word],
 [data-highlight-style="color"][data-theme="mushaf"] [data-active-word] {
   color: var(--ayah-word-color-light, #2563eb) !important;
 }
 [data-highlight-style="color"][data-theme="dark"] [data-active-word],
-[data-highlight-style="color"][data-theme="aurora"] [data-active-word],
 [data-highlight-style="color"][data-theme="aurora2"] [data-active-word] {
   color: var(--ayah-word-color-dark, #60a5fa) !important;
 }
@@ -662,6 +1009,38 @@ body {
   );
 }
 
+/* QCF V4 («Мусхаф») на iOS нельзя помещать в движущийся glow-слой и
+   одновременно перерисовывать большим text-shadow. WebKit растрирует
+   постраничный PUA-шрифт заново и на промежуточном кадре способен потерять
+   штрих, диакритику или знак остановки. Для этого шрифта подсветка живёт
+   только на фоне того же span: glyph/color/font-family остаются неизменными,
+   дополнительных transform/compositor-слоёв нет, геометрия строки не
+   меняется. Обычный Unicode и цветной таджвид сохраняют прежнее свечение. */
+[data-highlight-style="glow"] .qcf-ayah-line [data-ayah-glow] {
+  display: none !important;
+}
+
+[data-highlight-style="glow"] .qcf-word-glyph[data-active-word] {
+  color: var(--qcf-text, var(--text-primary)) !important;
+  text-shadow: none !important;
+  /* QCF нельзя подсвечивать text-shadow на iOS: WebKit теряет части
+     сложного глифа. Поэтому усиливаем только неподвижную подложку — она
+     теперь примерно в четыре раза контрастнее прежней, но не затрагивает
+     сам арабский знак и его геометрию. */
+  background: color-mix(in srgb, var(--qcf-active) 38%, transparent);
+  box-shadow:
+    0 0 0 0.10em color-mix(in srgb, var(--qcf-active) 24%, transparent),
+    0 0 0.68em color-mix(in srgb, var(--qcf-active) 32%, transparent);
+  border-radius: 0.3em;
+  transition: none !important;
+}
+
+:root[style*="--highlight-disabled: 1"]
+  .qcf-word-glyph[data-active-word] {
+  background: transparent;
+  box-shadow: none;
+}
+
 /* When the user disables the highlight entirely, both signals go away. */
 :root[style*="--highlight-disabled: 1"] [data-active-word] {
   color: inherit !important;
@@ -673,6 +1052,16 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   [data-active-word] { transition: none; }
+}
+
+@keyframes audio-spinner {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-audio-spinner] {
+    animation-duration: 1.5s !important;
+  }
 }
 
 /* ── Layer 2 — radial-gradient "dome" under the active word ───────────────
@@ -713,12 +1102,36 @@ body {
   100% { transform: translate3d(-50%, 0, 0); }
 }
 
-/* Живое свечение «Авроры» (дыхание рамки + бегущая по периметру
-   волна) снято по решению владельца: в читалке движение на периферии
-   через полчаса начинает мешать.  Кадры auroraBreath / auroraWave /
-   auroraSink и их медиазапрос — в истории git, коммит 2febe02. */
+/* Рамка дышит медленно и неглубоко: меняется только прозрачность уже
+   растеризованного слоя. Световая волна проходит по четырём кромкам за
+   34 секунды; её центр всегда остаётся за экраном, поэтому внутри не
+   появляется яркого пятна. Обе анимации compositor-only. */
+@keyframes auroraFrameBreathe {
+  0%, 100% { opacity: 0.72; }
+  50%      { opacity: 1; }
+}
+
+@keyframes auroraFrameOrbit {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0.20; }
+  25%  { transform: translate3d(100vw, 0, 0); opacity: 0.42; }
+  50%  { transform: translate3d(100vw, 100vh, 0); opacity: 0.24; }
+  75%  { transform: translate3d(0, 100vh, 0); opacity: 0.38; }
+  100% { transform: translate3d(0, 0, 0); opacity: 0.20; }
+}
+
+.aurora-frame-breathe {
+  animation: auroraFrameBreathe 11s ease-in-out infinite;
+  will-change: opacity;
+}
+
+.aurora-frame-wave {
+  animation: auroraFrameOrbit 34s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .aurora-drift { animation: none !important; }
+  .aurora-drift,
+  .aurora-frame-breathe,
+  .aurora-frame-wave { animation: none !important; }
 }
 
 /* ─── Reading-settings bottom sheet ────────────────────────────────────────
@@ -807,4 +1220,24 @@ body {
     from { opacity: 0; }
     to   { opacity: 1; }
   }
+}
+/* Короткая смена SPA-экранов без движения самого QCF-текста: opacity не
+   меняет его метрики и не провоцирует повторный shaping в WKWebView. */
+@keyframes app-screen-enter {
+  from { opacity: 0.72; }
+  to { opacity: 1; }
+}
+
+.app-screen-enter {
+  animation: app-screen-enter 150ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+/* Interactive edge-pop уже сам анимирует уходящий экран. На кадре подмены
+   DOM-preview реальным предыдущим экраном второй fade давал заметную вспышку. */
+[data-ios-edge-back-commit="true"] .app-screen-enter {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-screen-enter { animation: none; }
 }

@@ -96,7 +96,11 @@ export function useAyahGlow({
     // Color mode (or disabled): no measuring, no observers — release any
     // boxes we had so AyahGlowLayer renders nothing and React stays
     // tidy if the user toggles modes repeatedly.
-    if (mode === 'off') {
+    // Неактивный аят измерять не за что: свечение рисуется только у
+    // звучащего. Без этой проверки эффект работал у КАЖДОГО смонтированного
+    // аята — на Аль-Бакаре это 286 ResizeObserver и 286 capture-слушателей
+    // прокрутки, а на каждом кадре — 286 замеров контейнера и всех его слов.
+    if (mode === 'off' || !isActive) {
       if (boxes.length > 0) setBoxes([]);
       return;
     }
@@ -167,7 +171,7 @@ export function useAyahGlow({
     // boxes intentionally NOT in deps — we set it from inside, including
     // it would create a measure loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, containerRef, wordRefs, wordCount, fontSize]);
+  }, [mode, isActive, containerRef, wordRefs, wordCount, fontSize]);
 
   if (mode === 'off' || !isActive || activeWordPos == null) return null;
   const idx = activeWordPos - 1;

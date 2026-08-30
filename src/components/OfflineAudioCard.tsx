@@ -1,16 +1,9 @@
 /**
- * OfflineAudioCard — секция «Офлайн» в попапе настроек.
+ * OfflineAudioCard — загрузка только открытой суры в попапе чтения.
  *
- * Живёт рядом с выбором чтеца: скачанность — свойство чтеца, а не
- * отдельный раздел приложения, поэтому экрана «Загрузки» нет.
- *
- * Что показывает:
- *   • Когда открыт из экрана суры (`surahNumber` задан) — первой
- *     строкой идёт ЭТА сура с кнопкой скачать/удалить.  Человек,
- *     который её сейчас читает, чаще всего хочет именно её.
- *   • Дальше — строка на чтеца: сколько сур из 114 лежит целиком,
- *     сколько аятов всего, прогресс активного задания и одна кнопка
- *     действия.
+ * Полные загрузки по чтецам вынесены в AccountScreen через
+ * FullQuranAudioManager, чтобы настройки чтения не превращались в
+ * отдельный экран управления файлами.
  *
  * Состояние не в компоненте: задание выполняется в
  * lib/audioDownloads.ts и продолжается при закрытом попапе.  Здесь
@@ -22,7 +15,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { RECITERS, type ReciterId } from '../lib/reciters';
+import { RECITERS, reciterById, supportsAyahOffline, type ReciterId } from '../lib/reciters';
 import {
   TOTAL_AYAHS, TOTAL_SURAHS, downloadedCount, completeSurahCount,
   downloadedInSurah, isSurahComplete, isOfflineSupported,
@@ -37,7 +30,7 @@ import { optOutOfAutoDownload } from '../lib/audioAutoDownload';
 import { ayahsInSurah } from '../lib/ayahNumbering';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { settingCard, cardTitle } from './ReadingSettings';
-import { Download, Trash, CheckCircle, Pause } from './icons';
+import { Download, Trash, CheckCircle, Pause, ICON_SIZE } from './icons';
 
 /** Перерисовка на любое изменение реестра или прогресса задания. */
 function useDownloadsTick() {
@@ -51,56 +44,67 @@ function useDownloadsTick() {
 }
 
 export function OfflineAudioCard({ reciter, surahNumber }: {
-  /** Активный чтец — его строка идёт первой и подписана «сейчас». */
   reciter: ReciterId;
-  /** Открыто из экрана суры — тогда добавляем строку про неё. */
   surahNumber?: number;
 }) {
   useDownloadsTick();
   const supported = isOfflineSupported();
+  const activeSupportsOffline = supportsAyahOffline(reciter);
 
   return (
     <section style={{ ...settingCard, marginTop: '10px' }}>
       <p style={{ ...cardTitle, display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <Download size={13} />
-        Офлайн
+        <Download size={ICON_SIZE.sm} />
+        Скачать эту суру
       </p>
 
       {!supported ? (
         <p style={{
-          margin: 0, fontSize: '12px', lineHeight: 1.5,
+          margin: 0, fontSize: 'var(--font-caption1)', lineHeight: 1.5,
           color: 'var(--text-secondary)',
         }}>
-          В браузере чтение идёт стримом. Скачать суры на устройство
-          можно в приложении для iPhone и Android.
+          Скачивание доступно в приложении для iPhone.
         </p>
+      ) : surahNumber != null && activeSupportsOffline ? (
+        <SurahRow reciter={reciter} surah={surahNumber} />
       ) : (
-        <div style={{ display: 'grid', gap: '12px' }}>
-          {surahNumber != null && (
-            <SurahRow reciter={reciter} surah={surahNumber} />
-          )}
-
-          {RECITERS.map(r => (
-            <ReciterRow
-              key={r.id}
-              id={r.id}
-              label={r.label}
-              isCurrent={r.id === reciter}
-            />
-          ))}
-
-          <p style={{
-            margin: 0, fontSize: '11px', lineHeight: 1.45,
-            color: 'var(--text-tertiary)',
-          }}>
-            Аяты, которые вы слушаете, сохраняются сами. Полная запись
-            чтеца — примерно {formatBytes(estimateBytes(TOTAL_AYAHS))};
-            качать лучше по Wi-Fi, прервать и продолжить можно в любой
-            момент.
-          </p>
-        </div>
+        <p style={{ margin: 0, fontSize: 'var(--font-caption1)', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+          Для открытой суры загрузка недоступна.
+        </p>
       )}
     </section>
+  );
+}
+
+/** Управление полными записями Корана — отдельный раздел «Аккаунта». */
+export function FullQuranAudioManager() {
+  useDownloadsTick();
+
+  if (!isOfflineSupported()) {
+    return (
+      <p style={{ margin: 0, padding: '14px 16px', fontSize: 'var(--font-caption1)', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+        Полные записи можно скачать в приложении для iPhone.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      {RECITERS.filter(r => supportsAyahOffline(r.id)).map((r, index, list) => (
+        <div
+          key={r.id}
+          style={{
+            padding: '14px 16px',
+            borderBottom: index < list.length - 1 ? '1px solid var(--hairline)' : 'none',
+          }}
+        >
+          <ReciterRow id={r.id} label={r.label} />
+        </div>
+      ))}
+      <p style={{ margin: 0, padding: '0 16px 14px', fontSize: 'var(--font-caption2)', lineHeight: 1.5, color: 'var(--text-tertiary)' }}>
+        Здесь скачивается весь Коран выбранного чтеца. Отдельную суру можно скачать в настройках её чтения.
+      </p>
+    </div>
   );
 }
 
@@ -112,41 +116,42 @@ function SurahRow({ reciter, surah }: { reciter: ReciterId; surah: number }) {
   const have = downloadedInSurah(reciter, surah);
   const complete = isSurahComplete(reciter, surah);
   const st = getDownloadState(reciter);
-  const busyOnThis = st.status === 'running'
-    && st.scope?.kind === 'surah' && st.scope.surah === surah;
+  const running = st.status === 'running';
+  const busyOnThis = running && st.scope?.kind === 'surah' && st.scope.surah === surah;
 
   return (
     <div style={{
       display: 'grid', gap: '6px',
-      paddingBottom: '12px',
-      borderBottom: '1px solid var(--hairline)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <span style={{
           flex: 1, minWidth: 0,
-          fontSize: '12.5px', fontWeight: 500,
+          fontSize: 'var(--font-caption1)', fontWeight: 'var(--weight-regular)',
           color: 'var(--text-primary)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {meta?.transliteration ?? `Сура ${surah}`}
+          <span style={{ display: 'block', marginTop: '3px', fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-regular)', color: 'var(--text-tertiary)' }}>
+            {reciterById(reciter).label}
+          </span>
         </span>
 
         {complete ? (
           <ActionButton
-            label="Удалить"
-            icon={<Trash size={15} />}
+            label="Удалить с устройства"
+            icon={<Trash size={ICON_SIZE.sm} />}
             onClick={() => { void clearSurah(reciter, surah); }}
           />
-        ) : busyOnThis ? (
+        ) : running ? (
           <ActionButton
             label="Пауза"
-            icon={<Pause size={15} />}
+            icon={<Pause size={ICON_SIZE.sm} />}
             onClick={() => pauseDownload(reciter)}
           />
         ) : (
           <ActionButton
-            label={have > 0 ? 'Докачать' : 'Скачать'}
-            icon={<Download size={15} />}
+            label={have > 0 ? 'Докачать суру' : 'Скачать суру'}
+            icon={<Download size={ICON_SIZE.sm} />}
             onClick={() => { void startDownload(reciter, { kind: 'surah', surah }); }}
           />
         )}
@@ -157,7 +162,9 @@ function SurahRow({ reciter, surah }: { reciter: ReciterId; surah: number }) {
       <span style={meta_}>
         {complete
           ? 'Эта сура есть офлайн'
-          : `Эта сура — ${have} из ${total} аятов · ≈ ${formatBytes(estimateBytes(total - have))} осталось`}
+          : running && !busyOnThis
+          ? 'Для этого чтеца уже идёт другая загрузка. Управление — в разделе «Аккаунт».'
+          : `${have} из ${total} аятов · ≈ ${formatBytes(estimateBytes(reciter, total - have))} осталось`}
       </span>
     </div>
   );
@@ -165,8 +172,8 @@ function SurahRow({ reciter, surah }: { reciter: ReciterId; surah: number }) {
 
 // ─── Строка чтеца ───────────────────────────────────────────────────────
 
-function ReciterRow({ id, label, isCurrent }: {
-  id: ReciterId; label: string; isCurrent: boolean;
+function ReciterRow({ id, label }: {
+  id: ReciterId; label: string;
 }) {
   const have = downloadedCount(id);
   const suras = completeSurahCount(id);
@@ -182,32 +189,23 @@ function ReciterRow({ id, label, isCurrent }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <span style={{
           flex: 1, minWidth: 0,
-          fontSize: '12.5px', fontWeight: 500,
+          fontSize: 'var(--font-caption1)', fontWeight: 'var(--weight-regular)',
           color: 'var(--text-primary)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {label}
-          {isCurrent && (
-            <span style={{
-              marginLeft: '6px', fontSize: '10px', fontWeight: 600,
-              color: 'var(--text-tertiary)', letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-            }}>
-              сейчас
-            </span>
-          )}
         </span>
 
         {complete && !running && (
           <span aria-hidden style={{ display: 'inline-flex', color: 'var(--text-tertiary)' }}>
-            <CheckCircle size={15} />
+            <CheckCircle size={ICON_SIZE.sm} />
           </span>
         )}
 
         {complete ? (
           <ActionButton
             label="Удалить"
-            icon={<Trash size={15} />}
+            icon={<Trash size={ICON_SIZE.sm} />}
             onClick={() => {
               void clearReciter(id).then(() => resetDownloadState(id));
             }}
@@ -215,7 +213,7 @@ function ReciterRow({ id, label, isCurrent }: {
         ) : running ? (
           <ActionButton
             label="Пауза"
-            icon={<Pause size={15} />}
+            icon={<Pause size={ICON_SIZE.sm} />}
             onClick={() => {
               pauseDownload(id);
               // Ручная пауза = отказ от автозагрузки: раз человек
@@ -225,8 +223,8 @@ function ReciterRow({ id, label, isCurrent }: {
           />
         ) : (
           <ActionButton
-            label={have > 0 ? 'Докачать всё' : 'Скачать всё'}
-            icon={<Download size={15} />}
+            label={have > 0 ? 'Докачать' : 'Скачать весь Коран'}
+            icon={<Download size={ICON_SIZE.sm} />}
             onClick={() => { void startDownload(id, ALL); }}
           />
         )}
@@ -245,7 +243,7 @@ function ReciterRow({ id, label, isCurrent }: {
           : running
           ? `Качаю: ${st.done} из ${st.total} · ${formatBytes(st.bytes)}`
           : have > 0
-          ? `${suras} из ${TOTAL_SURAHS} сур целиком · ${have} аятов · ≈ ${formatBytes(estimateBytes(left))} осталось`
+          ? `${suras} из ${TOTAL_SURAHS} сур целиком · ${have} аятов · ≈ ${formatBytes(estimateBytes(id, left))} осталось`
           : 'Не скачано — играет стримом'}
       </span>
     </div>
@@ -255,7 +253,7 @@ function ReciterRow({ id, label, isCurrent }: {
 // ─── Мелочи ─────────────────────────────────────────────────────────────
 
 const meta_: React.CSSProperties = {
-  fontSize: '11px',
+  fontSize: 'var(--font-caption2)',
   color: 'var(--text-tertiary)',
   fontVariantNumeric: 'tabular-nums',
   lineHeight: 1.35,
@@ -277,7 +275,7 @@ function ActionButton({ label, icon, onClick }: {
         background: 'transparent',
         color: 'var(--text-primary)',
         cursor: 'pointer',
-        fontFamily: 'inherit', fontSize: '11.5px', fontWeight: 500,
+        fontFamily: 'inherit', fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-regular)',
       }}
     >
       {icon}

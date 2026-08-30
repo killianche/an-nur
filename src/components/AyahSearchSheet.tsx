@@ -22,7 +22,8 @@
 import { useState, useMemo, useRef, useEffect, useDeferredValue } from 'react';
 import { SettingsSheet } from './ReadingSettings';
 import { search, snippet, type AyahHit } from '../lib/search';
-import { Search, Close } from './icons';
+import { useQuranSources } from '../content/quran-sources-lazy';
+import { Search, Close, ICON_SIZE } from './icons';
 
 type Scope = 'surah' | 'all';
 
@@ -53,9 +54,14 @@ export function AyahSearchSheet({
   }, []);
 
   const deferred = useDeferredValue(query);
+  // Панель поиска открывается явным действием — словарь переводов тянем
+  // сразу при монтировании, не дожидаясь первой буквы.
+  const sourcesReady = useQuranSources(true) != null;
   const results = useMemo(
     () => search(deferred, scope === 'surah' ? { surah: surahNumber } : {}),
-    [deferred, scope, surahNumber],
+    // sourcesReady намеренно в зависимостях: выдачу надо пересчитать, когда
+    // словарь доехал, хотя сам запрос не менялся.
+    [deferred, scope, surahNumber, sourcesReady],
   );
 
   // Сколько нашлось бы во всём Коране — нужно, чтобы честно предложить
@@ -65,7 +71,7 @@ export function AyahSearchSheet({
     if (scope !== 'surah' || results.ayahs.length > 0) return 0;
     if (deferred.trim().length < 3) return 0;
     return search(deferred).ayahs.length;
-  }, [deferred, scope, results.ayahs.length]);
+  }, [deferred, scope, results.ayahs.length, sourcesReady]);
 
   const searching = query.trim().length > 0;
 
@@ -81,7 +87,7 @@ export function AyahSearchSheet({
         marginBottom: '12px',
       }}>
         <span aria-hidden style={{ color: 'var(--text-tertiary)', display: 'inline-flex', flexShrink: 0 }}>
-          <Search size={17} />
+          <Search size={ICON_SIZE.md} />
         </span>
         <input
           ref={inputRef}
@@ -94,7 +100,7 @@ export function AyahSearchSheet({
             flex: 1, minWidth: 0,
             border: 'none', outline: 'none', background: 'transparent',
             color: 'var(--text-primary)',
-            fontFamily: 'inherit', fontSize: '15px',
+            fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
           }}
         />
         {query && (
@@ -104,7 +110,7 @@ export function AyahSearchSheet({
             className="icon-btn"
             style={{ width: '28px', height: '28px', flexShrink: 0, color: 'var(--text-tertiary)' }}
           >
-            <Close size={15} />
+            <Close size={ICON_SIZE.sm} />
           </button>
         )}
       </div>
@@ -140,7 +146,7 @@ export function AyahSearchSheet({
               boxShadow: scope === t.id ? 'inset 0 0 0 1px var(--hairline)' : 'none',
               color: scope === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
               cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: '13px',
+              fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
               fontWeight: scope === t.id ? 600 : 500,
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               transition: 'background 140ms ease, color 140ms ease',
@@ -154,7 +160,7 @@ export function AyahSearchSheet({
       {/* Результаты */}
       {!searching && (
         <p style={{
-          padding: '18px 4px 6px', fontSize: '13px', lineHeight: 1.55,
+          padding: '18px 4px 6px', fontSize: 'var(--font-footnote)', lineHeight: 1.55,
           color: 'var(--text-tertiary)',
         }}>
           Найдёт аят по любому слову из перевода Кулиева.
@@ -162,14 +168,20 @@ export function AyahSearchSheet({
       )}
 
       {searching && results.tooShortForText && (
-        <p style={{ padding: '18px 4px 6px', fontSize: '13px', color: 'var(--text-tertiary)' }}>
+        <p style={{ padding: '18px 4px 6px', fontSize: 'var(--font-footnote)', color: 'var(--text-tertiary)' }}>
           Введите хотя бы три буквы.
         </p>
       )}
 
-      {searching && !results.tooShortForText && results.ayahs.length === 0 && (
+      {searching && results.notReady && (
+        <p style={{ padding: '18px 4px 6px', fontSize: 'var(--font-footnote)', color: 'var(--text-tertiary)' }}>
+          Готовим перевод…
+        </p>
+      )}
+
+      {searching && !results.notReady && !results.tooShortForText && results.ayahs.length === 0 && (
         <div style={{ padding: '18px 4px 6px' }}>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-tertiary)', lineHeight: 1.55 }}>
+          <p style={{ margin: 0, fontSize: 'var(--font-footnote)', color: 'var(--text-tertiary)', lineHeight: 1.55 }}>
             {scope === 'surah'
               ? `В суре «${surahTitle}» ничего не найдено.`
               : 'Ничего не найдено.'}
@@ -183,7 +195,7 @@ export function AyahSearchSheet({
                 border: '1px solid var(--hairline)',
                 background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
                 color: 'var(--text-primary)',
-                cursor: 'pointer', fontFamily: 'inherit', fontSize: '13px', fontWeight: 500,
+                cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--font-footnote)', fontWeight: 'var(--weight-regular)',
               }}
             >
               Искать во всём Коране — {allCount}
@@ -196,7 +208,7 @@ export function AyahSearchSheet({
         <div>
           <p style={{
             margin: '0 0 6px', padding: '0 4px',
-            fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.14em',
+            fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-semibold)', letterSpacing: '0.14em',
             textTransform: 'uppercase', color: 'var(--text-tertiary)',
           }}>
             Найдено · {results.ayahs.length}{results.truncated ? '+' : ''}
@@ -247,7 +259,7 @@ function HitRow({ hit, sameSurah, onClick }: {
         display: 'inline-block', marginBottom: '5px',
         padding: '3px 8px', borderRadius: '9999px',
         border: '1px solid var(--hairline)',
-        fontSize: '11px', fontWeight: 500, lineHeight: 1,
+        fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-regular)', lineHeight: 1,
         color: 'var(--text-tertiary)',
         fontVariantNumeric: 'tabular-nums',
       }}>
@@ -256,14 +268,14 @@ function HitRow({ hit, sameSurah, onClick }: {
       </span>
       <span style={{
         display: 'block',
-        fontSize: '13.5px', lineHeight: 1.5,
+        fontSize: 'var(--font-footnote)', lineHeight: 1.5,
         color: 'var(--text-secondary)',
       }}>
         {s.before}
         <mark style={{
           background: 'color-mix(in srgb, var(--ink) 14%, transparent)',
           color: 'var(--text-primary)',
-          borderRadius: '3px', padding: '0 2px', fontWeight: 600,
+          borderRadius: '3px', padding: '0 2px', fontWeight: 'var(--weight-semibold)',
         }}>
           {s.match}
         </mark>

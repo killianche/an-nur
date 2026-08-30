@@ -39,24 +39,33 @@
  * квадратов вместо слов Корана.
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo, memo, type ReactNode } from 'react';
-import { QURAN_SOURCES } from '../content/quran-sources';
+import {
+  useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, memo,
+  type ReactNode, type PointerEvent as ReactPointerEvent,
+} from 'react';
+import { useQuranSources } from '../content/quran-sources-lazy';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { useAyahAudio } from '../hooks/useAyahAudio';
-import { useQcfAyahFeed } from '../hooks/useQcfAyahFeed';
+import { useQcfAyahFeed, type QcfAyahEntry } from '../hooks/useQcfAyahFeed';
 import { useQcfFont, preloadQcfFonts } from '../hooks/useQcfFont';
 import { ensurePage } from '../hooks/useQcfPage';
+import { preloadTajweedPage, useTajweedPage } from '../hooks/useTajweedPage';
+import {
+  getTajweedFontStatus,
+  preloadTajweedFont,
+  TAJWEED_FONT_SAMPLE,
+  useTajweedFont,
+} from '../hooks/useTajweedFont';
 import { qcfPageFamily, distinctFontRefs } from '../lib/qcf4';
 import { useChunkedRender } from '../hooks/useChunkedRender';
 import { ArabicAyahRouter } from '../components/ArabicAyahRouter';
 import { FontErrorBanner } from '../components/FontErrorBanner';
 import { loadArabicEditions } from '../lib/arabicEditions';
 import { ThemeSettings, TypographySettings } from '../components/ReadingSettings';
-import { AyahSearchSheet } from '../components/AyahSearchSheet';
-import { BottomDock } from '../components/BottomDock';
+import { AudioSpinner, BottomDock } from '../components/BottomDock';
 import {
-  Typography, Appearance, Search,
-  ArrowChevronRight, Bookmark as BookmarkIcon, Play, Pause, BookOpen } from '../components/icons';
+  Typography, Appearance,
+  Bookmark as BookmarkIcon, Play, Pause, BookOpen, ICON_SIZE } from '../components/icons';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { type Theme } from '../hooks/useTheme';
 import { getAutoScroll, subscribeAudioPrefs } from '../lib/audioPrefs';
@@ -69,7 +78,10 @@ import {
   arabicFontConfig,
   type LatinFontId, type ArabicFontId,
 } from '../lib/typography';
-import { RECITERS, DEFAULT_RECITER, type ReciterId } from '../lib/reciters';
+import {
+  RECITERS, DEFAULT_RECITER, usesWholeAyahHighlight, type ReciterId,
+} from '../lib/reciters';
+import { fontFamilyForPage } from '../content/quran-tajweed-meta';
 
 type Props = {
   surahNumber: number;
@@ -83,8 +95,6 @@ type Props = {
    * Honoured once per surah change.
    */
   initialAyah?: number;
-  /** Открыть другую суру — нужен поиску по всему Корану из шапки. */
-  onOpenSurah?: (surah: number, ayah?: number) => void;
   /** Переключиться в режим мусхафа на странице, где стоит читатель. */
   onOpenMushaf?: (page: number) => void;
 };
@@ -106,6 +116,9 @@ const ARABIC_IDS:  ArabicFontId[] = ARABIC_FONT_IDS;
 const RECITER_IDS: ReciterId[]    = RECITERS.map(r => r.id);
 
 function migrateLegacyScale() {
+  // Режим «Только арабский» снят владельцем. Старый ключ больше ни на
+  // что не влияет и удаляется, чтобы обновление всегда открыло обычную ленту.
+  localStorage.removeItem('quran.feedMode');
   const legacy = localStorage.getItem('fontScale');
   if (!legacy) return;
   if (!localStorage.getItem('arabicScale')) localStorage.setItem('arabicScale', legacy);
@@ -114,7 +127,7 @@ function migrateLegacyScale() {
 }
 
 export function SurahScreen({
-  surahNumber, theme, setTheme, onBack, initialAyah, onOpenSurah, onOpenMushaf,
+  surahNumber, theme, setTheme, onBack, initialAyah, onOpenMushaf,
 }: Props) {
   migrateLegacyScale();
 
@@ -144,18 +157,65 @@ export function SurahScreen({
   const setArabicScale = (v: number)       => { setArabicScaleS(v); persist<number>('arabicScale')(v); };
   const setRuScale     = (v: number)       => { setRuScaleS(v);     persist<number>('ruScale')(v); };
   const setRuFont      = (v: LatinFontId)  => { setRuFontS(v);      persist<string>('ruFont')(v); };
-  const setArabicFont  = (v: ArabicFontId) => { setArabicFontS(v);  persist<string>('arabicFont')(v); };
+  const setArabicFont  = (v: ArabicFontId) => {
+    // Начинаем текущую страницу прямо в обработчике тапа, до закрытия
+    // настроек и до следующего React-эффекта. JSON и шрифт едут параллельно.
+    if (v === 'qpc-v4-tajweed') {
+      const recentAyah = readRecents().find(r => r.surah === surahNumber)?.ayah
+        ?? initialAyah
+        ?? 1;
+      const currentPage = pageOfAyah(surahNumber, recentAyah);
+      const family = fontFamilyForPage(currentPage);
+      preloadTajweedPage(currentPage);
+      if (family) preloadTajweedFont(currentPage, family, TAJWEED_FONT_SAMPLE);
+    }
+    setArabicFontS(v);
+    persist<string>('arabicFont')(v);
+  };
   const setShowArabic  = (v: boolean)      => { setShowArabicS(v);  persist<boolean>('showArabic')(v); };
   const setShowRu      = (v: boolean)      => { setShowRuS(v);      persist<boolean>('showRu')(v); };
 
   // ── Header popovers ────────────────────────────────────────────────────────
   const [jumpOpen,       setJumpOpen]       = useState(false);
-  const [searchOpen,     setSearchOpen]     = useState(false);
   const [themeOpen,      setThemeOpen]      = useState(false);
   const [typographyOpen, setTypographyOpen] = useState(false);
+  const [headerVisible,  setHeaderVisible]  = useState(true);
   const themeBtnRef      = useRef<HTMLButtonElement>(null);
   const typographyBtnRef = useRef<HTMLButtonElement>(null);
-  const closeAll = () => { setJumpOpen(false); setThemeOpen(false); setTypographyOpen(false); setSearchOpen(false); };
+  const readerTapRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    startedAt: number;
+    moved: boolean;
+  } | null>(null);
+  const closeAll = () => { setJumpOpen(false); setThemeOpen(false); setTypographyOpen(false); };
+
+  const onReaderPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!e.isPrimary || e.button !== 0) return;
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest('button, a, input, textarea, select, [role="button"]')) return;
+    readerTapRef.current = {
+      pointerId: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      startedAt: performance.now(),
+      moved: false,
+    };
+  };
+  const onReaderPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = readerTapRef.current;
+    if (!start || start.pointerId !== e.pointerId) return;
+    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) start.moved = true;
+  };
+  const onReaderPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = readerTapRef.current;
+    readerTapRef.current = null;
+    if (!start || start.pointerId !== e.pointerId || start.moved) return;
+    if (performance.now() - start.startedAt > 340) return;
+    closeAll();
+    setHeaderVisible(v => !v);
+  };
 
   // ── Desktop responsive ─────────────────────────────────────────────────────
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
@@ -163,7 +223,7 @@ export function SurahScreen({
       ? window.matchMedia('(min-width: 1024px)').matches
       : false,
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!window.matchMedia) return;
     const mq = window.matchMedia('(min-width: 1024px)');
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
@@ -181,12 +241,30 @@ export function SurahScreen({
   // Это честный обмен: переключают шрифт редко и осознанно, а суру
   // открывают каждый раз.
   useEffect(() => {
-    if (arabicFontConfig(arabicFont).kind === 'qcf-v4') return;
+    const kind = arabicFontConfig(arabicFont).kind;
+    if (kind === 'qcf-v4' || kind === 'tajweed') return;
     loadArabicEditions();
   }, [arabicFont]);
 
   // ── Surah metadata + QCF feed ──────────────────────────────────────────────
   const meta = SURAH_BY_NUMBER[surahNumber];
+
+  // ── Стабильные значения для строк ленты ───────────────────────────────────
+  // Прогресс аудио обновляется ~12 раз в секунду, и каждый раз SurahScreen
+  // перерисовывается. Пока тело строки жило инлайном в .map, React пересобирал
+  // и сверял все смонтированные аяты (у Аль-Бакары — 286 статей, в каждой по
+  // span на слово) на том же потоке, который должен обрабатывать прокрутку.
+  // AyahRow ниже обёрнут в memo, поэтому на тик перерисовывается только
+  // звучащая строка — но лишь при условии, что все пропсы стабильны по ссылке.
+  const wholeAyahHighlight = usesWholeAyahHighlight(reciter);
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+  const metaRef = useRef(meta);
+  metaRef.current = meta;
+  const handleAyahPlay = useCallback((surah: number, ayah: number) => {
+    updateRecentAyah(surah, ayah);
+    audioRef.current.handlePlay(surah, ayah, metaRef.current?.ayahs ?? 9999);
+  }, []);
 
   /**
    * Аят, с которого человек начнёт читать, — он и несколько следующих
@@ -199,10 +277,44 @@ export function SurahScreen({
     return initialAyah ?? prior?.ayah ?? 1;
   }, [surahNumber, initialAyah]);
 
+  const [readingAyah, setReadingAyah] = useState(eagerAnchor);
+  useEffect(() => setReadingAyah(eagerAnchor), [surahNumber, eagerAnchor]);
+
+  // Состояние первой видимой страницы управляет общей плашкой. Шрифт
+  // заказывается фиксированным PUA-глифом сразу, не ожидая JSON.
+  const tajweedMode = arabicFontConfig(arabicFont).kind === 'tajweed';
+  const priorityTajweedPage = pageOfAyah(surahNumber, readingAyah);
+  const priorityTajweedFamily = fontFamilyForPage(priorityTajweedPage);
+  const priorityTajweed = useTajweedPage(priorityTajweedPage, tajweedMode);
+  const priorityTajweedFontReady = useTajweedFont(
+    priorityTajweedPage,
+    priorityTajweedFamily,
+    TAJWEED_FONT_SAMPLE,
+    tajweedMode,
+  );
+  const priorityTajweedFontStatus = priorityTajweedFamily
+    ? getTajweedFontStatus(priorityTajweedFamily)
+    : 'idle';
+  const tajweedLoading = tajweedMode
+    && !priorityTajweed.error
+    && priorityTajweedFontStatus !== 'failed'
+    && (priorityTajweed.loading || !priorityTajweedFontReady);
+  const tajweedUiStatus = !tajweedMode
+    ? 'idle'
+    : priorityTajweed.error || priorityTajweedFontStatus === 'failed'
+      ? 'failed'
+      : tajweedLoading
+        ? 'loading'
+        : 'ready';
+
   // Начало суры показываем, не дожидаясь всех её страниц, — но только
   // когда читать начинают сверху.  Если человек пришёл по закладке в
   // середину, ждём полную ленту: в неполной его аята ещё нет, и
   // восстановление прокрутки поставило бы его не на то место.
+  // Переводы приезжают отдельным чанком (см. quran-sources-lazy.ts).
+  // Пока их нет, показываем тот же скелет, что и для самой ленты: иначе
+  // аяты отрисовались бы без перевода и подпрыгнули, когда он доедет.
+  const quranSources = useQuranSources();
   const { feed, loading: feedLoading, error: feedError } =
     useQcfAyahFeed(surahNumber, eagerAnchor === 1);
 
@@ -249,10 +361,18 @@ export function SurahScreen({
   const pendingJumpRef = useRef<number | null>(null);
   pendingJumpRef.current = pendingJump;
 
-  useEffect(() => {
+  // Новый экран не должен унаследовать scrollY списка сур даже на один
+  // кадр: на iPhone это выглядело как скачок шапки после открытия.
+  // useLayoutEffect выполняется до показа кадра; точную позицию аята
+  // восстановит эффект ниже, когда его DOM-якорь будет готов.
+  useLayoutEffect(() => {
     const prior = readRecents().find(r => r.surah === surahNumber);
-    const target = initialAyah ?? prior?.ayah ?? null;
-    priorAyahToRestoreRef.current = target;
+    priorAyahToRestoreRef.current = initialAyah ?? prior?.ayah ?? null;
+    window.scrollTo(0, 0);
+  }, [surahNumber, initialAyah]);
+
+  useEffect(() => {
+    const target = priorAyahToRestoreRef.current;
     pushRecent(surahNumber, target ?? 1);
     closeAll();
   }, [surahNumber, initialAyah]);
@@ -288,7 +408,7 @@ export function SurahScreen({
   // правдоподобно.  Сверка номера суры в самой ленте это исключает.
   const feedSurah = feed?.ayahs[0]?.surah ?? null;
   const feedReady = !feedLoading && (feed?.ayahs.length ?? 0) > 0 && feedSurah === surahNumber;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!feedReady) return;
     // Человек уже попросил перейти к конкретному аяту — восстановление
     // здесь лишнее.  Раньше оно молча выигрывало: прыжок, сделанный до
@@ -359,6 +479,7 @@ export function SurahScreen({
   }, [surahNumber]);
   useEffect(() => {
     let rafId: number | null = null;
+    let persistTimer: number | null = null;
     const onScroll = () => {
       if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
@@ -374,16 +495,17 @@ export function SurahScreen({
         // recently — i.e. the one the reader is looking at.
         const threshold = 110;
         let bestAyah: number | null = null;
-        let bestDelta = Number.POSITIVE_INFINITY;
         for (let i = 0; i < anchors.length; i++) {
           const el = anchors[i];
           const top = el.getBoundingClientRect().top;
-          if (top > threshold) continue;
-          const delta = threshold - top;
-          if (delta < bestDelta) {
-            bestDelta = delta;
-            bestAyah = Number(el.dataset.ayahAnchor);
-          }
+          // Якоря идут в порядке документа, их top монотонно растёт: как
+          // только первый ушёл ниже порога, все следующие тоже ниже.
+          // Прежний `continue` читал getBoundingClientRect у ВСЕХ якорей —
+          // на Аль-Бакаре это 286 принудительных пересчётов лейаута на
+          // каждом кадре прокрутки там, где хватает двух-трёх чтений.
+          // Нужен последний якорь выше порога — он же ближайший к нему.
+          if (top > threshold) break;
+          bestAyah = Number(el.dataset.ayahAnchor);
         }
         // Edge case: page is above the first anchor (top of surah header).
         // Fall back to ayah 1 so re-entry from the picker still lands at
@@ -392,7 +514,16 @@ export function SurahScreen({
         if (bestAyah == null) bestAyah = 1;
         if (bestAyah !== lastTrackedAyahRef.current) {
           lastTrackedAyahRef.current = bestAyah;
-          updateRecentAyah(surahNumber, bestAyah);
+          // Во время инерционной прокрутки не перерисовываем всю тяжёлую
+          // ленту и не пишем localStorage на каждой пересечённой строке.
+          // Сохраняем позицию после короткой остановки пальца.
+          if (persistTimer !== null) window.clearTimeout(persistTimer);
+          const ayahToPersist = bestAyah;
+          persistTimer = window.setTimeout(() => {
+            setReadingAyah(ayahToPersist);
+            updateRecentAyah(surahNumber, ayahToPersist);
+            persistTimer = null;
+          }, 160);
         }
       });
     };
@@ -400,6 +531,7 @@ export function SurahScreen({
     return () => {
       window.removeEventListener('scroll', onScroll);
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (persistTimer !== null) window.clearTimeout(persistTimer);
     };
   }, [surahNumber]);
 
@@ -577,46 +709,26 @@ export function SurahScreen({
       // документа», Alt+стрелка — навигация по истории.
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      const audioActive = !!(audio.currentSurah && audio.currentAyah);
+      // Читаем аудио из ref, а не из замыкания: useAyahAudio отдаёт новый
+      // объект на каждый рендер, а прогресс обновляется ~12 раз в секунду.
+      // С `audio` в зависимостях этот эффект снимал и вешал слушатель
+      // клавиатуры двенадцать раз в секунду всё время воспроизведения.
+      const current = audioRef.current;
+      const audioActive = !!(current.currentSurah && current.currentAyah);
       if (!audioActive) return;
 
       if (e.key === 'ArrowRight') {
         e.preventDefault();
-        audio.next();
+        current.next();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        audio.prev();
+        current.prev();
       } else if (e.key === 'Escape') {
-        audio.stopAll();
+        current.stopAll();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [audio, meta, surahNumber]);
-
-  // ── Header chrome visibility (hide on scroll-down) ─────────────────────────
-  const [chromeVisible, setChromeVisible] = useState(true);
-  const lastScrollY = useRef(0);
-
-  useEffect(() => {
-    const onScroll = () => {
-      const y = window.scrollY;
-      // While auto-scroll is moving the page to the next ayah we keep
-      // the chrome stable — otherwise the floating pill flickers in/out
-      // on every ayah change because the auto-scroll itself looks like
-      // a "scroll down" gesture to this listener.
-      if (isAutoScrollingRef.current) {
-        lastScrollY.current = y;
-        return;
-      }
-      const delta = y - lastScrollY.current;
-      if (y < 80)         setChromeVisible(true);
-      else if (delta > 6) setChromeVisible(false);
-      else if (delta < -6) setChromeVisible(true);
-      lastScrollY.current = y;
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   // ── Derived: which ayah is "active" right now (playing) ────────────────────
@@ -640,42 +752,23 @@ export function SurahScreen({
     <div style={{ background: 'transparent', minHeight: '100dvh', position: 'relative' }}>
       {/* ── Верхняя панель ───────────────────────────────────────────────
           Обычная панель во всю ширину вместо плавающей пилюли — см.
-          шапку components/ScreenHeader.tsx.  Скрытие по скроллу
-          сохранено: при чтении длинной суры лишние 52 px экрана
-          заметны, а панель возвращается от малейшего движения вверх. */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30,
-        transform: chromeVisible ? 'translateY(0)' : 'translateY(-100%)',
-        transition: 'transform 0.25s ease',
-      }}>
-        <ScreenHeader
+          шапку components/ScreenHeader.tsx. Чистый тап визуально прячет
+          панель, но она не размонтируется: геометрия тяжёлого текста
+          остаётся постоянной. */}
+      <ScreenHeader
+          visible={headerVisible}
           title={meta?.transliteration ?? `Сура ${surahNumber}`}
           // Подзаголовка нет намеренно: перевод названия и число аятов
           // крупно стоят в блоке заголовка сразу под панелью, и в
           // первом экране получалось два одинаковых текста подряд.
           onBack={onBack}
           actions={[
-            {
-              key: 'search',
-              label: 'Поиск по переводу',
-              icon: <Search size={20} />,
-              active: searchOpen,
-              onClick: () => {
-                setSearchOpen(v => !v);
-                setJumpOpen(false); setThemeOpen(false); setTypographyOpen(false);
-              },
-            },
-            ...(meta && meta.ayahs > 10 ? [{
-              key: 'jump',
-              label: 'Перейти к аяту',
-              icon: <ArrowChevronRight size={20} />,
-              active: jumpOpen,
-              onClick: () => { setJumpOpen(v => !v); setThemeOpen(false); setTypographyOpen(false); setSearchOpen(false); },
-            }] : []),
+            // Переключатель режима всегда первый: в полноэкранном мусхафе
+            // обратная кнопка книги занимает ровно эту же позицию.
             ...(onOpenMushaf ? [{
               key: 'mushaf',
               label: 'Читать страницами мусхафа',
-              icon: <BookOpen size={20} />,
+              icon: <BookOpen size={ICON_SIZE.lg} />,
               onClick: () => {
                 // Открываем ту страницу, на которой человек сейчас стоит,
                 // а не первую страницу суры: переключение режима не
@@ -690,33 +783,23 @@ export function SurahScreen({
             {
               key: 'type',
               label: 'Текст и шрифты',
-              icon: <Typography size={20} />,
+              icon: <Typography size={ICON_SIZE.lg} />,
               active: typographyOpen,
               ref: typographyBtnRef,
-              onClick: () => { setTypographyOpen(v => !v); setJumpOpen(false); setThemeOpen(false); setSearchOpen(false); },
+              onClick: () => { setTypographyOpen(v => !v); setJumpOpen(false); setThemeOpen(false); },
             },
             {
               key: 'theme',
               label: 'Оформление',
-              icon: <Appearance size={20} />,
+              icon: <Appearance size={ICON_SIZE.lg} />,
               active: themeOpen,
               ref: themeBtnRef,
-              onClick: () => { setThemeOpen(v => !v); setJumpOpen(false); setTypographyOpen(false); setSearchOpen(false); },
+              onClick: () => { setThemeOpen(v => !v); setJumpOpen(false); setTypographyOpen(false); },
             },
           ]}
-        />
-      </div>
+      />
 
       {/* ── Popovers ──────────────────────────────────────────────────────── */}
-      {searchOpen && (
-        <AyahSearchSheet
-          surahNumber={surahNumber}
-          surahTitle={meta?.transliteration ?? `Сура ${surahNumber}`}
-          onClose={() => setSearchOpen(false)}
-          onJumpInSurah={jumpToAyahNumber}
-          onOpenOtherSurah={(s, a) => onOpenSurah?.(s, a)}
-        />
-      )}
       {jumpOpen && meta && (
         <JumpPopover
           maxAyah={meta.ayahs}
@@ -742,6 +825,7 @@ export function SurahScreen({
           ruScale={ruScale}         setRuScale={setRuScale}
           ruFont={ruFont}         setRuFont={setRuFont}
           arabicFont={arabicFont} setArabicFont={setArabicFont}
+          tajweedStatus={tajweedUiStatus}
           onClose={() => setTypographyOpen(false)}
           anchorEl={typographyBtnRef.current}
         />
@@ -749,6 +833,10 @@ export function SurahScreen({
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
       <div
+        onPointerDown={onReaderPointerDown}
+        onPointerMove={onReaderPointerMove}
+        onPointerUp={onReaderPointerUp}
+        onPointerCancel={() => { readerTapRef.current = null; }}
         style={{
           maxWidth: isDesktop ? '1200px' : '700px',
           margin: '0 auto',
@@ -765,26 +853,31 @@ export function SurahScreen({
       >
         {/* Surah header — Arabic surah_header glyph from QCF (real mushaf header) */}
         {meta && (
-          <SurahTitleBlock
-            meta={meta}
-            decor={feed?.decor ?? null}
-          />
+          <SurahTitleBlock meta={meta} decor={feed?.decor ?? null} />
         )}
 
         {/* Шрифт не приехал — объясняем и даём повтор.  Без этого на
             месте аятов остались бы одни заготовки строк без причины. */}
-        <FontErrorBanner />
+        <FontErrorBanner source={arabicFont === 'qpc-v4-tajweed' ? 'both' : 'qcf'} />
+
+        {tajweedMode && (
+          <TajweedLoadNotice
+            loading={tajweedLoading}
+            error={priorityTajweed.error}
+            onRetry={priorityTajweed.retry}
+          />
+        )}
 
         {/* Loading state */}
-        {feedLoading && <AyahFeedSkeleton />}
+        {(feedLoading || !quranSources) && <AyahFeedSkeleton />}
 
         {feedError && (
           <div style={{
             textAlign: 'center', padding: '60px 16px',
-            fontSize: '14px', color: 'var(--text-tertiary)',
+            fontSize: 'var(--font-subhead)', color: 'var(--text-tertiary)',
           }}>
             Ошибка загрузки суры<br />
-            <span style={{ fontSize: '12px', opacity: 0.7 }}>{feedError}</span>
+            <span style={{ fontSize: 'var(--font-caption1)', opacity: 0.7 }}>{feedError}</span>
           </div>
         )}
 
@@ -795,7 +888,7 @@ export function SurahScreen({
             forceUpTo учитывает initialAyah + активный аят озвучки —
             гарантия, что scroll-to-anchor + word-highlight найдут
             DOM-ноду. */}
-        {!feedLoading && feed && feed.ayahs.length > 0 && (() => {
+        {!feedLoading && quranSources && feed && feed.ayahs.length > 0 && (() => {
           const targetAyah = initialAyah ?? null;
           const activeAyahNum = activeVerseKey
             ? parseInt(activeVerseKey.split(':')[1] ?? '0', 10) || null
@@ -807,107 +900,36 @@ export function SurahScreen({
             targetAyah ?? 0, activeAyahNum ?? 0, pendingJump ?? 0,
           );
           return (
-          <AyahFeedList totalAyahs={feed.ayahs.length} forceUpTo={forceTarget}>
+          <AyahFeedList
+            totalAyahs={feed.ayahs.length}
+            forceUpTo={forceTarget}
+            resetKey={surahNumber}
+          >
           {(visibleCount) => (
           <div>
             {feed.ayahs.slice(0, visibleCount).map(entry => {
-              const source = QURAN_SOURCES[entry.verseKey];
               const isActiveAyah = activeVerseKey === entry.verseKey;
-
-              // Per-scale bump for serif faces (EB Garamond + Alice):
-              //   scales 0.85 / 1.0 / 1.2 → +5px   (gentle lift over Inter)
-              //   scale  1.4              → +10px  (one extra at the
-              //                                     largest reading step
-              //                                     so the increase reads
-              //                                     as deliberate)
-              // Inter faces stay at the pure scale-based calc.
-              const serifBump = (s: number): number =>
-                s >= 1.4 ? 10 : 5;
-              const ruFontSize  = latinIsSerif(ruFont)
-                ? `calc(16px * ${ruScale} + ${serifBump(ruScale)}px)`
-                : `calc(16px * ${ruScale})`;
-              const ruLineHeight  = 1.48;
-
               return (
-                <article
+                <AyahRow
                   key={entry.verseKey}
-                  data-ayah-anchor={entry.ayah}
-                  className={`ayah-row${isActiveAyah ? ' active' : ''}`}
-                  style={{ scrollMarginTop: screenHeaderOffset(12) }}
-                >
-                  {/* Arabic — QCF V4 default; ArabicAyahRouter switches
-                      to V1 or Уthmani rendering based on the reader's
-                      font preference. */}
-                  {showArabic && (
-                    <ArabicAyahRouter
-                      verseKey={entry.verseKey}
-                      ayahNumber={entry.ayah}
-                      words={entry.words}
-                      fonts={entry.fonts}
-                      arabicFont={arabicFont}
-                      activeWordPos={isActiveAyah ? audio.currentWordPos : null}
-                      isActive={isActiveAyah}
-                      scale={arabicScale}
-                      eager={
-                        entry.ayah >= eagerAnchor
-                        && entry.ayah < eagerAnchor + EAGER_AYAHS
-                      }
-                    />
-                  )}
-
-                  {/* Russian */}
-                  {showRu && source && (
-                    <p style={{
-                      margin: showArabic ? '14px 0 0' : 0,
-                      fontFamily: latinStack(ruFont),
-                      fontSize: ruFontSize,
-                      fontWeight: latinWeight(ruFont),
-                      lineHeight: ruLineHeight,
-                      color: 'var(--text-secondary)',
-                      letterSpacing: '-0.005em',
-                    }}>
-                      {source.translations.ru}
-                    </p>
-                  )}
-
-                  {/* Action row */}
-                  <div style={{
-                    display: 'flex', alignItems: 'center',
-                    gap: '8px', marginTop: '12px',
-                  }}>
-                    <span style={{
-                      fontSize: '12px', fontWeight: 500,
-                      color: 'var(--text-tertiary)', letterSpacing: '0.04em',
-                      fontVariantNumeric: 'tabular-nums',
-                      padding: '5px 12px',
-                      border: '1px solid var(--hairline)',
-                      borderRadius: '9999px', lineHeight: 1,
-                    }}>
-                      {entry.surah}:{entry.ayah}
-                    </span>
-
-                    <span style={{
-                      fontSize: '11px',
-                      color: 'var(--text-tertiary)',
-                      letterSpacing: '0.04em',
-                      opacity: 0.7,
-                      lineHeight: 1,
-                    }}>
-                      стр.&nbsp;{entry.pageNum}
-                    </span>
-
-                    <BookmarkBtn surah={entry.surah} ayah={entry.ayah} />
-
-                    <PlayBtn
-                      isActive={isActiveAyah}
-                      audioState={audio.audioState}
-                      onPlay={() => {
-                        updateRecentAyah(entry.surah, entry.ayah);
-                        audio.handlePlay(entry.surah, entry.ayah, meta?.ayahs ?? 9999);
-                      }}
-                    />
-                  </div>
-                </article>
+                  entry={entry}
+                  translation={quranSources[entry.verseKey]?.translations.ru}
+                  showArabic={showArabic}
+                  showRu={showRu}
+                  arabicFont={arabicFont}
+                  arabicScale={arabicScale}
+                  ruFont={ruFont}
+                  ruScale={ruScale}
+                  wholeAyahHighlight={wholeAyahHighlight}
+                  isActive={isActiveAyah}
+                  // Неактивной строке позиция слова и состояние плеера не
+                  // нужны — иначе memo срабатывал бы вхолостую на каждом
+                  // тике аудио у всех 286 аятов сразу.
+                  activeWordPos={isActiveAyah ? audio.currentWordPos : null}
+                  audioState={isActiveAyah ? audio.audioState : 'idle'}
+                  eager={entry.ayah >= eagerAnchor && entry.ayah < eagerAnchor + EAGER_AYAHS}
+                  onPlay={handleAyahPlay}
+                />
               );
             })}
           </div>
@@ -937,6 +959,64 @@ export function SurahScreen({
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
+function TajweedLoadNotice({
+  loading,
+  error,
+  onRetry,
+}: {
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  if (!loading && !error) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        margin: '8px 0 16px',
+        padding: '11px 13px',
+        borderRadius: '13px',
+        border: '1px solid var(--hairline-strong)',
+        background: 'color-mix(in srgb, var(--gold) 8%, var(--surface))',
+        color: 'var(--text-secondary)',
+        fontSize: 'var(--font-footnote)',
+        lineHeight: 1.4,
+      }}
+    >
+      {loading && <AudioSpinner size={ICON_SIZE.md} />}
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {error
+          ? 'Не удалось загрузить данные цветного таджвида. Пока показан обычный мусхаф.'
+          : 'Загружаем цветной таджвид для текущего аята…'}
+      </span>
+      {error && (
+        <button
+          onClick={onRetry}
+          style={{
+            flexShrink: 0,
+            minHeight: '32px',
+            padding: '0 12px',
+            borderRadius: '9999px',
+            border: '1px solid var(--hairline-strong)',
+            background: 'transparent',
+            color: 'var(--text-primary)',
+            fontFamily: 'inherit',
+            fontSize: 'var(--font-footnote)',
+            cursor: 'pointer',
+          }}
+        >
+          Повторить
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Title block — transliteration, meaning, Bismillah (QCF basmala glyph row).
  *  The Bismillah here is intentionally NOT scaled by the user's arabicScale
  *  pref: the glyph is one wide ligature, and at scale=1.4 on a 320-360 px
@@ -953,10 +1033,12 @@ export function SurahScreen({
 function AyahFeedList({
   totalAyahs,
   forceUpTo,
+  resetKey,
   children,
 }: {
   totalAyahs: number;
   forceUpTo: number;
+  resetKey: number;
   children: (visibleCount: number) => ReactNode;
 }) {
   const visibleCount = useChunkedRender(totalAyahs, {
@@ -970,13 +1052,12 @@ function AyahFeedList({
     initial: 6,
     batch: 30,
     forceUpTo,
+    resetKey,
   });
   return <>{children(visibleCount)}</>;
 }
 
-function SurahTitleBlock({
-  meta, decor,
-}: {
+function SurahTitleBlock({ meta, decor }: {
   meta: { number: number; transliteration: string; russian: string; ayahs: number; arabic: string };
   decor: import('../hooks/useQcfAyahFeed').QcfSurahDecor | null;
 }) {
@@ -987,15 +1068,15 @@ function SurahTitleBlock({
   // здесь всего одна строка — скелет ради неё выглядел бы навязчиво,
   // поэтому просто держим место пустым до готовности.
   const decorReady = useQcfFont(decor?.fonts ?? []);
-  const showBasmala =
-    meta.number !== 1 && decor && decor.basmala.length > 0 && decorReady;
+  const hasBasmala =
+    meta.number !== 1 && !!decor && decor.basmala.length > 0;
 
   return (
     <div style={{ textAlign: 'center', padding: '4px 0 24px' }}>
       <div
         className="display-serif"
         style={{
-          fontSize: '28px', fontWeight: 500,
+          fontSize: 'var(--font-title1)', fontWeight: 'var(--weight-regular)',
           color: 'var(--text-primary)',
           letterSpacing: '-0.02em',
           lineHeight: 1.1,
@@ -1005,7 +1086,7 @@ function SurahTitleBlock({
       </div>
       <div style={{
         marginTop: '4px',
-        fontSize: '13px',
+        fontSize: 'var(--font-footnote)',
         color: 'var(--text-tertiary)',
         letterSpacing: '0.02em',
       }}>
@@ -1019,7 +1100,7 @@ function SurahTitleBlock({
           cropping on Al-Anfal at scale 1.4.  Plus a `max-width: 100%` +
           horizontal padding cushion guards against any future mushaf
           rendering with an even wider basmala glyph. */}
-      {showBasmala && decor && (
+      {hasBasmala && decor && (
         <div
           dir="rtl"
           style={{
@@ -1030,12 +1111,14 @@ function SurahTitleBlock({
             paddingRight: '12px',
             fontSize: '40px',
             lineHeight: 1.8,
+            height: '72px',
             color: 'var(--text-primary)',
             maxWidth: '100%',
             overflow: 'hidden',
+            opacity: decorReady ? 1 : 0,
           }}
         >
-          {decor.basmala.map((w, i) => (
+          {decorReady && decor.basmala.map((w, i) => (
             <span
               key={i}
               dir="rtl"
@@ -1071,6 +1154,131 @@ function SurahTitleBlock({
 }
 
 /** Skeleton placeholder while QCF feed loads. */
+/**
+ * Одна строка ленты: арабский, перевод, ссылка и кнопки.
+ *
+ * Вынесена из инлайнового .map и обёрнута в memo ради аудио: прогресс
+ * обновляется ~12 раз в секунду, и без этого React на каждый тик пересобирал
+ * все смонтированные аяты. Пропсы намеренно примитивные, а `entry` приходит
+ * из кэша ленты и стабилен по ссылке — иначе memo не даёт ничего.
+ *
+ * Неактивная строка получает activeWordPos = null и audioState = 'idle', то
+ * есть её пропсы во время воспроизведения не меняются вовсе.
+ */
+const AyahRow = memo(function AyahRow({
+  entry, translation, showArabic, showRu, arabicFont, arabicScale,
+  ruFont, ruScale, wholeAyahHighlight, isActive, activeWordPos, audioState,
+  eager, onPlay,
+}: {
+  entry: QcfAyahEntry;
+  translation: string | undefined;
+  showArabic: boolean;
+  showRu: boolean;
+  arabicFont: ArabicFontId;
+  arabicScale: number;
+  ruFont: LatinFontId;
+  ruScale: number;
+  wholeAyahHighlight: boolean;
+  isActive: boolean;
+  activeWordPos: number | null;
+  audioState: 'idle' | 'loading' | 'playing' | 'paused';
+  eager: boolean;
+  onPlay: (surah: number, ayah: number) => void;
+}) {
+  // Per-scale bump for serif faces (EB Garamond + Alice):
+  //   scales 0.85 / 1.0 / 1.2 → +5px   (gentle lift over Inter)
+  //   scale  1.4              → +10px  (one extra at the largest reading
+  //                                     step so the increase reads as
+  //                                     deliberate)
+  // Inter faces stay at the pure scale-based calc.
+  const serifBump = (v: number): number => (v >= 1.4 ? 10 : 5);
+  const ruFontSize = latinIsSerif(ruFont)
+    ? `calc(16px * ${ruScale} + ${serifBump(ruScale)}px)`
+    : `calc(16px * ${ruScale})`;
+  const ruLineHeight = 1.48;
+
+  return (
+    <article
+      data-ayah-anchor={entry.ayah}
+      className={`ayah-row${isActive ? ' active' : ''}`}
+      style={{ scrollMarginTop: screenHeaderOffset(12) }}
+    >
+      {/* Arabic — QCF V4 default; ArabicAyahRouter switches to V1 or
+          Uthmani rendering based on the reader's font preference. */}
+      {showArabic && (
+        <div
+          className="arabic-ayah-audio-frame"
+          data-whole-ayah-active={
+            isActive && wholeAyahHighlight ? 'true' : undefined
+          }
+        >
+          <ArabicAyahRouter
+            verseKey={entry.verseKey}
+            ayahNumber={entry.ayah}
+            pageNum={entry.pageNum}
+            words={entry.words}
+            fonts={entry.fonts}
+            arabicFont={arabicFont}
+            activeWordPos={activeWordPos}
+            isActive={isActive}
+            scale={arabicScale}
+            eager={eager}
+          />
+        </div>
+      )}
+
+      {/* Russian */}
+      {showRu && translation && (
+        <p style={{
+          margin: showArabic ? '14px 0 0' : 0,
+          fontFamily: latinStack(ruFont),
+          fontSize: ruFontSize,
+          fontWeight: latinWeight(ruFont),
+          lineHeight: ruLineHeight,
+          color: 'var(--text-secondary)',
+          letterSpacing: '-0.005em',
+        }}>
+          {translation}
+        </p>
+      )}
+
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        gap: '8px', marginTop: '12px',
+      }}>
+        <span style={{
+          fontSize: 'var(--font-caption1)', fontWeight: 'var(--weight-regular)',
+          color: 'var(--text-tertiary)', letterSpacing: '0.04em',
+          fontVariantNumeric: 'tabular-nums',
+          padding: '5px 12px',
+          border: '1px solid var(--hairline)',
+          borderRadius: '9999px', lineHeight: 1,
+        }}>
+          {entry.surah}:{entry.ayah}
+        </span>
+
+        <span style={{
+          fontSize: 'var(--font-caption2)',
+          color: 'var(--text-tertiary)',
+          letterSpacing: '0.04em',
+          opacity: 0.7,
+          lineHeight: 1,
+        }}>
+          стр.&nbsp;{entry.pageNum}
+        </span>
+
+        <BookmarkBtn surah={entry.surah} ayah={entry.ayah} />
+
+        <PlayBtn
+          isActive={isActive}
+          audioState={audioState}
+          onPlay={() => onPlay(entry.surah, entry.ayah)}
+        />
+      </div>
+    </article>
+  );
+});
+
 function AyahFeedSkeleton() {
   return (
     <div>
@@ -1129,18 +1337,25 @@ function PlayBtn({
   onPlay: () => void;
 }) {
   const playing = isActive && audioState === 'playing';
+  const loading = isActive && audioState === 'loading';
   return (
     <button
-      aria-label={playing ? 'Пауза' : 'Слушать аят'}
+      aria-label={loading ? 'Загрузка аята' : playing ? 'Пауза' : 'Слушать аят'}
       onClick={e => { e.stopPropagation(); onPlay(); }}
       className="icon-btn"
       data-active={isActive}
+      disabled={loading}
       style={{
         width: '40px', height: '40px',
         color: isActive ? 'var(--text-primary)' : 'var(--text-tertiary)',
+        cursor: loading ? 'wait' : 'pointer',
       }}
     >
-      {playing ? <Pause size={18} /> : <Play size={18} />}
+      {loading
+        ? <AudioSpinner size={ICON_SIZE.md} />
+        : playing
+          ? <Pause size={ICON_SIZE.md} />
+          : <Play size={ICON_SIZE.md} />}
     </button>
   );
 }
@@ -1202,7 +1417,7 @@ const JumpPopover = memo(function JumpPopover({
         }}
       >
         <p style={{
-          margin: '0 0 4px', fontSize: '11px', fontWeight: 600,
+          margin: '0 0 4px', fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-semibold)',
           color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.10em',
         }}>
           Перейти к аяту
@@ -1234,7 +1449,7 @@ const JumpPopover = memo(function JumpPopover({
             aria-label="Номер аята"
             style={{
               display: 'block', width: '100%', boxSizing: 'border-box',
-              fontSize: '64px', fontWeight: 400, lineHeight: 1,
+              fontSize: '64px', fontWeight: 'var(--weight-regular)', lineHeight: 1,
               color: 'var(--text-primary)', textAlign: 'center',
               fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em',
               margin: '12px 0',
@@ -1259,7 +1474,7 @@ const JumpPopover = memo(function JumpPopover({
             aria-label={`Текущий номер ${val}. Кликни, чтобы ввести вручную`}
             className="display-serif"
             style={{
-              fontSize: '64px', fontWeight: 400, lineHeight: 1,
+              fontSize: '64px', fontWeight: 'var(--weight-regular)', lineHeight: 1,
               color: 'var(--text-primary)', textAlign: 'center',
               fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em',
               margin: '12px 0',
@@ -1280,7 +1495,7 @@ const JumpPopover = memo(function JumpPopover({
         />
         <div style={{
           display: 'flex', justifyContent: 'space-between',
-          marginTop: '6px', fontSize: '11px', color: 'var(--text-tertiary)',
+          marginTop: '6px', fontSize: 'var(--font-caption2)', color: 'var(--text-tertiary)',
           fontVariantNumeric: 'tabular-nums',
         }}>
           <span>1</span><span>{maxAyah}</span>
@@ -1299,7 +1514,7 @@ const JumpPopover = memo(function JumpPopover({
                 border: `1px solid ${val === n ? 'var(--text-primary)' : 'var(--hairline-strong)'}`,
                 background: val === n ? 'var(--accent-dim)' : 'transparent',
                 color: 'var(--text-primary)', fontFamily: 'inherit',
-                fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+                fontSize: 'var(--font-footnote)', fontWeight: 'var(--weight-regular)', cursor: 'pointer',
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
@@ -1314,7 +1529,7 @@ const JumpPopover = memo(function JumpPopover({
             marginTop: '16px', width: '100%', minHeight: '44px',
             padding: '11px 0', borderRadius: '9999px', border: 'none',
             background: 'var(--ink, #0c0a09)', color: 'var(--surface)',
-            fontFamily: 'inherit', fontSize: '14px', fontWeight: 500,
+            fontFamily: 'inherit', fontSize: 'var(--font-subhead)', fontWeight: 'var(--weight-regular)',
             cursor: 'pointer', letterSpacing: '0.005em',
           }}
         >

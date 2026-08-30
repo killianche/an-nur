@@ -32,7 +32,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as adhan from 'adhan';
-import { Compass, Appearance, ChevronLeft } from '../components/icons';
+import { Compass, Appearance, ChevronLeft, ICON_SIZE } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import type { Theme } from '../hooks/useTheme';
 import {
@@ -141,7 +141,7 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
       minHeight: '100dvh',
       maxWidth: 'min(100%, 720px)',
       margin: '0 auto',
-      padding: '0 16px calc(28px + env(safe-area-inset-bottom))',
+      padding: '0 var(--space-margin) calc(var(--space-section) + env(safe-area-inset-bottom))',
       position: 'relative',
       zIndex: 1,
       display: 'flex',
@@ -156,27 +156,32 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
       )}
 
       <header style={{
-        display: 'flex', alignItems: 'center', gap: '12px',
-        paddingTop: 'calc(env(safe-area-inset-top) + 18px)',
-        paddingBottom: '16px',
+        display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
+        paddingTop: 'calc(env(safe-area-inset-top) + var(--space-margin))',
+        paddingBottom: 'var(--space-margin)',
       }}>
         <button
           onClick={onBack}
           aria-label="Назад"
           className="icon-btn"
           style={{
-            width: '42px', height: '42px', flexShrink: 0, borderRadius: '12px',
+            width: 'var(--hit-min)', height: 'var(--hit-min)', flexShrink: 0,
+            borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
             color: 'var(--text-secondary)', cursor: 'pointer',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <ChevronLeft size={20} />
+          <ChevronLeft size={ICON_SIZE.md} />
         </button>
         <h1 className="display-serif" style={{
           margin: 0, flex: 1, minWidth: 0,
-          fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 400,
+          // Как и на экране намаза: кегль плавает между двумя ступенями
+          // шкалы, а межстрочный остаётся долей от него — фиксированная
+          // ступень не умеет следовать за clamp.
+          fontSize: 'clamp(var(--font-title1), 8vw, var(--font-largetitle))',
+          fontWeight: 'var(--weight-regular)',
           letterSpacing: '-0.03em', color: 'var(--text-primary)', lineHeight: 1.05,
         }}>
           Кибла
@@ -187,13 +192,14 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
           aria-label="Оформление" title="Оформление"
           className="icon-btn" data-active={themeOpen}
           style={{
-            width: '42px', height: '42px', flexShrink: 0, borderRadius: '12px',
+            width: 'var(--hit-min)', height: 'var(--hit-min)', flexShrink: 0,
+            borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
             color: themeOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
-          <Appearance size={19} />
+          <Appearance size={ICON_SIZE.md} />
         </button>
       </header>
 
@@ -202,13 +208,13 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
         flex: 1,
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
-        gap: '22px', paddingBottom: '12px',
+        gap: 'var(--space-section)', paddingBottom: 'var(--space-cozy)',
       }}>
         <div style={{
           position: 'relative',
           width: 'min(74vw, 300px)',
           aspectRatio: '1',
-          borderRadius: '9999px',
+          borderRadius: 'var(--radius-pill)',
           border: '1px solid var(--hairline)',
           background: 'color-mix(in srgb, var(--ink) 3%, transparent)',
           display: 'grid', placeItems: 'center',
@@ -222,10 +228,10 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
                 position: 'absolute',
                 inset: 0,
                 display: 'grid', placeItems: 'start center',
-                paddingTop: '10px',
+                paddingTop: 'var(--space-snug)',
                 transform: `rotate(${(deg as number) - (heading?.deg ?? 0)}deg)`,
-                transition: 'transform 180ms linear',
-                fontSize: '11px', fontWeight: 600,
+                transition: 'transform var(--dur-base) linear',
+                fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-semibold)',
                 letterSpacing: '0.08em',
                 color: label === 'С' ? 'var(--text-secondary)' : 'var(--text-tertiary)',
               }}
@@ -243,34 +249,57 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
               position: 'absolute',
               inset: '14%',
               transform: `rotate(${arrowDeg}deg)`,
-              transition: 'transform 180ms linear',
+              transition: 'transform var(--dur-base) linear',
               display: 'grid', placeItems: 'start center',
             }}
           >
+            {/* Стрелка на киблу — не иконка интерфейса, а декоративная
+                графика компаса: она обязана тянуться на всю высоту
+                розы ветров, поэтому остаётся в своей вытянутой системе
+                координат 42×200, а не в сетке 24×24 общего набора.
+                С набором её роднит вес: древко доведено до той же
+                толщины 1.75, что и штрих иконок, и получает те же
+                круглые окончания.  Наконечник залит по правилу
+                «метка-указатель»: контурный наконечник на этом размере
+                не показывает направление, ради которого он и нужен. */}
             <svg width="42" height="100%" viewBox="0 0 42 200" fill="none" aria-hidden>
               <path d="M21 4 L33 40 L21 33 L9 40 Z" fill="currentColor" />
-              <line x1="21" y1="33" x2="21" y2="150" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.35" />
+              <line
+                x1="21" y1="33" x2="21" y2="150"
+                stroke="currentColor" strokeWidth="1.75"
+                strokeLinecap="round" opacity="0.35"
+              />
             </svg>
           </span>}
 
-          <div style={{ textAlign: 'center', position: 'relative', padding: '0 18px' }}>
+          <div style={{
+            textAlign: 'center', position: 'relative', padding: '0 var(--space-margin)',
+          }}>
             {atKaaba ? (
               <div style={{
-                fontSize: '17px', fontWeight: 500, lineHeight: 1.4,
+                fontSize: 'var(--font-body)', fontWeight: 'var(--weight-regular)',
+                lineHeight: 'var(--leading-body)',
                 color: 'var(--text-primary)',
               }}>
                 Вы у Каабы
               </div>
             ) : (
               <>
+                {/* Азимут — главная цифра экрана: ступень Large Title.
+                    Межстрочный тут единица намеренно, как у крупных
+                    одинарных чисел в плеере: парная ступень 41px увела бы
+                    цифру вниз от центра розы ветров. */}
                 <div style={{
-                  fontSize: '34px', fontWeight: 600,
+                  fontSize: 'var(--font-largetitle)', fontWeight: 'var(--weight-semibold)',
                   color: 'var(--text-primary)',
                   fontVariantNumeric: 'tabular-nums', lineHeight: 1,
                 }}>
                   {qibla.toFixed(0)}°
                 </div>
-                <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                <div style={{
+                  marginTop: 'var(--space-snug)', fontSize: 'var(--font-caption1)',
+                  color: 'var(--text-tertiary)',
+                }}>
                   от севера
                 </div>
               </>
@@ -279,19 +308,25 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
         </div>
 
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+          <div style={{ fontSize: 'var(--font-footnote)', color: 'var(--text-secondary)' }}>
             {atKaaba
               ? place.name
               : `${place.name} · до Мекки ${distance.toLocaleString('ru-RU')} км`}
           </div>
           {heading && !heading.trueNorth && (
-            <div style={{ marginTop: '6px', fontSize: '11.5px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+            <div style={{
+              marginTop: 'var(--space-snug)', fontSize: 'var(--font-caption1)',
+              lineHeight: 'var(--leading-caption1)', color: 'var(--text-tertiary)',
+            }}>
               Стрелка приблизительная: датчик показывает магнитный север,
               поправка на склонение не учтена.
             </div>
           )}
           {!heading && compassAsked && !error && (
-            <div style={{ marginTop: '6px', fontSize: '11.5px', color: 'var(--text-tertiary)' }}>
+            <div style={{
+              marginTop: 'var(--space-snug)', fontSize: 'var(--font-caption1)',
+              color: 'var(--text-tertiary)',
+            }}>
               Жду данные компаса…
             </div>
           )}
@@ -300,24 +335,27 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
 
       {error && (
         <p style={{
-          margin: '0 0 12px', padding: '11px 14px',
-          borderRadius: '12px',
+          margin: '0 0 var(--space-cozy)', padding: 'var(--space-cozy)',
+          borderRadius: 'var(--radius-control)',
           background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
           border: '1px solid var(--hairline)',
-          fontSize: '12.5px', lineHeight: 1.5, color: 'var(--text-secondary)',
+          fontSize: 'var(--font-caption1)', lineHeight: 'var(--leading-caption1)',
+          color: 'var(--text-secondary)',
         }}>
           {error}
         </p>
       )}
 
       {/* Действия */}
-      <div style={{ display: 'grid', gap: '10px' }}>
+      <div style={{ display: 'grid', gap: 'var(--space-snug)' }}>
         {!heading && (
           <ActionButton onClick={enableCompass} primary>
             Включить компас
           </ActionButton>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-snug)',
+        }}>
           <ActionButton onClick={onLocate} disabled={locating}>
             {locating ? 'Определяю…' : 'Моё место'}
           </ActionButton>
@@ -329,9 +367,9 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
 
       {picking && (
         <div style={{
-          marginTop: '10px',
+          marginTop: 'var(--space-snug)',
           maxHeight: '38vh', overflowY: 'auto',
-          border: '1px solid var(--hairline)', borderRadius: '14px',
+          border: '1px solid var(--hairline)', borderRadius: 'var(--radius-card)',
           background: 'var(--surface)',
         }}>
           {CITIES.map(c => (
@@ -346,20 +384,20 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
               style={{
                 display: 'flex', width: '100%', minHeight: '46px',
                 alignItems: 'center', justifyContent: 'space-between',
-                padding: '10px 14px',
+                padding: 'var(--space-snug) var(--space-cozy)',
                 border: 'none',
                 borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
                 background: place.name === c.name
                   ? 'color-mix(in srgb, var(--ink) 6%, transparent)'
                   : 'transparent',
                 color: 'var(--text-primary)',
-                fontFamily: 'inherit', fontSize: '14.5px',
+                fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
                 cursor: 'pointer', textAlign: 'left',
               }}
             >
               <span>{c.name}</span>
               <span style={{
-                fontSize: '11px', color: 'var(--text-tertiary)',
+                fontSize: 'var(--font-caption2)', color: 'var(--text-tertiary)',
                 fontVariantNumeric: 'tabular-nums',
               }}>
                 {adhan.Qibla(new adhan.Coordinates(c.lat, c.lon)).toFixed(0)}°
@@ -386,9 +424,9 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       style={{
-        minHeight: '46px',
-        padding: '0 16px',
-        borderRadius: '13px',
+        minHeight: 'var(--hit-min)',
+        padding: '0 var(--space-margin)',
+        borderRadius: 'var(--radius-control)',
         border: `1px solid ${primary || active ? 'var(--text-primary)' : 'var(--hairline)'}`,
         background: primary
           ? 'color-mix(in srgb, var(--ink) 10%, transparent)'
@@ -397,7 +435,8 @@ function ActionButton({
           : 'color-mix(in srgb, var(--ink) 3%, transparent)',
         color: disabled ? 'var(--text-tertiary)' : 'var(--text-primary)',
         cursor: disabled ? 'default' : 'pointer',
-        fontFamily: 'inherit', fontSize: '14px', fontWeight: 500,
+        fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
+        fontWeight: 'var(--weight-regular)',
         opacity: disabled ? 0.7 : 1,
       }}
     >
@@ -408,4 +447,4 @@ function ActionButton({
 
 /** Иконка раздела нужна таб-бару; держим экспорт рядом, чтобы вкладка
  *  и экран не разъезжались при переименованиях. */
-export const QIBLA_ICON = <Compass size={21} />;
+export const QIBLA_ICON = <Compass size={ICON_SIZE.lg} />;

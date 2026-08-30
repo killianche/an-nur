@@ -24,12 +24,18 @@
  * своим фоном, но содержимое остаётся ниже неё.
  */
 
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Haptics } from '@capacitor/haptics';
 import { ChevronLeft } from './icons';
 
 /** Высота панели без safe-area.  Экраны отводят под неё верхний
  *  отступ — экспортируем, чтобы значение не разъезжалось по файлам. */
-export const SCREEN_HEADER_HEIGHT = 52;
+export const SCREEN_HEADER_HEIGHT = 64;
+
+/** Длительность выезда/ухода панели — держим рядом с разметкой, чтобы
+ *  флаг will-change снимался ровно после перехода, а не «примерно». */
+const HIDE_TRANSITION_MS = 180;
 
 /** Готовый отступ сверху для контента под панелью. */
 export const screenHeaderOffset = (extra = 0) =>
@@ -47,7 +53,7 @@ export type HeaderAction = {
 };
 
 export function ScreenHeader({
-  title, subtitle, onBack, actions = [], progress,
+  title, subtitle, onBack, actions = [], progress, visible = true,
 }: {
   title: string;
   /** Мелкая строка под заголовком — например «3 / 16». */
@@ -56,10 +62,32 @@ export function ScreenHeader({
   actions?: HeaderAction[];
   /** 0..1 — тонкая полоса по нижней кромке (прогресс по ленте). */
   progress?: number;
+  /** Визуально скрыть панель, не размонтируя её и не меняя геометрию контента. */
+  visible?: boolean;
 }) {
+  // `will-change` живёт ровно столько, сколько идёт переход.  Постоянный
+  // флаг на элементе с backdrop-filter заставляет WebKit держать слой с
+  // размытием всё время, пока экран открыт, — а анимация случается на
+  // единичные тапы.  Ожидание на setTimeout, а не на requestAnimationFrame:
+  // в скрытой вкладке rAF не тикает и флаг остался бы висеть навсегда.
+  const [animating, setAnimating] = useState(false);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    setAnimating(true);
+    const id = setTimeout(() => setAnimating(false), HIDE_TRANSITION_MS + 60);
+    return () => clearTimeout(id);
+  }, [visible]);
+
   return (
     <header
       role="banner"
+      className="screen-header"
+      data-animating={animating}
       style={{
         position: 'fixed',
         top: 0,
@@ -67,43 +95,61 @@ export function ScreenHeader({
         right: 0,
         zIndex: 30,
         paddingTop: 'env(safe-area-inset-top)',
-        background: 'color-mix(in srgb, var(--surface) 92%, transparent)',
-        borderBottom: '1px solid var(--hairline)',
-        backdropFilter: 'saturate(160%) blur(20px)',
-        WebkitBackdropFilter: 'saturate(160%) blur(20px)',
+        background: 'color-mix(in srgb, var(--surface) 82%, transparent)',
+        borderBottom: '0.5px solid var(--hairline)',
+        // Размытие взято из общей шкалы: было 30px, а поверх этой же
+        // области лежал ещё и StatusBarScrim со своим размытием — одна
+        // полоса экрана пересчитывалась дважды за кадр прокрутки.
+        backdropFilter: 'saturate(var(--saturate-chrome)) blur(var(--blur-chrome))',
+        WebkitBackdropFilter: 'saturate(var(--saturate-chrome)) blur(var(--blur-chrome))',
+        transform: visible ? 'translate3d(0, 0, 0)' : 'translate3d(0, -105%, 0)',
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? 'auto' : 'none',
+        transition:
+          'transform var(--dur-base) var(--ease-panel),'
+          + ' opacity var(--dur-fast) var(--ease-standard)',
       }}
+      aria-hidden={!visible}
     >
       <div style={{
         height: `${SCREEN_HEADER_HEIGHT}px`,
         display: 'flex',
         alignItems: 'center',
-        gap: '2px',
-        padding: '0 6px',
+        gap: 'var(--space-tight)',
+        padding: '0 var(--space-snug)',
         // Тот же предел ширины, что у контента экранов, чтобы на
         // планшете кнопки не разъезжались по краям стекла.
         maxWidth: '1200px',
         margin: '0 auto',
       }}>
         <button
-          onClick={onBack}
+          onClick={() => {
+            if (Capacitor.getPlatform() === 'ios') void Haptics.selectionChanged();
+            onBack();
+          }}
           aria-label="Назад"
-          className="icon-btn"
+          className="icon-btn ios-header-button ios-header-back"
           style={{
-            width: '44px', height: '44px', flexShrink: 0,
+            // Ведущая кнопка на ступень крупнее минимальных 44×44:
+            // «назад» жмут вслепую, у самого края экрана.
+            width: '48px', height: '48px', flexShrink: 0,
             color: 'var(--text-primary)',
           }}
         >
-          <ChevronLeft size={22} />
+          <ChevronLeft size={24} />
         </button>
 
-        <div style={{ minWidth: 0, flex: 1, padding: '0 4px' }}>
+        <div style={{ minWidth: 0, flex: 1, padding: '0 var(--space-tight)' }}>
           <div
             className="display-serif"
             style={{
-              fontSize: '17px', fontWeight: 500,
+              // Title 3 — ближайшая ступень iOS к прежним 19px.  Nav-bar
+              // Headline (17) в панели высотой 64 читался бы потерянно.
+              fontSize: 'var(--font-title3)',
+              lineHeight: 'var(--leading-title3)',
+              fontWeight: 'var(--weight-semibold)',
               color: 'var(--text-primary)',
-              letterSpacing: '-0.012em',
-              lineHeight: 1.15,
+              letterSpacing: 'var(--tracking-tight)',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}
           >
@@ -111,10 +157,10 @@ export function ScreenHeader({
           </div>
           {subtitle && (
             <div style={{
-              fontSize: '11.5px',
+              fontSize: 'var(--font-footnote)',
+              lineHeight: 'var(--leading-footnote)',
               color: 'var(--text-tertiary)',
-              letterSpacing: '0.01em',
-              lineHeight: 1.2,
+              letterSpacing: 'var(--tracking-loose)',
               fontVariantNumeric: 'tabular-nums',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
@@ -123,23 +169,30 @@ export function ScreenHeader({
           )}
         </div>
 
-        {actions.map(a => (
-          <button
-            key={a.key}
-            ref={a.ref}
-            onClick={a.onClick}
-            aria-label={a.label}
-            title={a.label}
-            className="icon-btn"
-            data-active={a.active}
-            style={{
-              width: '42px', height: '42px', flexShrink: 0,
-              color: a.active ? 'var(--text-primary)' : 'var(--text-tertiary)',
-            }}
-          >
-            {a.icon}
-          </button>
-        ))}
+        {actions.length > 0 && (
+          <div className="ios-header-actions">
+            {actions.map(a => (
+              <button
+                key={a.key}
+                ref={a.ref}
+                onClick={() => {
+                  if (Capacitor.getPlatform() === 'ios') void Haptics.selectionChanged();
+                  a.onClick();
+                }}
+                aria-label={a.label}
+                title={a.label}
+                className="icon-btn ios-header-button"
+                data-active={a.active}
+                style={{
+                  width: 'var(--hit-min)', height: 'var(--hit-min)', flexShrink: 0,
+                  color: a.active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                }}
+              >
+                {a.icon}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {progress != null && (
@@ -155,7 +208,7 @@ export function ScreenHeader({
             width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
             background: 'var(--text-primary)',
             opacity: 0.7,
-            transition: 'width 220ms ease',
+            transition: 'width var(--dur-base) var(--ease-standard)',
           }} />
         </div>
       )}

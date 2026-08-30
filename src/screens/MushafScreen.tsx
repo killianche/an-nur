@@ -19,37 +19,62 @@
  * приходит следующая страница.  Это не мелочь: у того, кто читает
  * мусхаф, направление зашито в моторику.
  *
- * ── Тап по аяту ───────────────────────────────────────────────────────
+ * ── Удержание аята ────────────────────────────────────────────────────
  *
- * Без него режим был бы тупиком: встретил незнакомое место — и выходи
- * из режима, ищи в ленте.  Тап поднимает лист с ссылкой, переводом
- * Кулиева и кнопкой воспроизведения.  Перевод — не часть страницы, он
- * appears поверх и по требованию, поэтому «чистый арабский» остаётся
- * чистым.
+ * Удержание открывает компактный аудиоплеер. Верхняя панель может
+ * визуально уехать по чистому тапу, но не размонтируется и не меняет
+ * геометрию страницы.
  *
- * ── Чего здесь нет ────────────────────────────────────────────────────
- *
- * Настроек шрифта: кегль диктует страница, а не человек.  Выбора
- * начертания: мусхаф — это конкретное издание, «другой шрифт» означал
- * бы другую разбивку строк и другую страницу.
+ * Кегль по-прежнему диктует страница, но у того же издания доступны два
+ * постраничных лица: обычный QCF V4 и цветной QPC V4 Tajweed. Оба
+ * используют фиксированные строки источника; это не свободная перевёрстка.
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Appearance, BookOpen, ChevronLeft, ChevronRight, Close, Play, Pause } from '../components/icons';
+import { flushSync } from 'react-dom';
+import { Appearance, BookOpen, Typography, ICON_SIZE } from '../components/icons';
+import { BottomDock } from '../components/BottomDock';
 import { QcfMushafPage } from '../components/QcfMushafPage';
 import { FontErrorBanner } from '../components/FontErrorBanner';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { ThemeSettings } from '../components/ReadingSettings';
-import { QURAN_SOURCES } from '../content/quran-sources';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { useAyahAudio } from '../hooks/useAyahAudio';
-import { preloadPage, useQcfPage, getPageSync } from '../hooks/useQcfPage';
+import { ensurePage, preloadPage, useQcfPage } from '../hooks/useQcfPage';
 import { preloadQcfFonts } from '../hooks/useQcfFont';
+import {
+  preloadTajweedFont,
+  TAJWEED_FONT_SAMPLE,
+  useTajweedFont,
+} from '../hooks/useTajweedFont';
+import { preloadTajweedPage, useTajweedPage } from '../hooks/useTajweedPage';
 import { distinctFontRefs } from '../lib/qcf4';
 import type { Theme } from '../hooks/useTheme';
-import { juzOfPage, surahAyahOfPage } from '../lib/mushafPages';
-import { RECITERS, DEFAULT_RECITER, type ReciterId } from '../lib/reciters';
+import {
+  juzOfPage,
+  mushafPageWindow,
+  pageOfAyah,
+  surahAyahOfPage,
+} from '../lib/mushafPages';
+import {
+  RECITERS,
+  DEFAULT_RECITER,
+  usesWholeAyahHighlight,
+  type ReciterId,
+} from '../lib/reciters';
 import { readPref } from '../lib/typography';
+import { fontFamilyForPage } from '../content/quran-tajweed-meta';
+import {
+  readMushafFont,
+  toggleMushafFont,
+  writeMushafFont,
+  type MushafFontId,
+} from '../lib/mushafFont';
+import {
+  audioStateForVerse,
+  mushafActiveVerseKey,
+} from '../lib/mushafAudio';
+import { lockReaderOrientation } from '../lib/screenOrientation';
 
 export const MUSHAF_FIRST_PAGE = 1;
 export const MUSHAF_LAST_PAGE = 604;
@@ -71,6 +96,7 @@ type Props = {
 };
 
 const PAGE_KEY = 'mushaf.page';
+const PAGE_TURN_MS = 220;
 
 /** Запомненная страница — чтобы режим открывался там, где закрыли. */
 export function readMushafPage(): number {
@@ -83,16 +109,42 @@ export function readMushafPage(): number {
 export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed }: Props) {
   const [page, setPageS] = useState(() => clampPage(initialPage));
   const [selected, setSelected] = useState<string | null>(null);
+  const [headerVisible, setHeaderVisible] = useState(true);
   const [themeOpen, setThemeOpen] = useState(false);
-  const [jumpOpen, setJumpOpen] = useState(false);
+  const [mushafFont, setMushafFontState] = useState<MushafFontId>(readMushafFont);
   const themeBtnRef = useRef<HTMLButtonElement>(null);
 
   // Чтец — тот же, что выбран в ленте: настройка одна на приложение,
   // и переключаться между режимами ради него было бы странно.
-  const audio = useAyahAudio(
-    readPref<ReciterId>('reciter', DEFAULT_RECITER, RECITERS.map(r => r.id)),
+  const reciter = readPref<ReciterId>(
+    'reciter', DEFAULT_RECITER, RECITERS.map(r => r.id),
   );
+  const audio = useAyahAudio(reciter);
   const { data, loading, error } = useQcfPage(page);
+  const colourMode = mushafFont === 'qpc-v4-tajweed';
+  const tajweedFamily = fontFamilyForPage(page);
+  // Шрифт открытой страницы заказывается уже в первом рендере, до
+  // прихода обоих JSON. Фиксированный PUA sample попадает в unicode-range
+  // каждого постраничного лица и не создаёт последовательной задержки.
+  const warmCurrentTajweed = useCallback(() => {
+    preloadTajweedPage(page);
+    if (tajweedFamily) {
+      preloadTajweedFont(page, tajweedFamily, TAJWEED_FONT_SAMPLE);
+    }
+  }, [page, tajweedFamily]);
+
+  useEffect(() => {
+    void lockReaderOrientation('portrait');
+    return () => { void lockReaderOrientation('portrait'); };
+  }, []);
+
+  const setMushafFont = useCallback((font: MushafFontId) => {
+    writeMushafFont(font);
+    setMushafFontState(font);
+    if (font === 'qpc-v4-tajweed') {
+      warmCurrentTajweed();
+    }
+  }, [warmCurrentTajweed]);
 
   const setPage = useCallback((n: number) => {
     const next = clampPage(n);
@@ -115,14 +167,22 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     for (const n of neighbours) {
       preloadPage(n);
       if (n == null) continue;
-      // Шрифты просим только когда json уже разобран: до этого неизвестно,
-      // какие подмножества нужны странице.
-      const known = getPageSync(n);
-      if (known) {
-        preloadQcfFonts(distinctFontRefs(known.lines.flatMap(l => l.words)));
+      if (colourMode) {
+        preloadTajweedPage(n);
+        const family = fontFamilyForPage(n);
+        if (family) preloadTajweedFont(n, family, TAJWEED_FONT_SAMPLE);
       }
+      // JSON соседней страницы может ещё ехать. Дожидаемся его вместо
+      // одноразовой синхронной проверки, которая часто ничего не находила.
+      void ensurePage(n).then(known => {
+        const lines = colourMode
+          ? known.lines.filter(line => line.words.some(word =>
+              word.type === 'surah_header' || word.type === 'bismillah'))
+          : known.lines;
+        preloadQcfFonts(distinctFontRefs(lines.flatMap(line => line.words)));
+      }).catch(() => { /* соседняя страница не должна ломать текущую */ });
     }
-  }, [page, data]);
+  }, [page, data, colourMode]);
 
   // Клавиатура: стрелки листают. Влево — следующая страница, потому что
   // книга арабская и «вперёд» здесь физически налево.
@@ -142,13 +202,23 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   // Меряем реально доступный прямоугольник, а не считаем по формуле:
   // на разных телефонах шапка, вырез и «дом-бар» дают разный остаток.
   const areaRef = useRef<HTMLDivElement>(null);
+  const pageTrackRef = useRef<HTMLDivElement>(null);
   const [area, setArea] = useState<{ width: number; height: number } | null>(null);
   useLayoutEffect(() => {
     const el = areaRef.current;
     if (!el) return;
     const measure = () => {
-      const r = el.getBoundingClientRect();
-      setArea({ width: r.width, height: r.height });
+      // QcfMushafPage вписывается во внутреннюю область. Передавать сюда
+      // border-box нельзя: в него входят отступ под фиксированную шапку и
+      // нижний safe-area. Тогда страница центрируется по завышенной высоте
+      // и выходит за область — в том числе под расположенный ниже плеер.
+      const css = getComputedStyle(el);
+      const horizontalPadding = parseFloat(css.paddingLeft) + parseFloat(css.paddingRight);
+      const verticalPadding = parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
+      setArea({
+        width: Math.max(0, el.clientWidth - horizontalPadding),
+        height: Math.max(0, el.clientHeight - verticalPadding),
+      });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -156,33 +226,214 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     return () => ro.disconnect();
   }, []);
 
-  // ── Свайп ───────────────────────────────────────────────────────────
-  const touch = useRef<{ x: number; y: number } | null>(null);
+  // ── Жесты страницы ──────────────────────────────────────────────────
+  // Удержание выбирает аят, горизонтальный жест листает страницу, а
+  // короткий неподвижный тап показывает/скрывает верхнюю панель.
+  const touch = useRef<{
+    x: number;
+    y: number;
+    startedAt: number;
+    verseKey: string | null;
+    interactive: boolean;
+    longPressed: boolean;
+    axis: 'pending' | 'horizontal' | 'vertical';
+  } | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragFrame = useRef<number | null>(null);
+  const pendingDrag = useRef(0);
+  const turning = useRef(false);
+
+  const clearLongPress = () => {
+    if (longPressTimer.current != null) clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+  };
+
+  const paintDrag = useCallback((x: number) => {
+    pendingDrag.current = x;
+    if (dragFrame.current != null) return;
+    dragFrame.current = requestAnimationFrame(() => {
+      dragFrame.current = null;
+      pageTrackRef.current?.style.setProperty('--mushaf-drag-x', `${pendingDrag.current}px`);
+    });
+  }, []);
+
+  const resetPager = useCallback(() => {
+    if (turnTimer.current != null) clearTimeout(turnTimer.current);
+    turnTimer.current = null;
+    if (dragFrame.current != null) cancelAnimationFrame(dragFrame.current);
+    dragFrame.current = null;
+    pendingDrag.current = 0;
+    turning.current = false;
+    const track = pageTrackRef.current;
+    if (!track) return;
+    track.style.setProperty('--mushaf-turn-duration', '0ms');
+    track.style.setProperty('--mushaf-drag-x', '0px');
+  }, []);
+
+  useEffect(() => () => {
+    clearLongPress();
+    resetPager();
+  }, [resetPager]);
+
+  // Фиксируем страницу только после завершения движения. До этого React не
+  // получает ни одного обновления: тяжёлые арабские строки уже находятся в
+  // соседнем GPU-слое и просто следуют за пальцем.
+  const settlePageTurn = useCallback((dragX: number, nextPage: number | null) => {
+    const track = pageTrackRef.current;
+    if (!track || turning.current) return;
+    turning.current = true;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const duration = reducedMotion ? 0 : PAGE_TURN_MS;
+    if (dragFrame.current != null) {
+      cancelAnimationFrame(dragFrame.current);
+      dragFrame.current = null;
+    }
+    track.style.setProperty('--mushaf-turn-duration', `${duration}ms`);
+    track.style.setProperty('--mushaf-drag-x', `${dragX}px`);
+
+    const finish = () => {
+      turnTimer.current = null;
+      // flushSync не оставляет промежуточного кадра между новым номером
+      // страницы и возвратом трека в нулевую координату.
+      if (nextPage != null) flushSync(() => setPage(nextPage));
+      track.style.setProperty('--mushaf-turn-duration', '0ms');
+      track.style.setProperty('--mushaf-drag-x', '0px');
+      pendingDrag.current = 0;
+      turning.current = false;
+    };
+
+    if (duration === 0) finish();
+    else turnTimer.current = setTimeout(finish, duration + 24);
+  }, [setPage]);
+
   const onTouchStart = (e: React.TouchEvent) => {
+    if (turning.current) return;
     const t = e.touches[0];
-    touch.current = { x: t.clientX, y: t.clientY };
+    const target = e.target instanceof Element ? e.target : null;
+    // Первые 28 px принадлежат системному жесту «Назад» iOS. Пейджер не
+    // конкурирует с ним и не пытается одновременно перелистнуть мусхаф.
+    const interactive = t.clientX <= 28
+      || !!target?.closest('button, input, textarea, select, [role="button"]');
+    const verseKey = target?.closest<HTMLElement>('[data-verse-key]')
+      ?.dataset.verseKey ?? null;
+    const now = performance.now();
+    touch.current = {
+      x: t.clientX,
+      y: t.clientY,
+      startedAt: now,
+      verseKey,
+      interactive,
+      longPressed: false,
+      axis: 'pending',
+    };
+    clearLongPress();
+    if (verseKey && !interactive) {
+      longPressTimer.current = setTimeout(() => {
+        if (!touch.current) return;
+        touch.current.longPressed = true;
+        setSelected(verseKey);
+      }, 460);
+    }
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    const start = touch.current;
+    if (!start || start.interactive || turning.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.hypot(dx, dy) > 12) {
+      clearLongPress();
+    }
+    if (start.axis === 'pending' && Math.max(Math.abs(dx), Math.abs(dy)) >= 8) {
+      start.axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'horizontal' : 'vertical';
+    }
+    if (start.axis !== 'horizontal') return;
+
+    e.preventDefault();
+    const canTurn = dx > 0
+      ? page < MUSHAF_LAST_PAGE
+      : page > MUSHAF_FIRST_PAGE;
+    // На границе книги остаётся мягкое сопротивление вместо пустого экрана.
+    const visualDx = canTurn ? dx : dx * 0.18;
+    pageTrackRef.current?.style.setProperty('--mushaf-turn-duration', '0ms');
+    paintDrag(visualDx);
   };
   const onTouchEnd = (e: React.TouchEvent) => {
     const start = touch.current;
     touch.current = null;
-    if (!start) return;
+    clearLongPress();
+    if (!start || start.interactive || turning.current) return;
+    if (start.longPressed) {
+      // Не позволяем WebKit породить click после удержания.
+      e.preventDefault();
+      return;
+    }
     const t = e.changedTouches[0];
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
-    // Порог 48 px и требование «горизонтальнее вертикального» — чтобы
-    // случайное движение пальцем при чтении не перелистнуло страницу.
-    if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    setPage(dx > 0 ? page + 1 : page - 1);
+    const elapsed = Math.max(1, performance.now() - start.startedAt);
+    if (start.axis === 'pending') {
+      if (Math.hypot(dx, dy) <= 8 && elapsed <= 340) {
+        setThemeOpen(false);
+        setHeaderVisible(v => !v);
+      }
+      return;
+    }
+    if (start.axis !== 'horizontal') return;
+
+    const velocity = Math.abs(dx) / elapsed;
+    const width = Math.max(1, pageTrackRef.current?.clientWidth ?? window.innerWidth);
+    const delta = dx > 0 ? 1 : -1;
+    const next = page + delta;
+    const insideBook = next >= MUSHAF_FIRST_PAGE && next <= MUSHAF_LAST_PAGE;
+    const committed = insideBook
+      && (Math.abs(dx) >= Math.min(104, width * 0.18)
+        || (Math.abs(dx) >= 20 && velocity >= 0.48));
+
+    if (committed) settlePageTurn(delta > 0 ? width : -width, next);
+    else settlePageTurn(0, null);
   };
+
+  const onTouchCancel = () => {
+    const start = touch.current;
+    touch.current = null;
+    clearLongPress();
+    if (start?.axis === 'horizontal' && !turning.current) settlePageTurn(0, null);
+  };
+
+  // Три слоя живут одновременно: открытый и два соседних. React сохраняет
+  // их по номеру страницы, поэтому после свайпа уже измеренный сосед просто
+  // становится видимым, а новый дальний сосед готовится вне экрана.
+  const pageWindow = mushafPageWindow(page);
 
   const surahsHere = data?.surahs ?? [];
   const title = surahsHere.length
     ? surahsHere.map(s => SURAH_BY_NUMBER[s.id]?.transliteration ?? s.name).join(' · ')
     : `Страница ${page}`;
 
-  const src = selected ? QURAN_SOURCES[selected] : null;
-  const playingSelected = !!selected && audio.activeKey === selected
-    && (audio.audioState === 'playing' || audio.audioState === 'loading');
+  // useAyahAudio хранит activeKey как `чтец:сура:аят`. Данные мусхафа
+  // используют `сура:аят`, поэтому сравнивать с activeKey напрямую нельзя:
+  // из-за этого старый плеер никогда не показывал Pause и не подсвечивал
+  // звучащее слово. Берём публичные координаты очереди, как SurahScreen.
+  const activeVerseKey = mushafActiveVerseKey(audio.currentSurah, audio.currentAyah);
+  const selectedIsActive = !!selected && activeVerseKey === selected;
+  const selectedAudioState = audioStateForVerse(selected, activeVerseKey, audio.audioState);
+
+  // Полноэкранный мусхаф следует за очередью так же, как лента следует
+  // за активным аятом: плеер, выделение и страница не остаются позади
+  // после кнопок «предыдущий/следующий» или автоперехода.
+  useEffect(() => {
+    if (!audio.currentSurah || !audio.currentAyah || audio.audioState === 'idle') return;
+    const verseKey = `${audio.currentSurah}:${audio.currentAyah}`;
+    const audioPage = pageOfAyah(audio.currentSurah, audio.currentAyah);
+    if (audioPage !== page) {
+      setPageS(audioPage);
+      localStorage.setItem(PAGE_KEY, String(audioPage));
+    }
+    setSelected(verseKey);
+  }, [audio.currentSurah, audio.currentAyah, audio.audioState, page]);
 
   return (
     <div style={{
@@ -194,38 +445,42 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       background: 'transparent',
     }}>
       <ScreenHeader
-        title={title}
-        subtitle={`Страница ${page} · Джуз ${juzOfPage(page)}`}
-        onBack={onBack}
-        actions={[
+          visible={headerVisible}
+          title={title}
+          subtitle={`Страница ${page} · Джуз ${juzOfPage(page)}`}
+          onBack={onBack}
+          actions={[
           ...(onOpenFeed ? [{
             key: 'feed',
             label: 'Вернуться к ленте с переводом',
-            icon: <BookOpen size={20} />,
+            icon: <BookOpen size={ICON_SIZE.lg} />,
             onClick: () => {
               const { surah, ayah } = surahAyahOfPage(page);
               onOpenFeed(surah, ayah);
             },
           }] : []),
           {
-            key: 'jump',
-            label: 'Перейти к странице',
-            icon: <span style={{
-              fontSize: '13px', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-              color: 'var(--gold)',
-            }}>{page}</span>,
-            active: jumpOpen,
-            onClick: () => { setJumpOpen(v => !v); setThemeOpen(false); },
+            key: 'mushaf-font',
+            label: colourMode
+              ? 'Включить обычный шрифт'
+              : 'Включить цветной таджвид',
+            icon: <Typography size={ICON_SIZE.lg} />,
+            onClick: () => setMushafFont(toggleMushafFont(mushafFont)),
           },
           {
             key: 'theme',
             label: 'Оформление',
-            icon: <Appearance size={20} />,
+            icon: <Appearance size={ICON_SIZE.lg} />,
             active: themeOpen,
             ref: themeBtnRef,
-            onClick: () => { setThemeOpen(v => !v); setJumpOpen(false); },
+            onClick: () => {
+              // Пока человек открывает оформление и выбирает цветной
+              // вариант, текущий файл уже едет в фоне.
+              warmCurrentTajweed();
+              setThemeOpen(v => !v);
+            },
           },
-        ]}
+          ]}
       />
 
       {themeOpen && (
@@ -233,14 +488,8 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           theme={theme} setTheme={setTheme}
           onClose={() => setThemeOpen(false)}
           anchorEl={themeBtnRef.current}
-        />
-      )}
-
-      {jumpOpen && (
-        <PageJump
-          current={page}
-          onPick={n => { setPage(n); setJumpOpen(false); }}
-          onClose={() => setJumpOpen(false)}
+          mushafFont={mushafFont}
+          setMushafFont={setMushafFont}
         />
       )}
 
@@ -248,7 +497,10 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       <div
         ref={areaRef}
         onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchCancel}
+        onContextMenu={e => e.preventDefault()}
         style={{
           flex: 1,
           minHeight: 0,
@@ -258,15 +510,20 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           // Панель фиксированная и места в потоке не занимает, поэтому
           // отступ сверху отводим руками — иначе первая строка уезжает
           // под неё. screenHeaderOffset уже учитывает «чёлку».
+          // Геометрия страницы постоянна и при скрытой панели: иначе
+          // ResizeObserver менял fitTo, а QCF заново подбирал кегль.
           paddingTop: screenHeaderOffset(6),
-          paddingBottom: 'calc(env(safe-area-inset-bottom) + 6px)',
+          // Резерв постоянный — появление плеера не запускает новый подбор
+          // кегля и лист не перекрывает нижнюю строку Корана.
+          paddingBottom: 'calc(env(safe-area-inset-bottom) + 76px)',
           position: 'relative',
+          touchAction: 'pan-y pinch-zoom',
         }}
       >
         {error && (
           <p style={{
             padding: '0 24px', textAlign: 'center',
-            fontSize: '13.5px', lineHeight: 1.6, color: 'var(--text-tertiary)',
+            fontSize: 'var(--font-footnote)', lineHeight: 1.6, color: 'var(--text-tertiary)',
           }}>
             Не удалось загрузить страницу {page}.<br />{error}
           </p>
@@ -295,18 +552,32 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
             сама страница в этот момент показывает только заготовки строк
             и без объяснения выглядит сломанной. */}
         <div style={{ position: 'absolute', top: 0, left: 12, right: 12, zIndex: 2 }}>
-          <FontErrorBanner />
+          <FontErrorBanner source={colourMode ? 'both' : 'qcf'} />
         </div>
 
-        {!error && data && (
-          <QcfMushafPage
-            pageData={data}
-            fitTo={area}
-            activeVerseKey={audio.activeKey}
-            activeWordPos={audio.currentWordPos}
-            selectedVerseKey={selected}
-            onAyahTap={setSelected}
-          />
+        {!error && (
+          <div ref={pageTrackRef} className="mushaf-page-track" style={{
+            position: 'relative', width: '100%', height: '100%', minHeight: 0,
+            overflowY: 'hidden',
+            overflowX: 'hidden',
+            WebkitOverflowScrolling: 'touch',
+          }}>
+            {pageWindow.map(preparedPage => (
+              <PreparedMushafPage
+                key={preparedPage}
+                page={preparedPage}
+                visible={preparedPage === page}
+                offset={page - preparedPage}
+                fitTo={area}
+                activeVerseKey={activeVerseKey}
+                activeWordPos={audio.currentWordPos}
+                wholeAyahAudioHighlight={usesWholeAyahHighlight(reciter)}
+                selectedVerseKey={selected}
+                landscapeWide={false}
+                variant={mushafFont}
+              />
+            ))}
+          </div>
         )}
 
         {/* Зоны листания по краям — для тех, кто читает одной рукой и
@@ -320,16 +591,127 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       {selected && (
         <AyahSheet
           verseKey={selected}
-          translation={src?.translations.ru ?? null}
-          playing={playingSelected}
-          onPlay={() => {
+          audioState={selectedAudioState}
+          progress={selectedIsActive ? audio.progress : 0}
+          playbackRate={audio.playbackRate}
+          currentAyah={selectedIsActive ? audio.currentAyah : Number(selected.split(':')[1])}
+          onPlayPause={() => {
             const [s, a] = selected.split(':').map(Number);
-            if (playingSelected) audio.pause();
-            else audio.playFrom(s, a, SURAH_BY_NUMBER[s]?.ayahs ?? a);
+            audio.handlePlay(s, a, SURAH_BY_NUMBER[s]?.ayahs ?? a);
           }}
-          onClose={() => setSelected(null)}
+          onPrev={audio.prev}
+          onNext={audio.next}
+          onCyclePlaybackRate={audio.cyclePlaybackRate}
+          onClose={() => {
+            // Без листа плеер в этом режиме был бы скрыт. Закрытие листа
+            // поэтому одновременно останавливает звук, а не оставляет
+            // невидимое воспроизведение без доступной кнопки Stop.
+            audio.stopAll();
+            setSelected(null);
+          }}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Одна постоянно смонтированная страница из маленького окна вокруг текущей.
+ *
+ * `visibility: hidden` не убирает слой из layout: QcfMushafPage успевает
+ * загрузить шрифты, измерить строки и подобрать кегль. При листании меняется
+ * только visibility, без синхронной сборки арабского текста в жесте.
+ */
+function PreparedMushafPage({
+  page,
+  visible,
+  offset,
+  fitTo,
+  activeVerseKey,
+  activeWordPos,
+  wholeAyahAudioHighlight,
+  selectedVerseKey,
+  landscapeWide,
+  variant,
+}: {
+  page: number;
+  visible: boolean;
+  offset: number;
+  fitTo: { width: number; height: number } | null;
+  activeVerseKey: string | null;
+  activeWordPos: number | null;
+  wholeAyahAudioHighlight: boolean;
+  selectedVerseKey: string | null;
+  landscapeWide: boolean;
+  variant: MushafFontId;
+}) {
+  const { data } = useQcfPage(page);
+  const colourMode = variant === 'qpc-v4-tajweed';
+  const tajweedPage = useTajweedPage(page, colourMode);
+  const family = fontFamilyForPage(page);
+  const tajweedFontReady = useTajweedFont(
+    page,
+    family,
+    TAJWEED_FONT_SAMPLE,
+    colourMode,
+  );
+
+  return (
+    <div
+      aria-hidden={!visible}
+      className="mushaf-page-layer"
+      data-current={visible ? '' : undefined}
+      style={{
+        '--mushaf-page-offset': `${offset * 100}%`,
+        position: 'absolute',
+        inset: landscapeWide ? '0 0 auto' : 0,
+        minHeight: '100%',
+        display: 'flex',
+        alignItems: landscapeWide ? 'flex-start' : 'center',
+        justifyContent: 'center',
+        opacity: 1,
+        visibility: 'visible',
+        pointerEvents: visible ? 'auto' : 'none',
+        zIndex: visible ? 1 : 0,
+        willChange: 'transform',
+        contain: 'layout paint style',
+      } as React.CSSProperties}
+    >
+      {data ? (
+        <QcfMushafPage
+          pageData={data}
+          fitTo={fitTo}
+          activeVerseKey={activeVerseKey}
+          activeWordPos={activeWordPos}
+          wholeAyahAudioHighlight={wholeAyahAudioHighlight}
+          selectedVerseKey={selectedVerseKey}
+          landscapeWide={landscapeWide}
+          variant={variant}
+          tajweedPageData={tajweedPage.data}
+          tajweedFontReady={tajweedFontReady}
+        />
+      ) : (
+        <MushafPageSkeleton />
+      )}
+    </div>
+  );
+}
+
+function MushafPageSkeleton() {
+  return (
+    <div style={{ width: '100%', padding: '18px 20px' }} aria-hidden>
+      {Array.from({ length: 15 }).map((_, i) => (
+        <div
+          key={i}
+          className="skeleton"
+          style={{
+            height: 18,
+            borderRadius: 4,
+            margin: '0 auto 14px',
+            width: i % 7 === 6 ? '55%' : '100%',
+          }}
+        />
+      ))}
     </div>
   );
 }
@@ -362,206 +744,67 @@ function EdgeTap({ side, disabled, onTap }: {
 }
 
 /**
- * Лист с переводом выбранного аята.
+ * Компактный плеер выбранного аята.
  *
- * Половина экрана и не больше: под ним должна оставаться видна та самая
- * строка мусхафа, ради которой лист и открыли.
+ * Плеер закреплён поверх нижней системной области и не участвует в flex-
+ * расчёте. Поэтому его появление не уменьшает страницу и не запускает
+ * повторный подбор кегля мусхафа.
  */
-function AyahSheet({ verseKey, translation, playing, onPlay, onClose }: {
+function AyahSheet({
+  verseKey,
+  audioState,
+  progress,
+  playbackRate,
+  currentAyah,
+  onPlayPause,
+  onPrev,
+  onNext,
+  onCyclePlaybackRate,
+  onClose,
+}: {
   verseKey: string;
-  translation: string | null;
-  playing: boolean;
-  onPlay: () => void;
+  audioState: 'idle' | 'loading' | 'playing' | 'paused';
+  progress: number;
+  playbackRate: number;
+  currentAyah: number | null;
+  onPlayPause: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onCyclePlaybackRate: () => void;
   onClose: () => void;
 }) {
-  const [surah, ayah] = verseKey.split(':').map(Number);
-  const meta = SURAH_BY_NUMBER[surah];
-
   return (
     <div
       role="dialog"
       aria-label={`Аят ${verseKey}`}
       style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 45,
-        maxHeight: '50%',
+        position: 'absolute', zIndex: 45,
+        left: 0, right: 0, bottom: 0,
+        width: '100%',
         display: 'flex', flexDirection: 'column',
         background: 'var(--surface)',
         borderTop: '1px solid var(--hairline)',
-        borderTopLeftRadius: '18px', borderTopRightRadius: '18px',
+        borderTopLeftRadius: '14px', borderTopRightRadius: '14px',
         boxShadow: '0 -8px 32px rgba(0,0,0,0.28)',
-        padding: '14px 18px calc(env(safe-area-inset-bottom) + 16px)',
+        padding: '5px 8px calc(env(safe-area-inset-bottom) + 5px)',
         animation: 'sheet-up 0.22s cubic-bezier(0.22,1,0.36,1)',
       }}
     >
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px',
-      }}>
-        <span style={{
-          fontSize: '12px', fontWeight: 600, letterSpacing: '0.02em',
-          padding: '4px 9px', borderRadius: '9999px',
-          border: '1px solid var(--hairline)',
-          color: 'var(--text-secondary)',
-          fontVariantNumeric: 'tabular-nums', flexShrink: 0,
-        }}>
-          {verseKey}
-        </span>
-        <span style={{
-          flex: 1, minWidth: 0, fontSize: '13px', color: 'var(--text-tertiary)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          {meta?.transliteration ?? `Сура ${surah}`} · аят {ayah}
-        </span>
-
-        <button
-          onClick={onPlay}
-          aria-label={playing ? 'Пауза' : 'Слушать аят'}
-          className="icon-btn"
-          style={{
-            width: '38px', height: '38px', flexShrink: 0, borderRadius: '9999px',
-            border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
-            color: 'var(--text-primary)',
-          }}
-        >
-          {playing ? <Pause size={17} /> : <Play size={17} />}
-        </button>
-        <button
-          onClick={onClose}
-          aria-label="Закрыть"
-          className="icon-btn"
-          style={{
-            width: '38px', height: '38px', flexShrink: 0, borderRadius: '9999px',
-            border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <Close size={16} />
-        </button>
-      </div>
-
-      <div style={{ overflowY: 'auto', minHeight: 0 }}>
-        {translation ? (
-          <p style={{
-            margin: 0, fontSize: '15px', lineHeight: 1.65,
-            color: 'var(--text-primary)',
-          }}>
-            {translation}
-          </p>
-        ) : (
-          <p style={{
-            margin: 0, fontSize: '13.5px', lineHeight: 1.6,
-            color: 'var(--text-tertiary)',
-          }}>
-            Перевод этого аята не найден в данных приложения.
-          </p>
-        )}
+      <div>
+        <BottomDock
+          layout="inline"
+          inlineLabel={verseKey}
+          audioState={audioState}
+          currentAyah={currentAyah}
+          progress={progress}
+          playbackRate={playbackRate}
+          onPlayPause={onPlayPause}
+          onPrev={onPrev}
+          onNext={onNext}
+          onCyclePlaybackRate={onCyclePlaybackRate}
+          onClose={onClose}
+        />
       </div>
     </div>
-  );
-}
-
-/**
- * Переход к странице.  Ввод номера, а не список из 604 пунктов:
- * страницу мусхафа помнят числом.
- */
-function PageJump({ current, onPick, onClose }: {
-  current: number;
-  onPick: (n: number) => void;
-  onClose: () => void;
-}) {
-  const [value, setValue] = useState(String(current));
-  const n = parseInt(value, 10);
-  const valid = Number.isFinite(n) && n >= MUSHAF_FIRST_PAGE && n <= MUSHAF_LAST_PAGE;
-
-  return (
-    <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, zIndex: 44 }}
-      />
-      <div style={{
-        position: 'absolute', top: 'calc(env(safe-area-inset-top) + 58px)',
-        right: '12px', zIndex: 45, width: 'min(260px, calc(100vw - 24px))',
-        padding: '14px',
-        borderRadius: '14px',
-        border: '1px solid var(--hairline)',
-        background: 'var(--surface)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
-      }}>
-        <p style={{
-          margin: '0 0 9px', fontSize: '10px', fontWeight: 600,
-          letterSpacing: '0.10em', textTransform: 'uppercase',
-          color: 'var(--text-tertiary)',
-        }}>
-          Страница 1–604
-        </p>
-        <form
-          onSubmit={e => { e.preventDefault(); if (valid) onPick(n); }}
-          style={{ display: 'flex', gap: '8px' }}
-        >
-          <input
-            autoFocus
-            inputMode="numeric"
-            value={value}
-            onChange={e => setValue(e.target.value.replace(/\D/g, '').slice(0, 3))}
-            aria-label="Номер страницы"
-            style={{
-              flex: 1, minWidth: 0, height: '40px', padding: '0 12px',
-              borderRadius: '10px', border: '1px solid var(--hairline)',
-              background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
-              color: 'var(--text-primary)', fontSize: '15px',
-              fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums',
-            }}
-          />
-          <button
-            type="submit"
-            disabled={!valid}
-            style={{
-              height: '40px', padding: '0 14px', borderRadius: '10px',
-              border: '1px solid var(--hairline)',
-              background: valid
-                ? 'color-mix(in srgb, var(--ink) 10%, transparent)'
-                : 'transparent',
-              color: valid ? 'var(--text-primary)' : 'var(--text-tertiary)',
-              fontFamily: 'inherit', fontSize: '14px',
-              cursor: valid ? 'pointer' : 'default',
-            }}
-          >
-            Перейти
-          </button>
-        </form>
-
-        <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-          <StepButton label="Назад" icon={<ChevronRight size={16} />}
-            disabled={current <= MUSHAF_FIRST_PAGE} onClick={() => onPick(current - 1)} />
-          <StepButton label="Вперёд" icon={<ChevronLeft size={16} />}
-            disabled={current >= MUSHAF_LAST_PAGE} onClick={() => onPick(current + 1)} />
-        </div>
-      </div>
-    </>
-  );
-}
-
-function StepButton({ label, icon, disabled, onClick }: {
-  label: string; icon: React.ReactNode; disabled: boolean; onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        flex: 1, height: '36px', borderRadius: '10px',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-        border: '1px solid var(--hairline)',
-        background: 'transparent',
-        color: disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)',
-        fontFamily: 'inherit', fontSize: '13px',
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      {icon}{label}
-    </button>
   );
 }

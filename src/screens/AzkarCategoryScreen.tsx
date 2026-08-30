@@ -45,7 +45,7 @@ import {
 import { ThemeSettings } from '../components/ReadingSettings';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
 import {
-  Appearance, Play, Pause, Typography,
+  Appearance, ICON_SIZE, Play, Pause, Typography,
 } from '../components/icons';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 
@@ -357,7 +357,7 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
           {
             key: 'type',
             label: 'Настройки текста',
-            icon: <Typography size={20} />,
+            icon: <Typography size={ICON_SIZE.md} />,
             active: typoOpen,
             ref: typoBtnRef,
             onClick: () => setTypoOpen(v => !v),
@@ -365,7 +365,7 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
           {
             key: 'theme',
             label: 'Оформление',
-            icon: <Appearance size={20} />,
+            icon: <Appearance size={ICON_SIZE.md} />,
             active: themeOpen,
             ref: themeBtnRef,
             onClick: () => setThemeOpen(v => !v),
@@ -409,7 +409,7 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
             height: '60%',
             width: 'min(96vw, 560px)',
             maxHeight: '600px',
-            borderRadius: '20px',
+            borderRadius: 'var(--radius-card)',
           }} />
         </div>
       )}
@@ -420,12 +420,12 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '14px', color: 'var(--text-tertiary)',
-          padding: '0 24px', textAlign: 'center',
+          fontSize: 'var(--font-subhead)', color: 'var(--text-tertiary)',
+          padding: '0 var(--space-section)', textAlign: 'center',
         }}>
           <div>
             Не удалось загрузить азкары<br />
-            <span style={{ fontSize: '12px', opacity: 0.7 }}>{error}</span>
+            <span style={{ fontSize: 'var(--font-caption1)', opacity: 0.7 }}>{error}</span>
           </div>
         </div>
       )}
@@ -436,7 +436,7 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: 'var(--text-tertiary)', fontSize: '14px',
+          color: 'var(--text-tertiary)', fontSize: 'var(--font-subhead)',
         }}>
           В этой категории пока нет азкаров.
         </p>
@@ -695,11 +695,11 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                   ) : entry.source ? (
                     <p
                       style={{
-                        margin: '0 0 6px',
+                        margin: '0 0 var(--space-snug)',
                         fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
-                        fontSize: '11px',
-                        fontWeight: 400,
-                        lineHeight: 1.45,
+                        fontSize: 'var(--font-caption1)',
+                        fontWeight: 'var(--weight-regular)',
+                        lineHeight: 'var(--leading-caption1)',
                         color: 'var(--text-tertiary)',
                         letterSpacing: '0.01em',
                         opacity: 0.75,
@@ -707,11 +707,11 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
                     >
                       <span style={{
                         display: 'inline-block',
-                        marginInlineEnd: '6px',
-                        fontWeight: 600,
+                        marginInlineEnd: 'var(--space-snug)',
+                        fontWeight: 'var(--weight-semibold)',
                         textTransform: 'uppercase',
                         letterSpacing: '0.12em',
-                        fontSize: '10px',
+                        fontSize: 'var(--font-caption2)',
                       }}>
                         Источник
                       </span>
@@ -773,7 +773,7 @@ function InlinePlay({
 }) {
   const tile: React.CSSProperties = {
     height: '32px',
-    borderRadius: '8px',
+    borderRadius: 'var(--radius-chip)',
     border: '1px solid var(--hairline)',
     background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
     color: 'var(--text-primary)',
@@ -802,10 +802,10 @@ function InlinePlay({
         }}
       >
         <span style={{
-          fontSize: '11px',
-          fontWeight: 600,
+          fontSize: 'var(--font-caption2)',
+          fontWeight: 'var(--weight-semibold)',
           fontVariantNumeric: 'tabular-nums',
-          letterSpacing: '-0.01em',
+          letterSpacing: 'var(--tracking-tight)',
           lineHeight: 1,
           opacity: 0.7,
         }}>
@@ -838,8 +838,8 @@ function InlinePlay({
               // («Слушать» / «Пауза» / «Загрузка»), фиксированная
               // ширина не работает; padding по бокам даёт стабильный
               // отступ от рамки до текста.
-              padding: '0 10px 0 8px',
-              gap: '6px',
+              padding: '0 var(--space-snug)',
+              gap: 'var(--space-tight)',
               transform: isLoading ? 'scale(0.96)' : 'scale(1)',
               opacity: isLoading ? 0.7 : 1,
             }}
@@ -850,7 +850,7 @@ function InlinePlay({
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: 'var(--space-tight)',
               }}
             >
               <span aria-hidden style={{
@@ -859,33 +859,16 @@ function InlinePlay({
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
-                {mode === 'pause' ? (
-                  // Outlined pause — две тонкие вертикальные линии,
-                  // совпадает по весу с outlined play.
-                  <svg
-                    width="13" height="13" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2"
-                    strokeLinecap="round" strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <line x1="9"  y1="5" x2="9"  y2="19" />
-                    <line x1="15" y1="5" x2="15" y2="19" />
-                  </svg>
-                ) : (
-                  // Outlined play — треугольник линиями, не заливка.
-                  <svg
-                    width="13" height="13" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2"
-                    strokeLinecap="round" strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <polygon points="6 4 20 12 6 20 6 4" />
-                  </svg>
-                )}
+                {/* Play / Pause берутся из общего набора.  Раньше здесь
+                    жила вторая, своя пара — контур в толщине 2 — и
+                    стояла на одном экране с залитой парой набора. */}
+                {mode === 'pause'
+                  ? <Pause size={ICON_SIZE.sm} />
+                  : <Play size={ICON_SIZE.sm} />}
               </span>
               <span style={{
-                fontSize: '11px',
-                fontWeight: 600,
+                fontSize: 'var(--font-caption2)',
+                fontWeight: 'var(--weight-semibold)',
                 letterSpacing: '-0.005em',
                 lineHeight: 1,
                 opacity: 0.7,
@@ -932,9 +915,9 @@ function PlayTasbihRow(props: PlayTasbihRowProps) {
   return (
     <div style={{
       display: 'flex',
-      gap: '6px',
+      gap: 'var(--space-tight)',
       alignItems: 'center',
-      margin: '4px 0 22px',
+      margin: 'var(--space-tight) 0 var(--space-section)',
     }}>
       {hasTasbih && (
         <TasbihPill
@@ -947,7 +930,7 @@ function PlayTasbihRow(props: PlayTasbihRowProps) {
       {props.hasAudio && (
         <div style={{
           display: 'flex',
-          gap: '6px',
+          gap: 'var(--space-tight)',
           alignItems: 'center',
           marginLeft: 'auto',
         }}>
@@ -983,8 +966,8 @@ function PlayBtn({
       data-active={isActive}
       disabled={disabled}
       style={{
-        width: '44px',
-        height: '44px',
+        width: 'var(--hit-min)',
+        height: 'var(--hit-min)',
         color: disabled
           ? 'var(--text-tertiary)'
           : isActive ? 'var(--text-primary)' : 'var(--text-tertiary)',
@@ -992,7 +975,7 @@ function PlayBtn({
         cursor: disabled ? 'default' : 'pointer',
       }}
     >
-      {playing ? <Pause size={20} /> : <Play size={20} />}
+      {playing ? <Pause size={ICON_SIZE.md} /> : <Play size={ICON_SIZE.md} />}
     </button>
   );
 }
@@ -1085,7 +1068,8 @@ function SuraAyahs({
               margin: '2px 0 10px',
             }}>
               <span style={{
-                fontSize: '12px',
+                fontSize: 'var(--font-caption1)',
+                lineHeight: 'var(--leading-caption1)',
                 fontVariantNumeric: 'tabular-nums',
                 letterSpacing: '0.02em',
                 color: 'var(--text-tertiary)',
@@ -1104,7 +1088,9 @@ function SuraAyahs({
                     ? 'var(--text-primary)' : 'var(--text-tertiary)',
                 }}
               >
-                {playingIndex === i ? <Pause size={18} /> : <Play size={18} />}
+                {playingIndex === i
+                  ? <Pause size={ICON_SIZE.md} />
+                  : <Play size={ICON_SIZE.md} />}
               </button>
             </div>
           )}

@@ -14,6 +14,7 @@
  */
 
 import type { AzkarReward } from '../lib/azkar';
+import { BookOpen, Check, ChevronDown, ICON_SIZE } from './icons';
 
 export function TasbihPill({
   current, target, onTap, onReset,
@@ -60,19 +61,25 @@ export function TasbihPill({
         transition: 'background 240ms ease, box-shadow 240ms ease, border-color 240ms ease',
       }}
     >
-      {/* Checkmark — fades in on completion */}
-      <svg
-        width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden
+      {/* Галочка выезжает при завершении.  Раскрытие анимирует обёртка,
+          а не сама иконка: у иконки набора фиксированная сетка, и
+          менять ей ширину значило бы сплющивать рисунок. */}
+      <span
+        aria-hidden
         style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          overflow: 'hidden',
+          flexShrink: 0,
           color: 'var(--text-primary)',
           opacity: done ? 1 : 0,
-          width: done ? '14px' : 0,
+          width: done ? `${ICON_SIZE.sm}px` : 0,
           marginRight: done ? 0 : '-8px',
           transition: 'opacity 200ms ease 60ms, width 220ms cubic-bezier(0.4, 0, 0.2, 1), margin-right 220ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        <path d="M5 12l4 4 10-10" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+        <Check size={ICON_SIZE.sm} style={{ flexShrink: 0 }} />
+      </span>
 
       {/* Current count — намеренно тот же размер/цвет/вес, что и
           у "/ target" справа: пользователь просил одинаковый стиль. */}
@@ -179,17 +186,20 @@ export function SourceDisclosure({
           userSelect: 'none',
         }}
       >
-        {/* Book icon — visually anchors the row as "source / scholarly". */}
-        <svg
-          width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="1.75"
-          strokeLinecap="round" strokeLinejoin="round"
-          style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}
+        {/* Книга — знак «источник / наука».  Раньше здесь была вторая
+            книга набора, нарисованная корешком; общая иконка «Коран»
+            означает ровно то же и живёт в одном экземпляре. */}
+        <span
           aria-hidden
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            flexShrink: 0,
+            color: 'var(--text-tertiary)',
+          }}
         >
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-        </svg>
+          <BookOpen size={ICON_SIZE.sm} />
+        </span>
         <span style={{
           flex: 1,
           fontSize: '12px',
@@ -200,20 +210,18 @@ export function SourceDisclosure({
         }}>
           Источник
         </span>
-        <svg
+        {/* Шеврон набора.  Класс `chev` обязателен: правило
+            `.azkar-source-disclosure[open] > summary svg.chev` в
+            index.css поворачивает его на 180° при раскрытии. */}
+        <ChevronDown
+          size={ICON_SIZE.sm}
           className="chev"
-          width="14" height="14" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2"
-          strokeLinecap="round" strokeLinejoin="round"
           style={{
             color: 'var(--text-tertiary)',
             flexShrink: 0,
             transition: 'transform 180ms ease',
           }}
-          aria-hidden
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        />
       </summary>
 
       <div style={{

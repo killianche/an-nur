@@ -25,7 +25,7 @@
  * следования в Коране, чтобы выдача была предсказуемой и не прыгала.
  */
 
-import { QURAN_SOURCES } from '../content/quran-sources';
+import { getQuranSources, loadQuranSources } from '../content/quran-sources-lazy';
 import { SURAHS, SURAH_BY_NUMBER, type SurahMeta } from '../content/surahs';
 import { globalAyahNumber } from './ayahNumbering';
 
@@ -56,6 +56,15 @@ export type SearchResult = {
   truncated: boolean;
   /** Запрос слишком короткий — по переводу не искали. */
   tooShortForText: boolean;
+  /**
+   * Словарь переводов ещё не догружен, по тексту не искали.
+   *
+   * quran-sources весит 3.7 МБ и грузится отдельным чанком, чтобы не
+   * задерживать старт приложения. Экран поиска обязан показать это
+   * состояние явно, а не пустую выдачу: «ничего не нашлось» и «ещё не
+   * готово» — разные ответы.
+   */
+  notReady: boolean;
 };
 
 /** Приведение к сравнимому виду: нижний регистр, ё→е, пунктуация в
@@ -92,10 +101,15 @@ type Prepared = {
 
 let prepared: Prepared[] | null = null;
 
-function prepare(): Prepared[] {
+/** Прогреть словарь переводов. Вызывать до первого search() по тексту. */
+export function ensureSearchReady(): Promise<unknown> {
+  return loadQuranSources();
+}
+
+function prepare(sources: Record<string, { surah: number; ayah: number; translations: { ru?: string } }>): Prepared[] {
   if (prepared) return prepared;
   const out: Prepared[] = [];
-  for (const [key, src] of Object.entries(QURAN_SOURCES)) {
+  for (const [key, src] of Object.entries(sources)) {
     const original = src.translations.ru;
     if (!original) continue;
     const lower = original.toLowerCase().replace(/ё/g, 'е');
@@ -155,7 +169,7 @@ export type SearchOptions = {
 export function search(raw: string, opts: SearchOptions = {}): SearchResult {
   const norm = normalise(raw);
   const empty: SearchResult = {
-    surahs: [], ayahs: [], truncated: false, tooShortForText: false,
+    surahs: [], ayahs: [], truncated: false, tooShortForText: false, notReady: false,
   };
   if (!norm) return empty;
 
@@ -163,7 +177,14 @@ export function search(raw: string, opts: SearchOptions = {}): SearchResult {
   const surahs = scoped ? [] : searchSurahs(raw, norm);
 
   if (norm.replace(/\s/g, '').length < MIN_QUERY_FOR_TEXT) {
-    return { surahs, ayahs: [], truncated: false, tooShortForText: true };
+    return { surahs, ayahs: [], truncated: false, tooShortForText: true, notReady: false };
+  }
+
+  // Поиск по названиям сур работает всегда: SURAHS лежит в главном чанке.
+  // По переводу ищем только когда словарь доехал.
+  const sources = getQuranSources();
+  if (!sources) {
+    return { surahs, ayahs: [], truncated: false, tooShortForText: false, notReady: true };
   }
 
   /*
@@ -187,7 +208,7 @@ export function search(raw: string, opts: SearchOptions = {}): SearchResult {
   // которого он и нужен.  Поймано тестом.
   let stoppedEarly = false;
 
-  for (const p of prepare()) {
+  for (const p of prepare(sources)) {
     if (scoped && p.surah !== opts.surah) continue;
     const at = p.norm.indexOf(norm);
     if (at === -1) continue;
@@ -221,6 +242,7 @@ export function search(raw: string, opts: SearchOptions = {}): SearchResult {
     ayahs,
     truncated: stoppedEarly || total > ayahs.length,
     tooShortForText: false,
+    notReady: false,
   };
 }
 

@@ -1,19 +1,18 @@
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import {
+  useState, useEffect, useLayoutEffect, useRef, lazy, Suspense,
+  type ReactNode,
+} from 'react';
 import { useTheme, themeMode } from './hooks/useTheme';
 import { SurahPicker } from './screens/SurahPicker';
-import { SurahScreen } from './screens/SurahScreen';
-import { MushafScreen } from './screens/MushafScreen';
-import { AzkarScreen } from './screens/AzkarScreen';
-import { DuaScreen } from './screens/DuaScreen';
-import { AzkarCategoryScreen } from './screens/AzkarCategoryScreen';
-import { BookmarksScreen } from './screens/BookmarksScreen';
-import { PrayerTimesScreen } from './screens/PrayerTimesScreen';
-import { QiblaScreen } from './screens/QiblaScreen';
-import { AccountScreen } from './screens/AccountScreen';
-import { DocumentScreen, type DocumentId } from './screens/DocumentScreen';
+import type { DocumentId } from './screens/DocumentScreen';
+
 import { CosmicLayer } from './components/CosmicLayer';
 import { PaperLayer } from './components/PaperLayer';
 import { StatusBarScrim } from './components/StatusBarScrim';
+import {
+  IosEdgeBackGesture,
+  type IosBackPreview,
+} from './components/IosEdgeBackGesture';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TabBar, type TabId } from './components/TabBar';
 import { applyHighlightVars } from './lib/audioPrefs';
@@ -21,7 +20,30 @@ import { applyPaletteToDocument } from './lib/tajweedPalette';
 import { syncStatusBarToTheme } from './lib/nativeStatusBar';
 import { hideSplashAfterFirstPaint } from './lib/nativeSplash';
 import { wireAndroidBackButton } from './lib/androidBack';
+import { warmQuranSources } from './content/quran-sources-lazy';
+import { readActiveId, readCities } from './lib/prayerCities';
+import { startPrayerAlarmScheduler } from './lib/prayerNotifications';
 import type { AzkarCategoryId } from './lib/azkar';
+
+/*
+ * Экраны, кроме списка сур, грузятся отдельными чанками.
+ *
+ * Раньше все 11 экранов лежали в главном бандле, и WKWebView разбирал их
+ * до первого кадра вместе с 3.7 МБ текста Корана. Список сур — первое, что
+ * человек видит, поэтому он остаётся обычным импортом; всё остальное
+ * приезжает по факту перехода. Экспорты именованные, поэтому default
+ * подставляем вручную.
+ */
+const SurahScreen = lazy(() => import('./screens/SurahScreen').then(m => ({ default: m.SurahScreen })));
+const MushafScreen = lazy(() => import('./screens/MushafScreen').then(m => ({ default: m.MushafScreen })));
+const AzkarScreen = lazy(() => import('./screens/AzkarScreen').then(m => ({ default: m.AzkarScreen })));
+const DuaScreen = lazy(() => import('./screens/DuaScreen').then(m => ({ default: m.DuaScreen })));
+const AzkarCategoryScreen = lazy(() => import('./screens/AzkarCategoryScreen').then(m => ({ default: m.AzkarCategoryScreen })));
+const BookmarksScreen = lazy(() => import('./screens/BookmarksScreen').then(m => ({ default: m.BookmarksScreen })));
+const PrayerTimesScreen = lazy(() => import('./screens/PrayerTimesScreen').then(m => ({ default: m.PrayerTimesScreen })));
+const QiblaScreen = lazy(() => import('./screens/QiblaScreen').then(m => ({ default: m.QiblaScreen })));
+const AccountScreen = lazy(() => import('./screens/AccountScreen').then(m => ({ default: m.AccountScreen })));
+const DocumentScreen = lazy(() => import('./screens/DocumentScreen').then(m => ({ default: m.DocumentScreen })));
 
 /**
  * Навигация приложения — два уровня.
@@ -52,22 +74,37 @@ type Screen =
   // лежат в пакете и обязаны открываться без интернета.
   | { name: 'document'; doc: DocumentId };
 
+/**
+ * Заглушка на время подгрузки чанка экрана.
+ *
+ * Пустой блок в полную высоту, без спиннера: чанки лежат в пакете
+ * приложения и приезжают за десятки миллисекунд, а мелькнувший индикатор
+ * читается как сбой. Высоту держим, чтобы фон темы не схлопывался.
+ */
+function ScreenFallback() {
+  return <div style={{ minHeight: '100dvh' }} aria-hidden="true" />;
+}
+
 const INITIAL_SCREEN: Screen = { name: 'tabs', tab: 'quran' };
 
 export default function App() {
   const { theme, setTheme } = useTheme();
   const [screen, setScreen] = useState<Screen>(INITIAL_SCREEN);
+  const [backPreview, setBackPreview] = useState<IosBackPreview | null>(null);
+  const quranHomePreviewRef = useRef<IosBackPreview | null>(null);
   const isCosmic = themeMode(theme) === 'cosmic';
   const cosmicVariant = theme === 'aurora2' ? 'aurora2' as const : 'aurora' as const;
   const isPaper = theme === 'mushaf';
+  const isDotted = theme === 'aurora';
 
   // ── History-API routing ──────────────────────────────────────────────────
   // Каждый переход вперёд кладёт в history запись со следующим Screen.
   // Системный «назад» (edge-swipe на iOS, аппаратная кнопка на Android,
   // кнопка браузера) прилетает как popstate и превращается обратно в
   // setScreen — отдельной проводки не нужно.  Кнопки «назад» внутри
-  // экранов зовут goBack() (= history.back()), чтобы выход был один и
-  // два пути не разъезжались.
+  // экранов обычно зовут goBack() (= history.back()). Исключение — оба
+  // режима чтения Корана: их стрелка всегда ведёт к выбору суры, потому
+  // что смена «лента ↔ мусхаф» имеет отдельную кнопку.
   //
   // Переключение вкладки — тоже переход вперёд: системный «назад»
   // возвращает на предыдущую вкладку, а не выбрасывает из приложения
@@ -77,6 +114,31 @@ export default function App() {
     // эффекта новый экран уже мог сбросить скролл (SurahScreen делает
     // это, когда восстанавливать нечего), и мы записали бы ноль.
     rememberTabScroll();
+
+    // Для интерактивного iOS edge-pop сохраняем настоящий DOM уходящего
+    // экрана. Во время жеста он будет виден под текущим — как предыдущий
+    // UIViewController под верхним экраном UINavigationController.
+    // Клонируем узел, а не сериализуем в outerHTML: строка потом заново
+    // разбиралась WebKit'ом в первом кадре жеста, и это была самая дорогая
+    // часть свайпа назад. Атрибут data-app-screen с копии снимаем, иначе
+    // следующий querySelector нашёл бы клон вместо настоящего экрана.
+    const node = document.querySelector<HTMLElement>('[data-app-screen="current"]');
+    let captured: IosBackPreview | null = null;
+    if (node) {
+      const clone = node.cloneNode(true) as HTMLElement;
+      clone.removeAttribute('data-app-screen');
+      captured = { node: clone, scrollY: window.scrollY };
+    }
+    if (screen.name === 'tabs' && screen.tab === 'quran' && captured) {
+      quranHomePreviewRef.current = captured;
+    }
+    const returnsToQuran = next.name === 'surah' || next.name === 'mushaf';
+    setBackPreview(
+      returnsToQuran
+        ? (quranHomePreviewRef.current ?? captured)
+        : captured,
+    );
+
     setScreen(next);
     history.pushState({ screen: next }, '');
   };
@@ -84,6 +146,7 @@ export default function App() {
     rememberTabScroll();
     history.back();
   };
+  const goQuranHome = () => navigate({ name: 'tabs', tab: 'quran' });
 
   useEffect(() => {
     // Привязываем текущую запись истории к стартовому экрану, чтобы
@@ -111,8 +174,8 @@ export default function App() {
     };
   }, []);
 
-  // Инжектим <style id="tajweed-palette"> — по одному блоку
-  // @font-palette-values на каждое постраничное семейство таджвида.
+  // Обновляем <style id="tajweed-palette">. В нём только реально
+  // запрошенные в этой сессии постраничные семейства, не все 604.
   // Пересобирается на смену темы: базовая палитра переключается между
   // тёмной и светлой, иначе на светлой странице каллиграфия рисовалась
   // бы белым по белому.
@@ -132,6 +195,32 @@ export default function App() {
   // без этого эффекта приложение зависло бы на ней — ровно та ошибка,
   // что осталась незамеченной в QuranIng.
   useEffect(() => { hideSplashAfterFirstPaint(); }, []);
+
+  // Переводы Корана лежат отдельным чанком, чтобы не задерживать первый
+  // кадр. Прогреваем их в простое сразу после него: к моменту, когда
+  // человек откроет суру или начнёт искать, словарь обычно уже готов.
+  useEffect(() => { warmQuranSources(); }, []);
+
+  // Локальные напоминания живут независимо от вкладки «Намаз»: при каждом
+  // запуске и возврате приложения обновляем ближайшие даты по основному
+  // расписанию. Разрешение здесь не запрашивается — только после явного тапа
+  // человека по колокольчику на экране намаза.
+  useEffect(() => {
+    let stop = () => {};
+    let disposed = false;
+    void startPrayerAlarmScheduler(() => {
+      const list = readCities();
+      const id = readActiveId(list);
+      return list.find(city => city.id === id) ?? list[0] ?? null;
+    }).then(unwire => {
+      if (disposed) unwire();
+      else stop = unwire;
+    });
+    return () => {
+      disposed = true;
+      stop();
+    };
+  }, []);
 
   // ── Позиция прокрутки вкладок ────────────────────────────────────────────
   // Активная вкладка одна, остальные размонтированы, поэтому браузер
@@ -153,22 +242,20 @@ export default function App() {
     if (t) tabScrollRef.current[t] = window.scrollY;
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!currentTab) return;
-    // Двойной rAF: первый кадр монтирует содержимое вкладки, второй
-    // получает уже разложенную страницу нужной высоты — до этого
-    // scrollTo упёрся бы в короткий документ и обрезался.
+    // Ставим сохранённую позицию до первого видимого кадра. Прежний
+    // двойной rAF сначала показывал начало списка, а через два кадра
+    // резко переставлял его на сохранённую позицию — это и выглядело
+    // как рывок при возврате из суры.
     const saved = tabScrollRef.current[currentTab] ?? 0;
-    const id = requestAnimationFrame(() => {
-      requestAnimationFrame(() => window.scrollTo(0, saved));
-    });
-    return () => cancelAnimationFrame(id);
+    window.scrollTo(0, saved);
   }, [currentTab]);
 
   // Экраны «поверх» всегда открываются с начала.  Исключение — сура:
   // она сама восстанавливает позицию чтения, и сброс здесь гонялся бы
   // с её эффектом.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (screen.name === 'tabs' || screen.name === 'surah') return;
     window.scrollTo(0, 0);
   }, [screen.name]);
@@ -176,26 +263,28 @@ export default function App() {
   // ── Экраны «поверх» ──────────────────────────────────────────────────────
   if (screen.name === 'surah') {
     return (
-      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
-        <ErrorBoundary name="SurahScreen" onReset={goBack}>
+      <Shell key="surah" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goQuranHome} edgeBackPreview={backPreview}>
+        <Suspense fallback={<ScreenFallback />}>
+        <ErrorBoundary name="SurahScreen" onReset={goQuranHome}>
           <SurahScreen
             surahNumber={screen.number}
             initialAyah={screen.initialAyah}
             theme={theme}
             setTheme={setTheme}
-            onBack={goBack}
-            onOpenSurah={(n, ayah) => navigate({ name: 'surah', number: n, initialAyah: ayah })}
+            onBack={goQuranHome}
             onOpenMushaf={page => navigate({ name: 'mushaf', page })}
           />
         </ErrorBoundary>
+        </Suspense>
       </Shell>
     );
   }
 
   if (screen.name === 'mushaf') {
     return (
-      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
-        <ErrorBoundary name="MushafScreen" onReset={goBack}>
+      <Shell key="mushaf" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goQuranHome} edgeBackPreview={backPreview}>
+        <Suspense fallback={<ScreenFallback />}>
+        <ErrorBoundary name="MushafScreen" onReset={goQuranHome}>
           <MushafScreen
             initialPage={screen.page}
             theme={theme}
@@ -205,37 +294,43 @@ export default function App() {
                кнопка переключения вида, только неявно. Два способа сменить
                вид сбивают: у переключения есть своя кнопка, а «назад»
                должен выводить из режима наружу. */
-            onBack={() => navigate({ name: 'tabs', tab: 'quran' })}
+            onBack={goQuranHome}
             onOpenFeed={(n, ayah) => navigate({ name: 'surah', number: n, initialAyah: ayah })}
           />
         </ErrorBoundary>
+        </Suspense>
       </Shell>
     );
   }
 
   if (screen.name === 'qibla') {
     return (
-      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
+      <Shell key="qibla" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+        <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="QiblaScreen" onReset={goBack}>
           <QiblaScreen theme={theme} setTheme={setTheme} onBack={goBack} />
         </ErrorBoundary>
+        </Suspense>
       </Shell>
     );
   }
 
   if (screen.name === 'document') {
     return (
-      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
+      <Shell key="document" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+        <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="DocumentScreen" onReset={goBack}>
           <DocumentScreen doc={screen.doc} onBack={goBack} />
         </ErrorBoundary>
+        </Suspense>
       </Shell>
     );
   }
 
   if (screen.name === 'bookmarks') {
     return (
-      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
+      <Shell key="bookmarks" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+        <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="BookmarksScreen" onReset={goBack}>
           <BookmarksScreen
             theme={theme}
@@ -244,13 +339,15 @@ export default function App() {
             onOpen={(number, ayah) => navigate({ name: 'surah', number, initialAyah: ayah })}
           />
         </ErrorBoundary>
+        </Suspense>
       </Shell>
     );
   }
 
   if (screen.name === 'azkar-category') {
     return (
-      <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
+      <Shell key="azkar-category" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+        <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="AzkarCategoryScreen" onReset={goBack}>
           <AzkarCategoryScreen
             category={screen.category}
@@ -259,6 +356,7 @@ export default function App() {
             onBack={goBack}
           />
         </ErrorBoundary>
+        </Suspense>
       </Shell>
     );
   }
@@ -266,7 +364,10 @@ export default function App() {
   // ── Корневые вкладки ─────────────────────────────────────────────────────
   const tab = screen.tab;
   return (
-    <Shell isCosmic={isCosmic} isPaper={isPaper} cosmicVariant={cosmicVariant}>
+    <Shell key={`tabs-${tab}`} isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant}>
+      {/* Вкладки под одним Suspense, а TabBar снаружи: иначе панель
+          вкладок пропадала бы на время подгрузки чанка экрана. */}
+      <Suspense fallback={<ScreenFallback />}>
       {tab === 'quran' && (
         <ErrorBoundary name="SurahPicker">
           <SurahPicker
@@ -309,12 +410,13 @@ export default function App() {
           />
         </ErrorBoundary>
       )}
+      </Suspense>
       <TabBar
         active={tab}
         onSelect={next => {
           if (next === tab) {
-            // Повторный тап по активной вкладке — «наверх», как в
-            // системных приложениях.
+            // TabBar вызывает этот путь только после двух быстрых тапов
+            // по активной вкладке «Коран» — прокручиваем список сур к началу.
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
           }
@@ -329,22 +431,57 @@ export default function App() {
  *  Космос и бумага взаимоисключающи — это разные темы, — но проверки
  *  независимы, чтобы добавление третьего фона не требовало правки
  *  условий. */
-function Shell({ isCosmic, isPaper, cosmicVariant, children }: {
+function Shell({
+  isCosmic,
+  isPaper,
+  isDotted,
+  cosmicVariant,
+  onEdgeBack,
+  edgeBackPreview,
+  children,
+}: {
   isCosmic: boolean;
   isPaper: boolean;
+  isDotted: boolean;
   cosmicVariant: 'aurora' | 'aurora2';
+  onEdgeBack?: () => void;
+  edgeBackPreview?: IosBackPreview | null;
   children: ReactNode;
 }) {
+  const currentScreenRef = useRef<HTMLDivElement>(null);
+
   return (
     <>
-      {isCosmic && <CosmicLayer variant={cosmicVariant} />}
-      {isPaper && <PaperLayer />}
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        {children}
+      <div
+        ref={currentScreenRef}
+        data-app-screen="current"
+        className="app-screen-enter"
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          minHeight: '100dvh',
+          isolation: 'isolate',
+          background: isDotted
+            ? 'radial-gradient(circle, rgba(116, 106, 92, 0.16) 1.45px, transparent 1.7px) 18px 9px / 60px 60px, var(--surface)'
+            : (isCosmic || isPaper ? 'transparent' : 'var(--surface)'),
+        }}
+      >
+        {isCosmic && <CosmicLayer variant={cosmicVariant} />}
+        {isPaper && <PaperLayer />}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {children}
+        </div>
+        {/* Крышка под системной строкой входит в уходящий экран и движется
+            вместе с ним во время интерактивного edge-pop. */}
+        <StatusBarScrim />
       </div>
-      {/* Крышка под системной строкой — последней в дереве, чтобы
-          лежать поверх контента любого экрана. */}
-      <StatusBarScrim />
+      {onEdgeBack && (
+        <IosEdgeBackGesture
+          onBack={onEdgeBack}
+          currentScreenRef={currentScreenRef}
+          preview={edgeBackPreview}
+        />
+      )}
     </>
   );
 }

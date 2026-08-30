@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { Theme } from '../hooks/useTheme';
-import { Appearance, Sunrise, Sunset } from '../components/icons';
+import { Appearance, ICON_SIZE, Sunrise, Sunset } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { loadAzkarData, type AzkarCategoryId, type AzkarData } from '../lib/azkar';
@@ -76,7 +76,7 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
       minHeight: '100dvh',
       maxWidth: 'min(100%, 720px)',
       margin: '0 auto',
-      padding: `0 16px calc(${TAB_BAR_HEIGHT}px + 28px + env(safe-area-inset-bottom))`,
+      padding: `0 var(--space-margin) calc(${TAB_BAR_HEIGHT}px + var(--space-section) + env(safe-area-inset-bottom))`,
       position: 'relative',
       zIndex: 1,
       // Колонка на всю высоту: свободное место достаётся карточкам,
@@ -97,16 +97,16 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
       <header style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '10px',
-        paddingTop: 'calc(env(safe-area-inset-top) + 18px)',
-        paddingBottom: '16px',
+        gap: 'var(--space-cozy)',
+        paddingTop: 'calc(env(safe-area-inset-top) + var(--space-margin))',
+        paddingBottom: 'var(--space-margin)',
       }}>
         <h1
           className="display-serif"
           style={{
             margin: 0, flex: 1, minWidth: 0,
             fontSize: 'clamp(30px, 8vw, 40px)',
-            fontWeight: 400,
+            fontWeight: 'var(--weight-regular)',
             letterSpacing: '-0.03em',
             color: 'var(--text-primary)',
             lineHeight: 1.05,
@@ -124,13 +124,13 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
           data-active={themeOpen}
           style={{
             width: '42px', height: '42px', flexShrink: 0,
-            borderRadius: '12px',
+            borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
             color: themeOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
-          <Appearance size={19} />
+          <Appearance size={ICON_SIZE.md} />
         </button>
       </header>
 
@@ -138,11 +138,12 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
 
       {error && (
         <div style={{
-          textAlign: 'center', padding: '60px 16px',
-          fontSize: '14px', color: 'var(--text-tertiary)', lineHeight: 1.6,
+          textAlign: 'center', padding: '60px var(--space-margin)',
+          fontSize: 'var(--font-subhead)', lineHeight: 'var(--leading-subhead)',
+          color: 'var(--text-tertiary)',
         }}>
           Не удалось загрузить азкары<br />
-          <span style={{ fontSize: '12px', opacity: 0.7 }}>{error}</span>
+          <span style={{ fontSize: 'var(--font-caption1)', opacity: 0.7 }}>{error}</span>
         </div>
       )}
 
@@ -157,9 +158,9 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
           // него карточка растянулась бы на пол-экрана и превратилась
           // в баннер.
           gridAutoRows: 'minmax(120px, 1fr)',
-          gap: '14px',
+          gap: 'var(--space-margin)',
           alignContent: 'end',
-          paddingTop: '8px',
+          paddingTop: 'var(--space-snug)',
         }}>
           {visibleCats.map(cat => (
             <CategoryCard
@@ -176,7 +177,7 @@ export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
       {data && visibleCats.length === 0 && (
         <p style={{
           textAlign: 'center', padding: '64px 0',
-          color: 'var(--text-tertiary)', fontSize: '14px',
+          color: 'var(--text-tertiary)', fontSize: 'var(--font-subhead)',
         }}>
           Пока нет азкаров.
         </p>
@@ -247,11 +248,11 @@ function CategoryCard({
         flexDirection: 'column',
         alignItems: 'flex-start',
         justifyContent: 'space-between',
-        gap: '18px',
+        gap: 'var(--space-margin)',
         width: '100%',
         height: '100%',
-        padding: '24px 26px',
-        borderRadius: '20px',
+        padding: 'var(--space-section)',
+        borderRadius: 'var(--radius-card)',
         border: `1px solid rgba(${tint}, 0.22)`,
         background: `
           radial-gradient(120% 90% at 100% 0%, rgba(${tint}, 0.16) 0%, rgba(${tint}, 0.05) 45%, transparent 78%),
@@ -289,13 +290,13 @@ function CategoryCard({
           flexShrink: 0,
           width: '54px', height: '54px',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          borderRadius: '9999px',
+          borderRadius: 'var(--radius-pill)',
           background: `rgba(${tint}, 0.16)`,
           border: `1px solid rgba(${tint}, 0.28)`,
           color: 'var(--text-primary)',
         }}
       >
-        <Icon size={25} />
+        <Icon size={ICON_SIZE.lg} />
       </span>
 
       <span style={{ position: 'relative', minWidth: 0 }}>
@@ -304,7 +305,7 @@ function CategoryCard({
           style={{
             display: 'block',
             fontSize: 'clamp(22px, 6vw, 27px)',
-            fontWeight: 400,
+            fontWeight: 'var(--weight-regular)',
             letterSpacing: '-0.015em',
             color: 'var(--text-primary)',
             lineHeight: 1.15,
@@ -313,8 +314,9 @@ function CategoryCard({
           {title}
         </span>
         <span style={{
-          display: 'block', marginTop: '7px',
-          fontSize: '13px',
+          display: 'block', marginTop: 'var(--space-snug)',
+          fontSize: 'var(--font-footnote)',
+          lineHeight: 'var(--leading-footnote)',
           color: 'var(--text-secondary)',
           fontVariantNumeric: 'tabular-nums',
         }}>
@@ -333,12 +335,12 @@ function CategorySkeleton() {
       flex: 1,
       display: 'grid',
       gridTemplateRows: 'repeat(2, minmax(120px, 1fr))',
-      gap: '14px',
+      gap: 'var(--space-margin)',
       alignContent: 'end',
-      paddingTop: '8px',
+      paddingTop: 'var(--space-snug)',
     }}>
       {Array.from({ length: 2 }).map((_, i) => (
-        <div key={i} className="skeleton" style={{ borderRadius: '20px' }} />
+        <div key={i} className="skeleton" style={{ borderRadius: 'var(--radius-card)' }} />
       ))}
     </div>
   );

@@ -91,10 +91,11 @@ export function AzkarTypographySettings(p: AzkarTypographyProps) {
             резать до «Араб.» / «Инг.»; теперь на 375 px каждая вкладка
             получает ~113 px и полные слова помещаются свободно. */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px',
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+          gap: 'var(--space-tight)',
           background: 'var(--bg)', border: '1px solid var(--hairline)',
-          borderRadius: '10px', padding: '3px',
-          marginBottom: '14px',
+          borderRadius: 'var(--radius-control)', padding: 'var(--space-tight)',
+          marginBottom: 'var(--space-margin)',
         }}>
           {([
             { id: 'arabic',   label: 'Арабский'      },
@@ -111,7 +112,7 @@ export function AzkarTypographySettings(p: AzkarTypographyProps) {
               }
               style={{
                 minHeight: '36px',
-                padding: '9px 0', borderRadius: '7px',
+                padding: 'var(--space-snug) 0', borderRadius: 'var(--radius-chip)',
                 border: 'none',
                 background: tab === t.id
                   ? 'color-mix(in srgb, var(--ink) 8%, var(--surface))'
@@ -119,8 +120,10 @@ export function AzkarTypographySettings(p: AzkarTypographyProps) {
                 color: tab === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
-                fontSize: '12px',
-                fontWeight: tab === t.id ? 600 : 500,
+                fontSize: 'var(--font-caption1)',
+                fontWeight: tab === t.id
+                  ? 'var(--weight-semibold)'
+                  : 'var(--weight-regular)',
                 boxShadow: tab === t.id
                   ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent)'
                   : 'none',
@@ -210,14 +213,14 @@ function LangPane({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '10px',
+          marginBottom: 'var(--space-cozy)',
           cursor: 'pointer',
           userSelect: 'none',
         }}
       >
         <span style={{
-          fontSize: '11px',
-          fontWeight: 600,
+          fontSize: 'var(--font-caption2)',
+          fontWeight: 'var(--weight-semibold)',
           color: 'var(--text-tertiary)',
           letterSpacing: '0.10em',
           textTransform: 'uppercase',
@@ -234,7 +237,7 @@ function LangPane({
         </>
       )}
 
-      <div style={{ marginTop: fontPicker ? '12px' : 0 }}>
+      <div style={{ marginTop: fontPicker ? 'var(--space-cozy)' : 0 }}>
         <p style={sectionLabel}>Размер</p>
         <ScalePicker value={scale} onChange={onScale} />
       </div>
@@ -243,9 +246,9 @@ function LangPane({
 }
 
 const sectionLabel: React.CSSProperties = {
-  margin: '0 0 8px',
-  fontSize: '10px',
-  fontWeight: 600,
+  margin: '0 0 var(--space-snug)',
+  fontSize: 'var(--font-caption2)',
+  fontWeight: 'var(--weight-semibold)',
   color: 'var(--text-tertiary)',
   textTransform: 'uppercase',
   letterSpacing: '0.10em',

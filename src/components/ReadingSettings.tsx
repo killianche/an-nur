@@ -22,14 +22,19 @@ import {
 // Раньше тут sync-импортился весь 10-МБ QURAN_SEGMENTS только ради
 // проверки `!!QURAN_SEGMENTS[reciter]`.  Заменено на сет-константу
 // в reciters.ts — тот же sync-чек, ноль bundle-overhead.
-import { RECITERS_WITH_SEGMENTS } from '../lib/reciters';
-import { Microphone, Close } from './icons';
+import { RECITERS_WITH_SEGMENTS, usesWholeAyahHighlight } from '../lib/reciters';
+import { Microphone, Close, ICON_SIZE } from './icons';
 import { OfflineAudioCard } from './OfflineAudioCard';
+import { AudioSpinner } from './BottomDock';
+import {
+  MUSHAF_FONT_OPTIONS,
+  type MushafFontId,
+} from '../lib/mushafFont';
 
 const sectionTitle: CSSProperties = {
   margin: '0 0 8px',
-  fontSize: '10px',
-  fontWeight: 600,
+  fontSize: 'var(--font-caption2)',
+  fontWeight: 'var(--weight-semibold)',
   color: 'var(--text-tertiary)',
   textTransform: 'uppercase',
   letterSpacing: '0.10em',
@@ -257,11 +262,31 @@ export function SettingsSheet({
   );
   useEffect(() => {
     if (!anchorEl) return;
-    const update = () => setAnchorRect(anchorEl.getBoundingClientRect());
-    update();
+    let frame: number | null = null;
+    // Раньше setAnchorRect звался на КАЖДОЕ событие прокрутки, а новый
+    // DOMRect никогда не равен предыдущему по ссылке — React перерисовывал
+    // всю панель настроек десятки раз в секунду. Якорь при этом обычно
+    // живёт в фиксированной шапке и вовсе не двигается. Теперь: одно
+    // измерение на кадр и запись в state только при реальном сдвиге.
+    const measure = () => {
+      frame = null;
+      const next = anchorEl.getBoundingClientRect();
+      setAnchorRect(prev => (
+        prev
+        && prev.top === next.top
+        && prev.left === next.left
+        && prev.width === next.width
+        && prev.height === next.height
+      ) ? prev : next);
+    };
+    const update = () => {
+      if (frame == null) frame = requestAnimationFrame(measure);
+    };
+    measure();
     window.addEventListener('scroll', update, { passive: true, capture: true });
     window.addEventListener('resize', update);
     return () => {
+      if (frame != null) cancelAnimationFrame(frame);
       window.removeEventListener('scroll', update, { capture: true } as EventListenerOptions);
       window.removeEventListener('resize', update);
     };
@@ -404,7 +429,7 @@ export function SettingsSheet({
             <span style={{
               flex: 1, minWidth: 0,
               fontSize: isBottom ? '17px' : '13px',
-              fontWeight: 600,
+              fontWeight: 'var(--weight-semibold)',
               color: 'var(--text-primary)',
               letterSpacing: isBottom ? '-0.01em' : '0.005em',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -472,7 +497,7 @@ function SheetCloseButton({ onClose }: { onClose: () => void }) {
           transition: 'background 140ms ease, transform 140ms ease, color 140ms ease',
         }}
       >
-        <Close size={17} />
+        <Close size={ICON_SIZE.md} />
       </span>
     </button>
   );
@@ -500,21 +525,70 @@ type ThemeProps = {
    *  picker's palette button) can omit it; HighlightCard is hidden in
    *  that case. */
   reciter?: ReciterId;
+  /** Полноэкранный режим передаёт свой выбор из двух постраничных лиц. */
+  mushafFont?: MushafFontId;
+  setMushafFont?: (font: MushafFontId) => void;
 };
 
 export function ThemeSettings(p: ThemeProps) {
   return (
     <SettingsSheet onClose={p.onClose} title="Оформление" placement="top-popover" anchorEl={p.anchorEl}>
       <div style={{ display: 'grid', gap: '10px' }}>
+        {p.mushafFont && p.setMushafFont && (
+          <MushafFontCard font={p.mushafFont} onPick={p.setMushafFont} />
+        )}
         <ThemePicker theme={p.theme} setTheme={p.setTheme} />
-        {/* Цвет сияния — только когда сияние есть.  На светлой теме и
-            «Бумаге» этот выбор ни на что не влиял бы. */}
-        {(p.theme === 'aurora' || p.theme === 'aurora2') && (
+        {/* Цвет сияния есть только у «Авроры 2». */}
+        {p.theme === 'aurora2' && (
           <AuroraColourCard variant={p.theme} />
         )}
         {p.reciter && <HighlightCard reciter={p.reciter} />}
       </div>
     </SettingsSheet>
+  );
+}
+
+function MushafFontCard({ font, onPick }: {
+  font: MushafFontId;
+  onPick: (font: MushafFontId) => void;
+}) {
+  return (
+    <section style={settingCard}>
+      <p style={cardTitle}>Шрифт страницы</p>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '6px',
+      }}>
+        {MUSHAF_FONT_OPTIONS.map(option => {
+          const active = option.id === font;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onPick(option.id)}
+              style={{
+                minHeight: '38px',
+                padding: '7px 10px',
+                borderRadius: '10px',
+                border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline-strong)'}`,
+                background: active
+                  ? 'color-mix(in srgb, var(--ink) 10%, transparent)'
+                  : 'transparent',
+                color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                fontFamily: 'inherit',
+                fontSize: 'var(--font-caption1)',
+                fontWeight: active ? 600 : 500,
+                cursor: 'pointer',
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -585,8 +659,8 @@ function AuroraColourCard({ variant }: { variant: AuroraVariant }) {
  * Превью темы на карточке.
  *
  * Карточка не подписана цветом, а показывает уменьшённую сцену: канва
- * темы, строка «текста» её цветом чернил и — для «Авроры» — намёк на
- * сияние сверху плюс несколько звёзд.  Пользователь выбирает глазами,
+ * темы, строка «текста» её цветом чернил и характерный фон.
+ * Пользователь выбирает глазами,
  * а не читает ярлык.
  *
  * В QuranIng тут был грид из одиннадцати пресетов на четыре ряда с
@@ -610,13 +684,12 @@ const THEME_PREVIEW: Record<Theme,
     // натуральным размером — вместо бумаги был бы её случайный угол.
     glowSize: 'auto, cover',
   },
-  dark:   { canvas: '#1a1a1c', ink: '#ececec' },
+  dark:   { canvas: '#000000', ink: '#ececec' },
   aurora: {
-    canvas: '#000000',
-    ink: '#f4f4f5',
-    // Тот же ледяной тон, что у AURORA_ICE.layer1, только приглушённый —
-    // на карточке 96×64 полноценная яркость смотрелась бы кричаще.
-    glow: 'radial-gradient(120% 80% at 50% 0%, rgba(120,200,240,0.55) 0%, rgba(120,200,240,0.16) 45%, transparent 75%)',
+    canvas: '#f7f4ec',
+    ink: '#1f1b17',
+    glow: 'radial-gradient(circle, rgba(116,106,92,0.20) 1.15px, transparent 1.4px)',
+    glowSize: '20px 20px',
   },
   aurora2: {
     canvas: '#000000',
@@ -695,16 +768,6 @@ function ThemePicker({ theme, setTheme }: {
                     backgroundPosition: 'center',
                   }} />
                 )}
-                {id === 'aurora' && (
-                  <span style={{
-                    position: 'absolute', inset: 0,
-                    backgroundImage:
-                      'radial-gradient(1.2px 1.2px at 22% 62%, rgba(255,255,255,0.9), transparent 100%),' +
-                      'radial-gradient(1px 1px at 64% 48%, rgba(255,255,255,0.75), transparent 100%),' +
-                      'radial-gradient(1.2px 1.2px at 82% 72%, rgba(255,255,255,0.85), transparent 100%),' +
-                      'radial-gradient(1px 1px at 40% 80%, rgba(255,255,255,0.7), transparent 100%)',
-                  }} />
-                )}
                 {/* Три «строки текста» — дают почувствовать контраст
                     чернил на канве ещё до применения темы. */}
                 <span style={{
@@ -726,7 +789,7 @@ function ThemePicker({ theme, setTheme }: {
               </span>
 
               <span style={{
-                fontSize: '11.5px',
+                fontSize: 'var(--font-caption2)',
                 fontWeight: active ? 600 : 500,
                 color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
                 letterSpacing: '0.005em',
@@ -769,7 +832,7 @@ type TypographyProps = {
   setRuFont: (v: LatinFontId) => void;
   arabicFont: ArabicFontId;
   setArabicFont: (v: ArabicFontId) => void;
-
+  tajweedStatus?: 'idle' | 'loading' | 'ready' | 'failed';
   onClose: () => void;
   /** Trigger button element — popover anchors directly under it. */
   anchorEl?: HTMLElement | null;
@@ -809,7 +872,7 @@ export function TypographySettings(p: TypographyProps) {
       {/* ── Чтец ───────────────────────────────────────────────────── */}
       <section style={settingCard}>
         <p style={{ ...cardTitle, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Microphone size={13} />
+          <Microphone size={ICON_SIZE.sm} />
           Чтец
         </p>
         <div style={{
@@ -840,8 +903,8 @@ export function TypographySettings(p: TypographyProps) {
                   fontFamily: 'inherit',
                   textAlign: 'left',
                   overflow: 'hidden',
-                  fontSize: '12px',
-                  fontWeight: 500,
+                  fontSize: 'var(--font-caption1)',
+                  fontWeight: 'var(--weight-regular)',
                   letterSpacing: '0.005em',
                   color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
                   whiteSpace: 'nowrap',
@@ -888,7 +951,7 @@ export function TypographySettings(p: TypographyProps) {
                 color: tab === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
-                fontSize: '13px',
+                fontSize: 'var(--font-footnote)',
                 fontWeight: tab === t.id ? 600 : 500,
                 boxShadow: tab === t.id
                   ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent)'
@@ -910,6 +973,7 @@ export function TypographySettings(p: TypographyProps) {
             onScale={p.setArabicScale}
             font={p.arabicFont}
             onFont={p.setArabicFont}
+            fontStatus={p.arabicFont === 'qpc-v4-tajweed' ? p.tajweedStatus : undefined}
             options={ARABIC_FONTS}
             preview="بسم الله"
             dir="rtl"
@@ -967,7 +1031,7 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
   const [style, setStyleS] = useState<HighlightStyle>(getHighlightStyle);
   const [color, setColorS] = useState<HighlightColor>(getHighlightColor);
   const [glow,  setGlowS]  = useState<GlowPalette>(getGlowPalette);
-  // Live theme — when it flips between light/dark/aurora we re-render
+  // Live theme — when it flips between light/dark/cosmic we re-render
   // and either show or hide the style tabs. On the light theme glow is
   // force-resolved to color by audioPrefs anyway, so showing a
   // "Свечение" tab there would be a dead choice.
@@ -978,18 +1042,67 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
   // в audioPrefs и выбор был мёртвым.
   const isLight = isLightTheme(themeAttr as Theme);
 
+  const onToggle = () => {
+    const next = !on;
+    setOnS(next);
+    setHighlightEnabled(next);
+  };
+
   // Some reciters (Maher Al-Muaiqly) aren't on quran.com so we have no
   // word-level segments for them — show a notice instead of dead
   // controls. Detection is just "is the reciter bucket present in the
   // generated segments map?"
   const hasSegments = RECITERS_WITH_SEGMENTS.has(reciter);
   if (!hasSegments) {
+    if (usesWholeAyahHighlight(reciter)) {
+      return (
+        <section style={{
+          paddingTop: '10px',
+          borderTop: '1px solid var(--hairline)',
+        }}>
+          <div
+            onClick={onToggle}
+            role="button"
+            aria-label="Подсветка читаемого аята"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            <span style={{
+              fontSize: 'var(--font-caption2)',
+              fontWeight: 'var(--weight-semibold)',
+              color: 'var(--text-tertiary)',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+            }}>
+              Подсветка аята
+            </span>
+            <Switch on={on} />
+          </div>
+          <p style={{
+            margin: '8px 0 0',
+            fontSize: 'var(--font-caption1)',
+            fontWeight: 'var(--weight-regular)',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.5,
+          }}>
+            У этого чтеца нет пословных таймингов, поэтому читаемый аят
+            аккуратно подсвечивается целиком.
+          </p>
+        </section>
+      );
+    }
     return (
       <section style={settingCard}>
         <p style={{
           margin: 0,
-          fontSize: '12px',
-          fontWeight: 500,
+          fontSize: 'var(--font-caption1)',
+          fontWeight: 'var(--weight-regular)',
           color: 'var(--text-secondary)',
           lineHeight: 1.5,
         }}>
@@ -1000,11 +1113,6 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
     );
   }
 
-  const onToggle = () => {
-    const next = !on;
-    setOnS(next);
-    setHighlightEnabled(next);
-  };
   const onPickColor = (c: HighlightColor) => {
     setColorS(c);
     setHighlightColorPref(c);
@@ -1043,8 +1151,8 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
         {/* Uppercase eyebrow-label — даёт понять что это вспомогательная
             секция, не пункт первого уровня. */}
         <span style={{
-          fontSize: '10.5px',
-          fontWeight: 600,
+          fontSize: 'var(--font-caption2)',
+          fontWeight: 'var(--weight-semibold)',
           color: 'var(--text-tertiary)',
           letterSpacing: '0.12em',
           textTransform: 'uppercase',
@@ -1086,7 +1194,7 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
                     color: style === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                     cursor: 'pointer',
                     fontFamily: 'inherit',
-                    fontSize: '12px',
+                    fontSize: 'var(--font-caption1)',
                     fontWeight: style === t.id ? 600 : 500,
                     boxShadow: style === t.id
                       ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent)'
@@ -1211,8 +1319,8 @@ function AutoScrollToggleRow() {
       }}
     >
       <span style={{
-        fontSize: '13px',
-        fontWeight: 500,
+        fontSize: 'var(--font-footnote)',
+        fontWeight: 'var(--weight-regular)',
         color: 'var(--text-primary)',
         letterSpacing: '0.005em',
       }}>
@@ -1235,8 +1343,8 @@ export const settingCard: CSSProperties = {
 
 export const cardTitle: CSSProperties = {
   margin: '0 0 10px',
-  fontSize: '11px',
-  fontWeight: 600,
+  fontSize: 'var(--font-caption2)',
+  fontWeight: 'var(--weight-semibold)',
   color: 'var(--text-tertiary)',
   textTransform: 'uppercase',
   letterSpacing: '0.10em',
@@ -1285,7 +1393,7 @@ export function ScalePicker({ value, onChange }: { value: number; onChange: (v: 
               cursor: 'pointer',
               fontFamily: 'inherit',
               fontSize: `${SCALE_FONT_PX[i]}px`,
-              fontWeight: 500,
+              fontWeight: 'var(--weight-regular)',
               lineHeight: 1.2,
             }}
           >
@@ -1298,13 +1406,14 @@ export function ScalePicker({ value, onChange }: { value: number; onChange: (v: 
 }
 
 export function FontChips<T extends string>({
-  value, options, onChange, preview, dir = 'ltr',
+  value, options, onChange, preview, dir = 'ltr', activeStatus,
 }: {
   value: T;
   options: { id: T; label: string; stack: string; weight?: number }[];
   onChange: (v: T) => void;
   preview: string;
   dir?: 'ltr' | 'rtl';
+  activeStatus?: 'idle' | 'loading' | 'ready' | 'failed';
 }) {
   // Equal-width grid so every font gets the same airtime — horizontal
   // scroll hid Plex behind the edge fade and made it feel like a
@@ -1350,7 +1459,7 @@ export function FontChips<T extends string>({
               dir={dir}
               style={{
                 fontFamily: opt.stack,
-                fontSize: '17px',
+                fontSize: 'var(--font-body)',
                 fontWeight: opt.weight ?? 400,
                 color: 'var(--text-primary)',
                 lineHeight: 1.1,
@@ -1363,17 +1472,26 @@ export function FontChips<T extends string>({
               {preview}
             </span>
             <span style={{
-              fontSize: '9px',
+              fontSize: 'var(--font-caption2)',
               color: active ? 'var(--text-primary)' : 'var(--text-tertiary)',
-              fontWeight: 500,
+              fontWeight: 'var(--weight-regular)',
               letterSpacing: '0.02em',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               maxWidth: '100%',
               textTransform: 'uppercase',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
             }}>
-              {opt.label}
+              {active && activeStatus === 'loading' && <AudioSpinner size={10} />}
+              {active && activeStatus === 'loading'
+                ? 'Загрузка…'
+                : active && activeStatus === 'failed'
+                  ? 'Ошибка загрузки'
+                  : opt.label}
             </span>
           </button>
         );
@@ -1388,7 +1506,8 @@ export function FontChips<T extends string>({
  *  QCF V4 PUA glyphs and has no user-pickable family any more — the
  *  three legacy web-fonts were removed). */
 export function LangBody<T extends string>({
-  visible, onToggleVisible, scale, onScale, font, onFont, options, preview, dir = 'ltr',
+  visible, onToggleVisible, scale, onScale, font, onFont, options, preview,
+  dir = 'ltr', fontStatus,
 }: {
   visible: boolean;
   onToggleVisible: () => void;
@@ -1399,6 +1518,7 @@ export function LangBody<T extends string>({
   options?: { id: T; label: string; stack: string; weight?: number }[];
   preview?: string;
   dir?: 'ltr' | 'rtl';
+  fontStatus?: 'idle' | 'loading' | 'ready' | 'failed';
 }) {
   const hasFontPicker = !!font && !!onFont && !!options && !!preview;
   return (
@@ -1415,8 +1535,8 @@ export function LangBody<T extends string>({
         }}
       >
         <span style={{
-          fontSize: '11px',
-          fontWeight: 600,
+          fontSize: 'var(--font-caption2)',
+          fontWeight: 'var(--weight-semibold)',
           color: 'var(--text-tertiary)',
           letterSpacing: '0.10em',
           textTransform: 'uppercase',
@@ -1433,7 +1553,14 @@ export function LangBody<T extends string>({
       {hasFontPicker && (
         <>
           <p style={sectionTitle}>Шрифт</p>
-          <FontChips value={font!} options={options!} onChange={onFont!} preview={preview!} dir={dir} />
+          <FontChips
+            value={font!}
+            options={options!}
+            onChange={onFont!}
+            preview={preview!}
+            dir={dir}
+            activeStatus={fontStatus}
+          />
         </>
       )}
 

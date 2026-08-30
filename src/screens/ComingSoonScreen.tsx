@@ -10,6 +10,21 @@
  *
  * Экран честно говорит, что раздела ещё нет, и перечисляет, что в нём
  * будет, — пустая страница без объяснений читается как баг.
+ *
+ * ── Статус ────────────────────────────────────────────────────────────
+ *
+ * Сейчас компонент никем не импортируется: «Намаз» и «Кибла» уже
+ * сделаны своими экранами (PrayerTimesScreen, QiblaScreen).  Каркас
+ * оставлен как готовая форма для следующего незаконченного раздела и
+ * приведён к общей шкале, чтобы к моменту возврата в навигацию он не
+ * выпадал из типографики.
+ *
+ * ── Типографика ───────────────────────────────────────────────────────
+ *
+ * Заголовок был вдвое крупнее всех остальных экранов —
+ * clamp(44px, 12vw, 88px) весом 300, которого у подключённых подсетов
+ * Inter нет вовсе.  Приведён к форме «Коран» / «Аккаунт»:
+ * clamp(30px, 8vw, 40px), Regular.
  */
 
 import type { ReactNode } from 'react';
@@ -30,20 +45,23 @@ export function ComingSoonScreen({
       minHeight: '100dvh',
       maxWidth: 'min(100%, 760px)',
       margin: '0 auto',
-      padding: `0 16px calc(${TAB_BAR_HEIGHT}px + 32px + env(safe-area-inset-bottom))`,
+      padding: `0 var(--space-margin) calc(${TAB_BAR_HEIGHT}px + var(--space-section) + env(safe-area-inset-bottom))`,
       position: 'relative',
       zIndex: 1,
     }}>
-      <header style={{ paddingTop: '64px', paddingBottom: '32px' }}>
+      <header style={{
+        paddingTop: 'calc(env(safe-area-inset-top) + var(--space-margin))',
+        paddingBottom: 'var(--space-section)',
+      }}>
         <h1
           className="display-serif"
           style={{
             margin: 0,
-            fontSize: 'clamp(44px, 12vw, 88px)',
-            fontWeight: 300,
-            letterSpacing: '-0.04em',
+            fontSize: 'clamp(30px, 8vw, 40px)',
+            fontWeight: 'var(--weight-regular)',
+            letterSpacing: '-0.03em',
             color: 'var(--text-primary)',
-            lineHeight: 1,
+            lineHeight: 1.05,
           }}
         >
           {title}
@@ -52,11 +70,11 @@ export function ComingSoonScreen({
 
       <section style={{
         border: '1px solid var(--hairline)',
-        borderRadius: '18px',
+        borderRadius: 'var(--radius-card)',
         background: 'color-mix(in srgb, var(--ink) 3%, transparent)',
-        padding: '28px 22px',
+        padding: 'var(--space-section)',
         display: 'grid',
-        gap: '18px',
+        gap: 'var(--space-margin)',
         justifyItems: 'center',
         textAlign: 'center',
       }}>
@@ -68,7 +86,7 @@ export function ComingSoonScreen({
             justifyContent: 'center',
             width: '56px',
             height: '56px',
-            borderRadius: '50%',
+            borderRadius: 'var(--radius-pill)',
             border: '1px solid var(--hairline-strong)',
             color: 'var(--text-tertiary)',
           }}
@@ -76,21 +94,21 @@ export function ComingSoonScreen({
           {icon}
         </span>
 
-        <div style={{ display: 'grid', gap: '8px' }}>
+        <div style={{ display: 'grid', gap: 'var(--space-snug)' }}>
           <p style={{
             margin: 0,
-            fontSize: '15px',
-            fontWeight: 500,
+            fontSize: 'var(--font-subhead)',
+            lineHeight: 'var(--leading-subhead)',
+            fontWeight: 'var(--weight-regular)',
             color: 'var(--text-primary)',
-            lineHeight: 1.45,
           }}>
             Скоро
           </p>
           <p style={{
             margin: 0,
-            fontSize: '13.5px',
+            fontSize: 'var(--font-footnote)',
+            lineHeight: 'var(--leading-footnote)',
             color: 'var(--text-secondary)',
-            lineHeight: 1.55,
             maxWidth: '38ch',
           }}>
             {lead}
@@ -102,7 +120,7 @@ export function ComingSoonScreen({
           padding: 0,
           listStyle: 'none',
           display: 'grid',
-          gap: '8px',
+          gap: 'var(--space-snug)',
           justifyItems: 'start',
           textAlign: 'left',
           width: '100%',
@@ -114,18 +132,20 @@ export function ComingSoonScreen({
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'auto 1fr',
-                gap: '10px',
+                gap: 'var(--space-snug)',
                 alignItems: 'start',
-                fontSize: '13px',
+                fontSize: 'var(--font-footnote)',
+                lineHeight: 'var(--leading-footnote)',
                 color: 'var(--text-secondary)',
-                lineHeight: 1.5,
               }}
             >
+              {/* Маркер выведен из шкалы, а не подобран на глаз:
+                  середина первой строки минус половина точки. */}
               <span aria-hidden style={{
-                marginTop: '7px',
+                marginTop: 'calc((var(--leading-footnote) - 4px) / 2)',
                 width: '4px',
                 height: '4px',
-                borderRadius: '50%',
+                borderRadius: 'var(--radius-pill)',
                 background: 'var(--text-tertiary)',
               }} />
               {p}

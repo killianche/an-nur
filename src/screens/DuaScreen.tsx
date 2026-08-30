@@ -39,7 +39,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Appearance, Check, Close, DragHandle, EyeOff, MinusCircleFill, Plus, Typography,
+  Appearance, Check, Close, DragHandle, EyeOff, ICON_SIZE, MinusCircleFill, Plus,
+  Typography,
 } from '../components/icons';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
 import { TasbihPill } from '../components/DevotionalBits';
@@ -53,6 +54,7 @@ import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
 import { loadDuaData, type DuaData, type DuaEntry } from '../lib/dua';
+import { HitArea } from '../components/HitArea';
 import {
   addToDuaList, insertIntoDuaList, moveInDuaList, onDuaListChange,
   readDuaList, removeFromDuaList,
@@ -179,7 +181,7 @@ export function DuaScreen({ theme, setTheme }: Props) {
       minHeight: '100dvh',
       maxWidth: 'min(100%, 720px)',
       margin: '0 auto',
-      padding: `0 16px calc(${TAB_BAR_HEIGHT}px + 28px + env(safe-area-inset-bottom))`,
+      padding: `0 var(--space-margin) calc(${TAB_BAR_HEIGHT}px + var(--space-section) + env(safe-area-inset-bottom))`,
       position: 'relative',
       zIndex: 1,
     }}>
@@ -218,13 +220,13 @@ export function DuaScreen({ theme, setTheme }: Props) {
       )}
 
       <header style={{
-        display: 'flex', alignItems: 'center', gap: '10px',
-        paddingTop: 'calc(env(safe-area-inset-top) + 18px)',
-        paddingBottom: '14px',
+        display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
+        paddingTop: 'calc(env(safe-area-inset-top) + var(--space-margin))',
+        paddingBottom: 'var(--space-margin)',
       }}>
         <h1 className="display-serif" style={{
           margin: 0, flex: 1, minWidth: 0,
-          fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 400,
+          fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 'var(--weight-regular)',
           letterSpacing: '-0.03em', color: 'var(--text-primary)', lineHeight: 1.05,
         }}>
           Дуа
@@ -237,14 +239,15 @@ export function DuaScreen({ theme, setTheme }: Props) {
           <button
             onClick={() => setEditing(v => !v)}
             style={{
-              minHeight: '34px', padding: '0 14px', borderRadius: '9999px',
+              minHeight: '34px', padding: '0 var(--space-cozy)',
+              borderRadius: 'var(--radius-pill)',
               border: `1px solid ${editing ? 'var(--text-primary)' : 'var(--hairline)'}`,
               background: editing
                 ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
                 : 'transparent',
               color: 'var(--text-primary)', cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: '14px',
-              fontWeight: editing ? 600 : 500,
+              fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
+              fontWeight: editing ? 'var(--weight-semibold)' : 'var(--weight-regular)',
               flexShrink: 0,
             }}
           >
@@ -258,13 +261,14 @@ export function DuaScreen({ theme, setTheme }: Props) {
           aria-label="Текст и шрифты" title="Текст и шрифты"
           className="icon-btn" data-active={typographyOpen}
           style={{
-            width: '42px', height: '42px', flexShrink: 0, borderRadius: '12px',
+            width: '42px', height: '42px', flexShrink: 0,
+            borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
             color: typographyOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
-          <Typography size={19} />
+          <Typography size={ICON_SIZE.md} />
         </button>
 
         <button
@@ -273,13 +277,14 @@ export function DuaScreen({ theme, setTheme }: Props) {
           aria-label="Оформление" title="Оформление"
           className="icon-btn" data-active={themeOpen}
           style={{
-            width: '42px', height: '42px', flexShrink: 0, borderRadius: '12px',
+            width: '42px', height: '42px', flexShrink: 0,
+            borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
             color: themeOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
-          <Appearance size={19} />
+          <Appearance size={ICON_SIZE.md} />
         </button>
       </header>
 
@@ -300,17 +305,18 @@ export function DuaScreen({ theme, setTheme }: Props) {
         <button
           onClick={() => setHiddenOpen(true)}
           style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            width: '100%', minHeight: '40px', padding: '0 14px',
-            marginBottom: '14px',
-            borderRadius: '12px',
+            display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+            width: '100%', minHeight: '40px', padding: '0 var(--space-cozy)',
+            marginBottom: 'var(--space-margin)',
+            borderRadius: 'var(--radius-control)',
             border: '1px dashed var(--hairline-strong)',
             background: 'transparent',
             color: 'var(--text-secondary)', cursor: 'pointer',
-            fontFamily: 'inherit', fontSize: '13px', textAlign: 'left',
+            fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
+            textAlign: 'left',
           }}
         >
-          <EyeOff size={16} />
+          <EyeOff size={ICON_SIZE.sm} />
           <span style={{ flex: 1 }}>Скрытые</span>
           <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-tertiary)' }}>
             {hiddenEntries.length}
@@ -328,7 +334,7 @@ export function DuaScreen({ theme, setTheme }: Props) {
               <EditList items={mine} onRemove={remove} />
             )
             : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-margin)' }}>
                 {mine.map((e, i) => (
                   /*
                    * Кнопки удаления на карточке чтения нет намеренно.
@@ -357,7 +363,7 @@ export function DuaScreen({ theme, setTheme }: Props) {
         total === 0
           ? <EmptyAll />
           : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-margin)' }}>
               {shown.map((e, i) => (
                 <DuaCard
                   key={e.id}
@@ -420,20 +426,21 @@ function ModeSwitch({ mode, onChange, mineCount, allCount }: {
       style={{
         position: 'relative',
         display: 'flex',
-        padding: '4px',
-        borderRadius: '14px',
+        padding: 'var(--space-tight)',
+        borderRadius: 'var(--radius-shell)',
         background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
         border: '1px solid var(--hairline)',
-        marginBottom: '14px',
+        marginBottom: 'var(--space-margin)',
       }}
     >
       <span
         aria-hidden
         style={{
           position: 'absolute',
-          top: '4px', bottom: '4px', left: '4px',
-          width: 'calc(50% - 4px)',
-          borderRadius: '11px',
+          top: 'var(--space-tight)', bottom: 'var(--space-tight)',
+          left: 'var(--space-tight)',
+          width: 'calc(50% - var(--space-tight))',
+          borderRadius: 'var(--radius-card)',
           background: 'var(--surface)',
           boxShadow: '0 1px 3px rgba(0,0,0,0.16), 0 4px 12px rgba(0,0,0,0.06)',
           transform: `translateX(${index * 100}%)`,
@@ -451,10 +458,12 @@ function ModeSwitch({ mode, onChange, mineCount, allCount }: {
             style={{
               position: 'relative',
               flex: 1, minHeight: '38px',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              gap: 'var(--space-snug)',
               border: 'none', background: 'transparent',
               color: on ? 'var(--text-primary)' : 'var(--text-secondary)',
-              fontFamily: 'inherit', fontSize: '14px', fontWeight: on ? 600 : 500,
+              fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
+              fontWeight: on ? 'var(--weight-semibold)' : 'var(--weight-regular)',
               cursor: 'pointer', transition: 'color 0.2s ease',
               WebkitTapHighlightColor: 'transparent',
             }}
@@ -462,7 +471,7 @@ function ModeSwitch({ mode, onChange, mineCount, allCount }: {
             {it.label}
             {it.count > 0 && (
               <span style={{
-                fontSize: '11.5px', fontWeight: 500,
+                fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-regular)',
                 color: on ? 'var(--text-secondary)' : 'var(--text-tertiary)',
                 fontVariantNumeric: 'tabular-nums',
               }}>
@@ -492,9 +501,9 @@ function CategoryChips({ data, value, onChange }: {
   return (
     <div
       style={{
-        display: 'flex', gap: '7px',
+        display: 'flex', gap: 'var(--space-snug)',
         overflowX: 'auto', overflowY: 'hidden',
-        padding: '0 2px 14px',
+        padding: '0 var(--space-hair) var(--space-margin)',
         // Полосу прокрутки не показываем: лента короткая, и её
         // продолжение видно по обрезанному краю.
         scrollbarWidth: 'none',
@@ -508,14 +517,15 @@ function CategoryChips({ data, value, onChange }: {
             key={c.id ?? 'all'}
             onClick={() => onChange(c.id)}
             style={{
-              flexShrink: 0, minHeight: '32px', padding: '0 13px',
-              borderRadius: '9999px',
+              flexShrink: 0, minHeight: '32px', padding: '0 var(--space-cozy)',
+              borderRadius: 'var(--radius-pill)',
               border: `1px solid ${on ? 'var(--text-primary)' : 'var(--hairline)'}`,
               background: on
                 ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
                 : 'transparent',
               color: on ? 'var(--text-primary)' : 'var(--text-secondary)',
-              fontFamily: 'inherit', fontSize: '13px', fontWeight: on ? 600 : 500,
+              fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
+              fontWeight: on ? 'var(--weight-semibold)' : 'var(--weight-regular)',
               cursor: 'pointer', whiteSpace: 'nowrap',
             }}
           >
@@ -573,7 +583,7 @@ function DuaCard({
       style={{
         position: 'relative',
         overflow: 'hidden',
-        borderRadius: '20px',
+        borderRadius: 'var(--radius-card)',
         border: '1px solid var(--hairline)',
         background: `
           radial-gradient(120% 130% at 100% 0%,
@@ -585,16 +595,16 @@ function DuaCard({
       }}
     >
       <div style={{
-        display: 'flex', alignItems: 'flex-start', gap: '10px',
-        padding: '15px 16px 13px',
+        display: 'flex', alignItems: 'flex-start', gap: 'var(--space-cozy)',
+        padding: 'var(--space-margin) var(--space-margin) var(--space-cozy)',
       }}>
         {ordinal !== undefined && (
           <span style={{
             flexShrink: 0,
-            width: '24px', height: '24px', borderRadius: '9999px',
+            width: '24px', height: '24px', borderRadius: 'var(--radius-pill)',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             border: '1px solid var(--hairline)',
-            fontSize: '11.5px', fontWeight: 600,
+            fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-semibold)',
             color: 'var(--text-tertiary)',
             fontVariantNumeric: 'tabular-nums',
             marginTop: '1px',
@@ -605,7 +615,8 @@ function DuaCard({
 
         <h3 style={{
           flex: 1, minWidth: 0, margin: 0,
-          fontSize: '15px', fontWeight: 600, lineHeight: 1.35,
+          fontSize: 'var(--font-subhead)', fontWeight: 'var(--weight-semibold)',
+          lineHeight: 'var(--leading-subhead)',
           color: 'var(--text-primary)', letterSpacing: '-0.005em',
         }}>
           {entry.title_ru}
@@ -617,8 +628,9 @@ function DuaCard({
             aria-label={`Скрыть «${entry.title_ru}»`}
             title="Скрыть из «Все дуа»"
             style={{
+              position: 'relative',
               flexShrink: 0,
-              width: '34px', height: '34px', borderRadius: '9999px',
+              width: '34px', height: '34px', borderRadius: 'var(--radius-pill)',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               border: 'none', background: 'transparent',
               color: 'var(--text-tertiary)', cursor: 'pointer',
@@ -626,7 +638,8 @@ function DuaCard({
               WebkitTapHighlightColor: 'transparent',
             }}
           >
-            <EyeOff size={19} />
+            <HitArea />
+            <EyeOff size={ICON_SIZE.md} />
           </button>
         )}
 
@@ -647,8 +660,9 @@ function DuaCard({
             aria-label={inList ? 'Уже в вашем списке' : `Добавить «${entry.title_ru}» в мой список`}
             title={inList ? 'Уже в вашем списке' : 'Добавить в мой список'}
             style={{
+              position: 'relative',
               flexShrink: 0,
-              width: '36px', height: '36px', borderRadius: '9999px',
+              width: '36px', height: '36px', borderRadius: 'var(--radius-pill)',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               border: `1px solid ${inList ? 'transparent' : 'var(--hairline-strong)'}`,
               background: inList
@@ -661,14 +675,17 @@ function DuaCard({
               transition: 'background 0.18s ease, color 0.18s ease',
             }}
           >
-            {inList ? <Check size={18} /> : <Plus size={22} />}
+            <HitArea />
+            {inList ? <Check size={ICON_SIZE.md} /> : <Plus size={ICON_SIZE.md} />}
           </button>
         )}
       </div>
 
       <Rule />
 
-      <div style={{ padding: '20px 16px 16px' }}>
+      <div style={{
+        padding: 'var(--space-section) var(--space-margin) var(--space-margin)',
+      }}>
         {/* Арабский — verbatim из источника.  Кегль, межстрочный и
             OpenType-фичи те же, что в азкарах: одна типографика на два
             раздела. */}
@@ -744,8 +761,9 @@ function DuaCard({
              Раскрывающийся блок остаётся у азкаров: там за ним прячется
              список наград, а у дуа его нет — прятать одну строчку незачем. */
           <p style={{
-            margin: '14px 0 0',
-            fontSize: '12px',
+            margin: 'var(--space-margin) 0 0',
+            fontSize: 'var(--font-caption1)',
+            lineHeight: 'var(--leading-caption1)',
             letterSpacing: '0.04em',
             textTransform: 'uppercase',
             color: 'var(--text-tertiary)',
@@ -757,6 +775,7 @@ function DuaCard({
     </article>
   );
 }
+
 
 function Rule() {
   return (
@@ -862,7 +881,10 @@ function EditList({ items, onRemove }: {
   return (
     <div
       ref={boxRef}
-      style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px' }}
+      style={{
+        display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)',
+        gap: 'var(--space-snug)',
+      }}
     >
       {items.map((e, i) => {
         const dragging = dragId === e.id;
@@ -871,9 +893,9 @@ function EditList({ items, onRemove }: {
             key={e.id}
             data-dua-row={e.id}
             style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              minHeight: '56px', padding: '8px 8px 8px 10px',
-              borderRadius: '14px',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
+              minHeight: '56px', padding: 'var(--space-snug)',
+              borderRadius: 'var(--radius-card)',
               border: `1px solid ${dragging ? 'var(--hairline-strong)' : 'var(--hairline)'}`,
               background: 'var(--surface)',
               overflow: 'hidden',
@@ -894,8 +916,9 @@ function EditList({ items, onRemove }: {
               aria-label={armed === e.id ? 'Отменить удаление' : `Удалить ${e.title_ru}`}
               aria-expanded={armed === e.id}
               style={{
+                position: 'relative',
                 flexShrink: 0,
-                width: '34px', height: '34px', borderRadius: '9999px',
+                width: '34px', height: '34px', borderRadius: 'var(--radius-pill)',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 border: 'none', background: 'transparent',
                 color: 'var(--danger)', cursor: 'pointer',
@@ -906,15 +929,17 @@ function EditList({ items, onRemove }: {
                 transition: 'transform 0.22s cubic-bezier(0.22,1,0.36,1)',
               }}
             >
-              <MinusCircleFill size={21} />
+              <HitArea />
+              <MinusCircleFill size={ICON_SIZE.md} />
             </button>
 
             <span style={{
               flexShrink: 0,
-              width: '22px', height: '22px', borderRadius: '9999px',
+              width: '22px', height: '22px', borderRadius: 'var(--radius-pill)',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               background: 'color-mix(in srgb, var(--ink) 7%, transparent)',
-              fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)',
+              fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-semibold)',
+              color: 'var(--text-secondary)',
               fontVariantNumeric: 'tabular-nums',
             }}>
               {i + 1}
@@ -922,7 +947,8 @@ function EditList({ items, onRemove }: {
 
             <span style={{
               flex: 1, minWidth: 0,
-              fontSize: '14.5px', fontWeight: 500, color: 'var(--text-primary)',
+              fontSize: 'var(--font-subhead)', fontWeight: 'var(--weight-regular)',
+              color: 'var(--text-primary)',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {e.title_ru}
@@ -932,11 +958,12 @@ function EditList({ items, onRemove }: {
               <button
                 onClick={() => { setArmed(null); onRemove(e); }}
                 style={{
-                  flexShrink: 0, minHeight: '34px', padding: '0 14px',
-                  borderRadius: '9999px', border: 'none',
+                  flexShrink: 0, minHeight: '34px', padding: '0 var(--space-cozy)',
+                  borderRadius: 'var(--radius-pill)', border: 'none',
                   background: 'var(--danger)',
                   color: '#fff', cursor: 'pointer',
-                  fontFamily: 'inherit', fontSize: '13.5px', fontWeight: 600,
+                  fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
+                  fontWeight: 'var(--weight-semibold)',
                   animation: 'card-in 0.18s ease both',
                 }}
               >
@@ -952,7 +979,7 @@ function EditList({ items, onRemove }: {
                 aria-label={`${e.title_ru}: изменить порядок`}
                 style={{
                   flexShrink: 0,
-                  width: '38px', height: '38px', borderRadius: '10px',
+                  width: '38px', height: '38px', borderRadius: 'var(--radius-control)',
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   border: 'none', background: 'transparent',
                   color: 'var(--text-tertiary)',
@@ -963,7 +990,7 @@ function EditList({ items, onRemove }: {
                   WebkitTapHighlightColor: 'transparent',
                 }}
               >
-                <DragHandle size={19} />
+                <DragHandle size={ICON_SIZE.md} />
               </button>
             )}
           </div>
@@ -1012,20 +1039,22 @@ function HiddenSheet({ entries, onUnhide, onClose }: {
           maxHeight: '78vh',
           display: 'flex', flexDirection: 'column',
           background: 'var(--surface)',
-          borderTopLeftRadius: '22px', borderTopRightRadius: '22px',
+          borderTopLeftRadius: 'var(--radius-shell)',
+          borderTopRightRadius: 'var(--radius-shell)',
           borderTop: '1px solid var(--hairline)',
           boxShadow: '0 -10px 40px rgba(0,0,0,0.32)',
           animation: 'sheet-up 0.24s cubic-bezier(0.22,1,0.36,1)',
         }}
       >
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '10px',
-          padding: '16px 18px 12px',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
+          padding: 'var(--space-margin) var(--space-margin) var(--space-cozy)',
           borderBottom: '1px solid var(--hairline)',
         }}>
           <h2 className="display-serif" style={{
             margin: 0, flex: 1, minWidth: 0,
-            fontSize: '22px', fontWeight: 400, letterSpacing: '-0.015em',
+            fontSize: 'var(--font-title2)', lineHeight: 'var(--leading-title2)',
+            fontWeight: 'var(--weight-regular)', letterSpacing: '-0.015em',
             color: 'var(--text-primary)',
           }}>
             Скрытые
@@ -1035,12 +1064,15 @@ function HiddenSheet({ entries, onUnhide, onClose }: {
             aria-label="Закрыть"
             className="icon-btn"
             style={{
-              width: '34px', height: '34px', flexShrink: 0, borderRadius: '9999px',
+              position: 'relative',
+              width: '34px', height: '34px', flexShrink: 0,
+              borderRadius: 'var(--radius-pill)',
               border: '1px solid var(--hairline)', background: 'transparent',
               color: 'var(--text-secondary)',
             }}
           >
-            <Close size={15} />
+            <HitArea />
+            <Close size={ICON_SIZE.sm} />
           </button>
         </div>
 
@@ -1049,15 +1081,15 @@ function HiddenSheet({ entries, onUnhide, onClose }: {
             <div
               key={e.id}
               style={{
-                display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '10px 18px',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
+                padding: 'var(--space-cozy) var(--space-margin)',
                 borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',
                 overflow: 'hidden',
               }}
             >
               <span style={{
                 flex: 1, minWidth: 0,
-                fontSize: '14.5px', color: 'var(--text-primary)',
+                fontSize: 'var(--font-subhead)', color: 'var(--text-primary)',
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
                 {e.title_ru}
@@ -1065,12 +1097,13 @@ function HiddenSheet({ entries, onUnhide, onClose }: {
               <button
                 onClick={() => onUnhide(e.id)}
                 style={{
-                  flexShrink: 0, minHeight: '32px', padding: '0 14px',
-                  borderRadius: '9999px',
+                  flexShrink: 0, minHeight: '32px', padding: '0 var(--space-cozy)',
+                  borderRadius: 'var(--radius-pill)',
                   border: '1px solid var(--hairline)',
                   background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
                   color: 'var(--text-primary)', cursor: 'pointer',
-                  fontFamily: 'inherit', fontSize: '13px', fontWeight: 500,
+                  fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
+                  fontWeight: 'var(--weight-regular)',
                 }}
               >
                 Вернуть
@@ -1105,11 +1138,12 @@ function UndoBar({ title, onUndo, onDismiss }: {
     <div
       role="status"
       style={{
-        position: 'fixed', left: '12px', right: '12px', zIndex: 62,
-        bottom: `calc(${TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom) + 12px)`,
-        display: 'flex', alignItems: 'center', gap: '10px',
-        padding: '11px 12px 11px 16px',
-        borderRadius: '15px',
+        position: 'fixed', left: 'var(--space-cozy)', right: 'var(--space-cozy)',
+        zIndex: 62,
+        bottom: `calc(${TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom) + var(--space-cozy))`,
+        display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
+        padding: 'var(--space-cozy) var(--space-cozy) var(--space-cozy) var(--space-margin)',
+        borderRadius: 'var(--radius-card)',
         border: '1px solid var(--hairline)',
         background: 'color-mix(in srgb, var(--surface) 94%, transparent)',
         backdropFilter: 'saturate(150%) blur(14px)',
@@ -1121,7 +1155,7 @@ function UndoBar({ title, onUndo, onDismiss }: {
     >
       <span style={{
         flex: 1, minWidth: 0,
-        fontSize: '13.5px', color: 'var(--text-primary)',
+        fontSize: 'var(--font-footnote)', color: 'var(--text-primary)',
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}>
         «{title}» убрано
@@ -1129,12 +1163,13 @@ function UndoBar({ title, onUndo, onDismiss }: {
       <button
         onClick={onUndo}
         style={{
-          flexShrink: 0, minHeight: '32px', padding: '0 14px',
-          borderRadius: '9999px',
+          flexShrink: 0, minHeight: '32px', padding: '0 var(--space-cozy)',
+          borderRadius: 'var(--radius-pill)',
           border: '1px solid var(--hairline)',
           background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
           color: 'var(--text-primary)', cursor: 'pointer',
-          fontFamily: 'inherit', fontSize: '13.5px', fontWeight: 600,
+          fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
+          fontWeight: 'var(--weight-semibold)',
         }}
       >
         Вернуть
@@ -1143,13 +1178,16 @@ function UndoBar({ title, onUndo, onDismiss }: {
         onClick={onDismiss}
         aria-label="Скрыть"
         style={{
-          flexShrink: 0, width: '30px', height: '30px', borderRadius: '9999px',
+          position: 'relative',
+          flexShrink: 0, width: '30px', height: '30px',
+          borderRadius: 'var(--radius-pill)',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           border: 'none', background: 'transparent',
           color: 'var(--text-tertiary)', cursor: 'pointer',
-          fontFamily: 'inherit', fontSize: '17px', lineHeight: 1,
+          fontFamily: 'inherit', fontSize: 'var(--font-body)', lineHeight: 1,
         }}
       >
+        <HitArea />
         ×
       </button>
     </div>,
@@ -1167,19 +1205,32 @@ function UndoBar({ title, onUndo, onDismiss }: {
 function Rosette({ size = 76 }: { size?: number }) {
   const petals = Array.from({ length: 8 }, (_, i) => (i * 360) / 8);
   return (
+    // Розетка — не иконка интерфейса, а орнамент пустого состояния, и
+    // она остаётся в своей сетке 100×100: восемь лепестков через 45°
+    // на 24 единицах округлились бы до заметно разной ширины, и
+    // симметрия — единственное, ради чего фигура тут стоит, — сломалась
+    // бы.  С набором её роднят правила, а не размер поля: одна толщина
+    // на все линии (было 1.1 у лепестков и колец), одна прозрачность на
+    // всю фигуру (было три разных — 0.5 / 0.75 / 0.5, из-за чего кольцо
+    // выглядело обводкой другого веса), заливка только у сердцевины —
+    // по тому же правилу «метка-указатель», что у компаса и цветка.
     <svg width={size} height={size} viewBox="0 0 100 100" fill="none" aria-hidden>
-      {petals.map(a => (
-        <ellipse
-          key={a}
-          cx="50" cy="27" rx="10.5" ry="20"
-          transform={`rotate(${a} 50 50)`}
-          stroke="currentColor"
-          strokeWidth="1.1"
-          opacity="0.5"
-        />
-      ))}
-      <circle cx="50" cy="50" r="12" stroke="currentColor" strokeWidth="1.1" opacity="0.75" />
-      <circle cx="50" cy="50" r="3" fill="currentColor" opacity="0.5" />
+      <g
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        opacity="0.55"
+      >
+        {petals.map(a => (
+          <ellipse
+            key={a}
+            cx="50" cy="27" rx="10.5" ry="20"
+            transform={`rotate(${a} 50 50)`}
+          />
+        ))}
+        <circle cx="50" cy="50" r="12" />
+        <circle cx="50" cy="50" r="3" fill="currentColor" stroke="none" />
+      </g>
     </svg>
   );
 }
@@ -1216,18 +1267,22 @@ function EmptyShell({ title, text, action }: {
       textAlign: 'center', padding: '44px 20px 40px',
       animation: 'card-in 0.4s cubic-bezier(0.22,1,0.36,1) both',
     }}>
-      <span style={{ color: 'var(--text-tertiary)', marginBottom: '20px' }}>
+      <span style={{
+        color: 'var(--text-tertiary)', marginBottom: 'var(--space-section)',
+      }}>
         <Rosette />
       </span>
       <p className="display-serif" style={{
-        margin: 0, fontSize: '22px', fontWeight: 400,
+        margin: 0, fontSize: 'var(--font-title2)',
+        lineHeight: 'var(--leading-title2)', fontWeight: 'var(--weight-regular)',
         color: 'var(--text-primary)', letterSpacing: '-0.015em',
       }}>
         {title}
       </p>
       <p style={{
-        margin: '10px 0 0', maxWidth: '33ch',
-        fontSize: '13.5px', lineHeight: 1.65, color: 'var(--text-tertiary)',
+        margin: 'var(--space-cozy) 0 0', maxWidth: '33ch',
+        fontSize: 'var(--font-footnote)', lineHeight: 'var(--leading-footnote)',
+        color: 'var(--text-tertiary)',
       }}>
         {text}
       </p>
@@ -1235,11 +1290,13 @@ function EmptyShell({ title, text, action }: {
         <button
           onClick={action.onClick}
           style={{
-            marginTop: '20px', minHeight: '44px', padding: '0 20px',
-            borderRadius: '13px', border: '1px solid var(--hairline)',
+            marginTop: 'var(--space-section)', minHeight: 'var(--hit-min)',
+            padding: '0 var(--space-margin)',
+            borderRadius: 'var(--radius-control)', border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
             color: 'var(--text-primary)', cursor: 'pointer',
-            fontFamily: 'inherit', fontSize: '14.5px', fontWeight: 500,
+            fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
+            fontWeight: 'var(--weight-regular)',
           }}
         >
           {action.label}
@@ -1252,9 +1309,13 @@ function EmptyShell({ title, text, action }: {
 /** Заглушка повторяет геометрию карточки, чтобы при подмене не прыгало. */
 function Skeleton() {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '14px' }} aria-hidden>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-margin)' }} aria-hidden>
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="skeleton" style={{ height: '212px', borderRadius: '20px' }} />
+        <div
+          key={i}
+          className="skeleton"
+          style={{ height: '212px', borderRadius: 'var(--radius-card)' }}
+        />
       ))}
     </div>
   );

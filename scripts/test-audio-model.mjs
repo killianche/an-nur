@@ -25,10 +25,75 @@ const ROOT = resolve(__dirname, '..');
 
 const mod = await import(pathToFileURL(resolve(ROOT, 'src/lib/ayahNumbering.ts')).href);
 const searchMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/search.ts')).href);
+// Словарь переводов теперь грузится отдельным чанком (quran-sources-lazy.ts),
+// чтобы не задерживать старт приложения. В приложении его прогревает App.tsx,
+// здесь — прогреваем явно, иначе поиск по переводу честно ответит notReady.
+await searchMod.ensureSearchReady();
+const tajweedAudioMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/tajweedAudioPosition.ts')).href
+);
+const mushafFontMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/mushafFont.ts')).href
+);
+const tajweedPageMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/tajweedPage.ts')).href
+);
+const mushafAudioMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/mushafAudio.ts')).href
+);
+const recitersMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/reciters.ts')).href
+);
+const quranUtilsMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/quranUtils.ts')).href
+);
+const ayahAudioRangeMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/ayahAudioRange.ts')).href
+);
+const prayerCitiesMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/prayerCities.ts')).href
+);
+const prayerPreferencesMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/prayerPreferences.ts')).href
+);
+const prayerNotificationsMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/prayerNotifications.ts')).href
+);
+const mushafPagesMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/lib/mushafPages.ts')).href
+);
+const timetableMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/content/nazranPrayerTimetables.ts')).href
+);
 const {
   globalAyahNumber, ayahsInSurah, firstGlobalOfSurah, juzRange,
   TOTAL_AYAHS, TOTAL_SURAHS,
 } = mod;
+const { tajweedVisualWordPosition } = tajweedAudioMod;
+const { normaliseMushafFont, MUSHAF_FONT_OPTIONS, toggleMushafFont } = mushafFontMod;
+const { tajweedPageJsonPath, tajweedAyahFromPage } = tajweedPageMod;
+const {
+  mushafActiveVerseKey,
+  audioStateForVerse,
+} = mushafAudioMod;
+const {
+  RECITERS, RECITERS_WITH_SEGMENTS, reciterById, supportsAyahOffline,
+  requiresSurahAudioStream, surahAudioUrl, usesWholeAyahHighlight,
+} = recitersMod;
+const { ayahAudioUrl } = quranUtilsMod;
+const { ayahAudioRange } = ayahAudioRangeMod;
+const { timetableRow, timetableDays } = timetableMod;
+const { mushafPageWindow } = mushafPagesMod;
+const { settingsForNewPrayerPlace } = prayerCitiesMod;
+const {
+  normalisePrimaryPrayerSource,
+  DEFAULT_PRIMARY_PRAYER_SOURCE,
+} = prayerPreferencesMod;
+const {
+  normalisePrayerAlarms,
+  buildPrayerAlarmOccurrences,
+  PRAYER_ALARM_KEYS,
+} = prayerNotificationsMod;
 
 let passed = 0;
 const failures = [];
@@ -46,6 +111,292 @@ function group(title, fn) {
   const bad = failures.length - before;
   console.log(bad === 0 ? '    ✓' : `    ✗ ${bad}`);
 }
+
+async function groupAsync(title, fn) {
+  console.log(`\n  ${title}`);
+  const before = failures.length;
+  await fn();
+  const bad = failures.length - before;
+  console.log(bad === 0 ? '    ✓' : `    ✗ ${bad}`);
+}
+
+// ─── Аудиопозиции цветного таджвида ──────────────────────────────────
+group('Цветной таджвид: аудиопозиция совпадает с видимым словом', () => {
+  check('обычный аят сохраняет позицию без изменений',
+    tajweedVisualWordPosition('1:1', 3), 3);
+  check('37:130 — третья позиция подсвечивает объединённый глиф',
+    tajweedVisualWordPosition('37:130', 3), 3);
+  check('37:130 — четвёртая позиция остаётся на том же объединённом глифе',
+    tajweedVisualWordPosition('37:130', 4), 3);
+  check('нет активного слова — нет подсветки',
+    tajweedVisualWordPosition('37:130', null), null);
+});
+
+group('Полноэкранный мусхаф: выбор шрифта', () => {
+  check('доступны обычный и цветной варианты',
+    MUSHAF_FONT_OPTIONS.map(option => option.id),
+    ['qcf-v4', 'qpc-v4-tajweed']);
+  check('сохранённый цветной вариант восстанавливается',
+    normaliseMushafFont('qpc-v4-tajweed'), 'qpc-v4-tajweed');
+  check('неизвестное значение безопасно возвращает обычный мусхаф',
+    normaliseMushafFont('old-font'), 'qcf-v4');
+  check('быстрый переключатель включает цветной таджвид',
+    toggleMushafFont('qcf-v4'), 'qpc-v4-tajweed');
+  check('повторное нажатие возвращает обычный мусхаф',
+    toggleMushafFont('qpc-v4-tajweed'), 'qcf-v4');
+  check('путь страницы дополнен нулями',
+    tajweedPageJsonPath(7), '/tajweed/pages/007.json');
+});
+
+group('Полноэкранный мусхаф: соседние страницы готовы до свайпа', () => {
+  check('в середине готовятся текущая, следующая и предыдущая',
+    mushafPageWindow(7), [7, 8, 6]);
+  check('на первой странице нет нулевой',
+    mushafPageWindow(1), [1, 2]);
+  check('на последней странице нет 605-й',
+    mushafPageWindow(604), [604, 603]);
+  check('номер зажимается в допустимый диапазон',
+    [mushafPageWindow(-4), mushafPageWindow(999)],
+    [[1, 2], [604, 603]]);
+});
+
+group('Лента аятов: быстрый постраничный таджвид', () => {
+  const page2 = JSON.parse(readFileSync(resolve(ROOT, 'public/tajweed/pages/002.json'), 'utf8'));
+  const ayah = tajweedAyahFromPage(page2, '2:3');
+  check('аят собирается из JSON одной страницы',
+    [ayah?.surah, ayah?.ayah, ayah?.page], [2, 3, 2]);
+  check('слова отделены от конечной розетки',
+    [ayah?.words.length, ayah?.endMarker], [8, 'ﱕ']);
+  check('отсутствующий аят не подменяется чужими данными',
+    tajweedAyahFromPage(page2, '1:1'), null);
+});
+
+group('Полноэкранный мусхаф: состояние плеера', () => {
+  check('ключ аята строится из публичных координат очереди',
+    mushafActiveVerseKey(2, 3), '2:3');
+  check('без активной очереди ключа нет',
+    mushafActiveVerseKey(null, null), null);
+  check('выбранный звучащий аят показывает паузу',
+    audioStateForVerse('2:3', '2:3', 'playing'), 'playing');
+  check('другой выбранный аят остаётся готовым к запуску',
+    audioStateForVerse('2:4', '2:3', 'playing'), 'idle');
+});
+
+group('Каталог чтецов и источники аудио', () => {
+  check('в каталоге пять проверенных чтецов',
+    RECITERS.map(reciter => reciter.id),
+    ['alafasy', 'shaatree', 'yasser', 'luhaidan', 'ajmi']);
+  check('Ясир Ад-Даусари подписан по-русски и по-арабски',
+    [reciterById('yasser').label, reciterById('yasser').arabic],
+    ['Ясир Ад-Даусари', 'ياسر الدوسري']);
+  check('URL Ад-Даусари использует отдельный файл нужного аята',
+    ayahAudioUrl(2, 255, 'yasser'),
+    'https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/002255.mp3');
+  check('непрерывная запись Ад-Даусари использует файл полной суры',
+    surahAudioUrl('yasser', 2),
+    'https://download.quranicaudio.com/quran/yasser_ad-dussary/002.mp3');
+  check('холодный запуск Ад-Даусари не открывает файл всей суры',
+    requiresSurahAudioStream('yasser'), false);
+  check('для Ад-Даусари включены собственные пословные тайминги',
+    RECITERS_WITH_SEGMENTS.has('yasser'), true);
+  check('Люхайдан подписан по-русски и по-арабски',
+    [reciterById('luhaidan').label, reciterById('luhaidan').arabic],
+    ['Мухаммад Аль-Люхайдан', 'محمد اللحيدان']);
+  check('URL Люхайдана указывает на короткий файл выбранного аята',
+    ayahAudioUrl(2, 255, 'luhaidan'),
+    'https://l.asrbook.ru/audio/luhaidan/002/255.mp3');
+  check('исходная непрерывная запись Люхайдана остаётся воспроизводимой',
+    surahAudioUrl('luhaidan', 2),
+    'https://server8.mp3quran.net/lhdan/002.mp3');
+  check('Люхайдан начинает 2:255 по локальной точной границе',
+    ayahAudioRange('luhaidan', 2, 255),
+    { startSeconds: 5729.187, endSeconds: 5781.676 });
+  let luhaidanRangeCount = 0;
+  let invalidLuhaidanRanges = 0;
+  for (let surah = 1; surah <= TOTAL_SURAHS; surah++) {
+    for (let ayah = 1; ayah <= ayahsInSurah(surah); ayah++) {
+      const range = ayahAudioRange('luhaidan', surah, ayah);
+      if (!range) invalidLuhaidanRanges++;
+      else {
+        luhaidanRangeCount++;
+        if (range.startSeconds < 0 || range.endSeconds <= range.startSeconds) {
+          invalidLuhaidanRanges++;
+        }
+      }
+    }
+  }
+  check('у Люхайдана есть валидная граница каждого из 6236 аятов',
+    [luhaidanRangeCount, invalidLuhaidanRanges], [TOTAL_AYAHS, 0]);
+  check('короткие файлы Люхайдана доступны для поаятной офлайн-загрузки',
+    supportsAyahOffline('luhaidan'), true);
+  check('холодный запуск Люхайдана не открывает файл всей суры',
+    requiresSurahAudioStream('luhaidan'), false);
+  check('Люхайдан использует честную подсветку целого аята без пословных таймингов',
+    usesWholeAyahHighlight('luhaidan'), true);
+  check('чтец с пословными таймингами сохраняет караоке-подсветку',
+    usesWholeAyahHighlight('alafasy'), false);
+  check('Аль-Аджми подписан по-русски и по-арабски',
+    [reciterById('ajmi').label, reciterById('ajmi').arabic],
+    ['Ахмад Аль-Аджми', 'أحمد بن علي العجمي']);
+  check('URL Аль-Аджми использует отдельный 128 kbps файл аята',
+    ayahAudioUrl(2, 255, 'ajmi'),
+    'https://everyayah.com/data/Ahmed_ibn_Ali_al-Ajamy_128kbps_ketaballah.net/002255.mp3');
+  check('непрерывная запись Аль-Аджми использует файл полной суры',
+    surahAudioUrl('ajmi', 2),
+    'https://download.quranicaudio.com/quran/ahmed_ibn_3ali_al-3ajamy/002.mp3');
+  check('Аль-Аджми доступен для поаятной офлайн-загрузки',
+    supportsAyahOffline('ajmi'), true);
+  check('холодный запуск Аль-Аджми использует отдельный MP3 аята',
+    requiresSurahAudioStream('ajmi'), false);
+  check('Аль-Аджми не заявляет отсутствующую пословную синхронизацию',
+    RECITERS_WITH_SEGMENTS.has('ajmi'), false);
+  check('Аль-Аджми подсвечивает целиком точный звучащий аят',
+    usesWholeAyahHighlight('ajmi'), true);
+  check('оценка офлайн-размера учитывает 128 kbps Ад-Даусари',
+    reciterById('yasser').bitrateKbps / reciterById('alafasy').bitrateKbps, 2);
+
+  let continuousRangeCount = 0;
+  let invalidContinuousRanges = 0;
+  for (const reciter of RECITERS) {
+    for (let surah = 1; surah <= TOTAL_SURAHS; surah++) {
+      for (let ayah = 1; ayah <= ayahsInSurah(surah); ayah++) {
+        const range = ayahAudioRange(reciter.id, surah, ayah);
+        if (!range) invalidContinuousRanges++;
+        else {
+          continuousRangeCount++;
+          if (range.startSeconds < 0 || range.endSeconds <= range.startSeconds) {
+            invalidContinuousRanges++;
+          }
+        }
+      }
+    }
+  }
+  check('у всех пяти чтецов есть валидные границы для бесшовных 6236 аятов',
+    [continuousRangeCount, invalidContinuousRanges],
+    [TOTAL_AYAHS * RECITERS.length, 0]);
+});
+
+group('iOS: стабильная подсветка QCF-глифов', () => {
+  const qcfSource = readFileSync(
+    resolve(ROOT, 'src/components/QcfAyahLine.tsx'), 'utf8',
+  );
+  const cssSource = readFileSync(resolve(ROOT, 'src/index.css'), 'utf8');
+  check('QCF-рендерер не монтирует движущийся AyahGlowLayer',
+    qcfSource.includes('<AyahGlowLayer'), false);
+  check('glow не применяет text-shadow к активному QCF-глифу',
+    cssSource.includes(
+      '[data-highlight-style="glow"] .qcf-word-glyph[data-active-word] {'
+    ) && cssSource.includes('text-shadow: none !important;'), true);
+});
+
+group('iOS: основной штрих цветного таджвида следует теме', () => {
+  const fontFetcher = readFileSync(
+    resolve(ROOT, 'scripts/gen/fetch-tajweed-data.ts'), 'utf8',
+  );
+  const fontLoader = readFileSync(
+    resolve(ROOT, 'src/hooks/useTajweedFont.ts'), 'utf8',
+  );
+  const paletteSource = readFileSync(
+    resolve(ROOT, 'src/lib/tajweedPalette.ts'), 'utf8',
+  );
+  const tajweedAyahSource = readFileSync(
+    resolve(ROOT, 'src/components/TajweedAyah.tsx'), 'utf8',
+  );
+  const mushafPageSource = readFileSync(
+    resolve(ROOT, 'src/components/QcfMushafPage.tsx'), 'utf8',
+  );
+  const appCss = readFileSync(resolve(ROOT, 'src/index.css'), 'utf8');
+  check('runtime использует неизменённые официальные COLR v0/CPAL-файлы',
+    fontFetcher.includes('official COLR v0/CPAL files')
+      && fontFetcher.includes('Keep the downloaded font binaries intact'), true);
+  check('URL шрифта меняется и не оставляет старый монохромный font cache',
+    fontLoader.includes(
+      "TAJWEED_FONT_VERSION = 'official-colrv0-cpal-v6'"
+    )
+      && fontLoader.includes('?v=${TAJWEED_FONT_VERSION}'), true);
+  check('светлая и тёмная темы выбирают официальные палитры 0 и 1',
+    paletteSource.includes("{ dark: 1, light: 0 }"), true);
+  check('монохромный fallback получает цвет активной темы',
+    appCss.includes('.tajweed-theme-ink {')
+      && appCss.includes('color: var(--text-primary);'), true);
+  check('оба Tajweed-рендерера используют единое правило чернил темы',
+    tajweedAyahSource.includes('className="tajweed-theme-ink"')
+      && mushafPageSource.includes('className="tajweed-theme-ink"'), true);
+});
+
+group('Готовые расписания намаза для Назрани', () => {
+  check('по умолчанию первым открывается Назрань 1',
+    normalisePrimaryPrayerSource(null), DEFAULT_PRIMARY_PRAYER_SOURCE);
+  check('выбранное основное расписание сохраняет допустимый источник',
+    ['nazran-1', 'nazran-2', 'calculated'].map(normalisePrimaryPrayerSource),
+    ['nazran-1', 'nazran-2', 'calculated']);
+  const ids = ['nazran-1', 'nazran-2'];
+  const keys = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
+  let invalidRows = 0;
+  for (const id of ids) {
+    for (let month = 1; month <= 12; month++) {
+      for (let day = 1; day <= timetableDays(id, month); day++) {
+        const row = timetableRow(id, month, day);
+        const minutes = keys.map(key => {
+          const value = row?.[key] ?? '';
+          const match = /^(\d{2}):(\d{2})$/.exec(value);
+          return match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+        });
+        if (minutes.some(value => !Number.isFinite(value))
+          || minutes.some((value, index) => index > 0 && value <= minutes[index - 1])) {
+          invalidRows++;
+        }
+      }
+    }
+  }
+
+  check('«Назрань 1» содержит 365 дней',
+    Array.from({ length: 12 }, (_, i) => timetableDays('nazran-1', i + 1)).reduce((a, b) => a + b, 0),
+    365);
+  check('«Назрань 2» содержит 365 дней',
+    Array.from({ length: 12 }, (_, i) => timetableDays('nazran-2', i + 1)).reduce((a, b) => a + b, 0),
+    365);
+  check('в каждой строке шесть последовательных времён', invalidRows, 0);
+  check('первая строка «Назрань 1» перенесена дословно', timetableRow('nazran-1', 1, 1), {
+    fajr: '06:05', sunrise: '07:25', dhuhr: '12:20',
+    asr: '14:20', maghrib: '16:42', isha: '18:12',
+  });
+  check('первая строка «Назрань 2» перенесена дословно', timetableRow('nazran-2', 1, 1), {
+    fajr: '06:01', sunrise: '07:35', dhuhr: '12:10',
+    asr: '14:18', maghrib: '16:36', isha: '18:02',
+  });
+  check('исправлена распознанная иша 8 декабря', timetableRow('nazran-1', 12, 8)?.isha, '18:02');
+  check('в «Назрань 1» нет отсутствующего в источнике 29 февраля', timetableRow('nazran-1', 2, 29), null);
+  check('в «Назрань 2» нет отсутствующего в источнике 31 марта', timetableRow('nazran-2', 3, 31), null);
+  check('новая Назрань по умолчанию открывает первое готовое расписание',
+    settingsForNewPrayerPlace({ lat: 43.2256, lon: 44.7642 }).source, 'nazran-1');
+  check('другой новый город остаётся в режиме расчёта',
+    settingsForNewPrayerPlace({ lat: 55.7558, lon: 37.6173 }).source, 'calculated');
+});
+
+group('Отдельные напоминания о намазах', () => {
+  check('все напоминания по умолчанию выключены',
+    Object.values(normalisePrayerAlarms(null)), [false, false, false, false, false]);
+  check('восход не получает отдельный будильник',
+    PRAYER_ALARM_KEYS, ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']);
+
+  const place = { name: 'Назрань', lat: 43.22597, lon: 44.77323, source: 'manual' };
+  const city = {
+    id: 'alarm-test',
+    ...place,
+    settings: { ...settingsForNewPrayerPlace(place), source: 'nazran-1' },
+  };
+  const alarms = normalisePrayerAlarms({
+    fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true,
+  });
+  const occurrences = buildPrayerAlarmOccurrences(
+    city, alarms, new Date(2026, 7, 13, 0, 0, 0), 1,
+  );
+  check('на один день планируются ровно пять намазов',
+    occurrences.map(item => item.key), PRAYER_ALARM_KEYS);
+  check('идентификаторы напоминаний не пересекаются',
+    new Set(occurrences.map(item => item.id)).size, occurrences.length);
+});
 
 // ─── Сквозная нумерация ───────────────────────────────────────────────
 group('Сквозная нумерация аятов', () => {
@@ -725,6 +1076,110 @@ group('Шрифты мусхафа: подмножества сгенериро�
   check('число подмножеств совпадает с тем, что просят страницы',
     missing.length + orphans.length, 0);
   void expected;
+});
+
+group('Цветной мусхаф: 604 страницы совпадают с разметкой QCF', () => {
+  const tajweedDir = resolve(ROOT, 'public/tajweed/pages');
+  const qcfDir = resolve(ROOT, 'public/qcf4/pages');
+  const files = existsSync(tajweedDir)
+    ? readdirSync(tajweedDir).filter(f => /^\d{3}\.json$/.test(f)).sort()
+    : [];
+  const invalid = [];
+  const missingLines = [];
+
+  for (const file of files) {
+    const page = Number(file.slice(0, 3));
+    const colour = JSON.parse(readFileSync(resolve(tajweedDir, file), 'utf8'));
+    const qcf = JSON.parse(readFileSync(resolve(qcfDir, file), 'utf8'));
+    const qcfByLine = new Map(qcf.lines.map(line => [line.line, line]));
+
+    if (colour.page !== page || !colour.lines.length) invalid.push(`${file}: page/lines`);
+    for (const line of colour.lines) {
+      const qcfLine = qcfByLine.get(line.line);
+      if (!qcfLine) {
+        invalid.push(`${file}: line ${line.line}`);
+        continue;
+      }
+      const verseKeys = new Set(qcfLine.words.map(word => word.verse_key).filter(Boolean));
+      for (const word of line.words) {
+        if (!word.code || !/^\d+:\d+$/.test(word.verseKey)
+          || !Number.isInteger(word.position) || word.position < 1
+          || !verseKeys.has(word.verseKey)) {
+          invalid.push(`${file}:${line.line}:${word.verseKey}:${word.position}`);
+        }
+      }
+    }
+
+    for (const line of qcf.lines) {
+      const hasVerseText = line.words.some(word => word.verse_key);
+      if (hasVerseText && !colour.lines.some(item => item.line === line.line)) {
+        missingLines.push(`${file}:${line.line}`);
+      }
+    }
+  }
+
+  check('цветных страниц — 604', files.length, 604);
+  check('все элементы относятся к той же строке и аяту QCF', invalid.slice(0, 5), []);
+  check('покрыты все строки с текстом аятов', missingLines.slice(0, 5), []);
+});
+
+// ─── Ошибка и повтор цветного шрифта ─────────────────────────────────
+await groupAsync('Цветной шрифт: ошибка видна и загрузку можно повторить', async () => {
+  const originalDocument = globalThis.document;
+  const originalWindow = globalThis.window;
+  const styles = [];
+  let succeed = false;
+  let requests = 0;
+
+  const head = {
+    appendChild(el) { styles.push(el); },
+    querySelectorAll(selector) {
+      const family = selector.match(/data-tajweed-font="([^"]+)"/)?.[1];
+      return styles.filter(el => !el.removed && (!family || el.dataset.tajweedFont === family));
+    },
+  };
+  globalThis.document = {
+    head,
+    documentElement: { getAttribute() { return 'dark'; } },
+    getElementById(id) {
+      return styles.find(el => !el.removed && el.id === id) ?? null;
+    },
+    createElement() {
+      return {
+        dataset: {},
+        textContent: '',
+        removed: false,
+        remove() { this.removed = true; },
+      };
+    },
+    fonts: {
+      async load() {
+        requests++;
+        return succeed ? [{ status: 'loaded' }] : [];
+      },
+    },
+  };
+  globalThis.window = new EventTarget();
+
+  try {
+    const fontMod = await import(
+      pathToFileURL(resolve(ROOT, 'src/hooks/useTajweedFont.ts')).href
+    );
+    const family = 'QPC4Tajweed-test';
+
+    await fontMod.loadTajweedFont(77, family, '\ufc00');
+    check('пустой список FontFace отмечается как ошибка',
+      fontMod.getTajweedFontStatus(family), 'failed');
+
+    succeed = true;
+    await fontMod.retryFailedTajweedFonts();
+    check('повтор после восстановления сети загружает шрифт',
+      fontMod.getTajweedFontStatus(family), 'ready');
+    check('повтор действительно отправляет второй запрос', requests, 2);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.window = originalWindow;
+  }
 });
 
 // ─── Итог ─────────────────────────────────────────────────────────────

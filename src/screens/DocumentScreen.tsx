@@ -18,9 +18,18 @@
  * App Review требует, чтобы политика конфиденциальности была доступна.
  * Публичный URL для App Store Connect всё равно понадобится отдельно, но
  * доступность из самого приложения — то, что проверяют глазами.
+ *
+ * ── Типографика ───────────────────────────────────────────────────────
+ *
+ * Заголовок набран той же формой, что «Коран» и «Аккаунт»:
+ * clamp(30px, 8vw, 40px) по серифу.  Раньше здесь стояла своя,
+ * третья по счёту форма — clamp(22px, 6vw, 28px), — и переход из
+ * «Аккаунта» в документ выглядел как переход в другое приложение.
+ * Строка одна, с многоточием: «Политика конфиденциальности» в шапку не
+ * влезает ни при каком кегле, поэтому в DOCS лежат короткие имена.
  */
 
-import { ChevronLeft } from '../components/icons';
+import { ChevronLeft, ICON_SIZE } from '../components/icons';
 
 export type DocumentId = 'privacy' | 'terms';
 
@@ -42,8 +51,8 @@ export function DocumentScreen({ doc, onBack }: {
       background: 'transparent',
     }}>
       <header style={{
-        display: 'flex', alignItems: 'center', gap: '12px',
-        padding: 'calc(env(safe-area-inset-top) + 14px) 16px 12px',
+        display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+        padding: 'calc(env(safe-area-inset-top) + var(--space-margin)) var(--space-margin) var(--space-cozy)',
         flexShrink: 0,
       }}>
         <button
@@ -51,19 +60,20 @@ export function DocumentScreen({ doc, onBack }: {
           aria-label="Назад"
           className="icon-btn"
           style={{
-            width: '42px', height: '42px', flexShrink: 0, borderRadius: '12px',
+            width: '42px', height: '42px', flexShrink: 0,
+            borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
             background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
             color: 'var(--text-secondary)', cursor: 'pointer',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <ChevronLeft size={20} />
+          <ChevronLeft size={ICON_SIZE.md} />
         </button>
         <h1 className="display-serif" style={{
           margin: 0, flex: 1, minWidth: 0,
-          fontSize: 'clamp(22px, 6vw, 28px)', fontWeight: 400,
-          letterSpacing: '-0.02em', color: 'var(--text-primary)', lineHeight: 1.1,
+          fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 'var(--weight-regular)',
+          letterSpacing: '-0.03em', color: 'var(--text-primary)', lineHeight: 1.05,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {meta.title}

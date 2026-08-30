@@ -1,0 +1,356 @@
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
+import { Capacitor } from '@capacitor/core';
+
+const EDGE_WIDTH = 22;
+const COMMIT_PROGRESS = 0.34;
+const FLICK_DISTANCE = 42;
+const FLICK_VELOCITY = 0.55;
+const SETTLE_MS = 260;
+const SETTLE_EASING = 'cubic-bezier(.22,1,.36,1)';
+const PARALLAX = 0.28;
+
+export type IosBackPreview = {
+  /** Клон уходящего экрана. Готовится в navigate() до размонтирования. */
+  node: HTMLElement;
+  scrollY: number;
+};
+
+type Gesture = {
+  startX: number;
+  startY: number;
+  startedAt: number;
+  lastX: number;
+  width: number;
+  mode: 'pending' | 'horizontal' | 'cancelled';
+};
+
+/**
+ * Интерактивный iOS edge-pop для SPA внутри одного WKWebView.
+ *
+ * UINavigationController здесь не видит React-экраны как отдельные view
+ * controllers, поэтому системный interactivePopGestureRecognizer применить
+ * напрямую нельзя. Повторяем его визуальную модель: верхний экран следует за
+ * пальцем вправо, предыдущий открывается из-под него с лёгким параллаксом,
+ * отпускание завершает переход либо возвращает экран на место.
+ *
+ * Во время жеста React намеренно не участвует. Раньше каждый кадр писался
+ * через setState, а useLayoutEffect с зависимостью от объекта motion успевал
+ * отработать cleanup и setup: will-change и box-shadow снимались и ставились
+ * заново 60 раз в секунду, то есть композитор пересоздавал слой с тяжёлым
+ * арабским текстом на каждом кадре. Теперь состояние меняется дважды за жест
+ * (смонтировать preview, снять его), а положение пишется прямо в style
+ * готовых слоёв.
+ *
+ * Второе отличие от прежней версии: preview монтируется не на touchstart, а
+ * только когда движение опознано как горизонтальное. Прежде любое вертикальное
+ * касание в 22-пиксельной полосе у левого края вставляло в DOM полную копию
+ * предыдущего экрана и тут же её выбрасывало — прокрутка у левого края платила
+ * за это потерянными кадрами.
+ */
+export function IosEdgeBackGesture({
+  onBack,
+  currentScreenRef,
+  preview,
+}: {
+  onBack: () => void;
+  currentScreenRef: RefObject<HTMLDivElement | null>;
+  preview?: IosBackPreview | null;
+}) {
+  const enabled = Capacitor.getPlatform() === 'ios';
+  const edgeRef = useRef<HTMLDivElement>(null);
+  const previewShellRef = useRef<HTMLDivElement>(null);
+  const previewViewportRef = useRef<HTMLDivElement>(null);
+  const previewDimRef = useRef<HTMLDivElement>(null);
+  const onBackRef = useRef(onBack);
+  const previewRef = useRef(preview);
+  const gestureRef = useRef<Gesture | null>(null);
+  const settleTimerRef = useRef<number | null>(null);
+  const motionFrameRef = useRef<number | null>(null);
+  const pendingXRef = useRef(0);
+  // armed управляет только монтированием preview — не положением.
+  const [armed, setArmed] = useState(false);
+
+  onBackRef.current = onBack;
+  previewRef.current = preview;
+
+  // Клон уходящего экрана вставляем узлом, а не строкой: innerHTML заставлял
+  // WebKit заново разбирать сотни килобайт разметки в первом кадре жеста.
+  useLayoutEffect(() => {
+    const viewport = previewViewportRef.current;
+    const shell = previewShellRef.current;
+    const captured = preview;
+    if (!armed || !viewport || !captured) return;
+    viewport.appendChild(captured.node);
+    viewport.scrollTop = captured.scrollY;
+    // Первый кадр параллакса ставим здесь, а не в теле рендера: ширину знает
+    // только активный жест, и читать её при рендере было бы нечисто.
+    if (shell) {
+      const width = gestureRef.current?.width ?? window.innerWidth;
+      shell.style.transform = `translate3d(${-PARALLAX * width}px, 0, 0)`;
+    }
+    return () => {
+      if (captured.node.parentNode === viewport) viewport.removeChild(captured.node);
+    };
+  }, [armed, preview]);
+
+  useEffect(() => () => {
+    if (settleTimerRef.current != null) window.clearTimeout(settleTimerRef.current);
+    if (motionFrameRef.current != null) cancelAnimationFrame(motionFrameRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const edge = edgeRef.current;
+    if (!edge) return;
+
+    /** Положение кадра. Пишем только composited-свойства. */
+    const paint = (x: number, width: number, settling: boolean) => {
+      const screen = currentScreenRef.current;
+      const shell = previewShellRef.current;
+      const dim = previewDimRef.current;
+      const transition = settling ? `transform ${SETTLE_MS}ms ${SETTLE_EASING}` : 'none';
+      const progress = Math.min(1, x / Math.max(1, width));
+      if (screen) {
+        screen.style.transform = `translate3d(${x}px, 0, 0)`;
+        screen.style.transition = transition;
+      }
+      if (shell) {
+        shell.style.transform = `translate3d(${(-PARALLAX + progress * PARALLAX) * width}px, 0, 0)`;
+        shell.style.transition = transition;
+      }
+      if (dim) {
+        dim.style.background = `rgba(0,0,0,${0.12 * (1 - progress)})`;
+        dim.style.transition = settling ? `background ${SETTLE_MS}ms ${SETTLE_EASING}` : 'none';
+      }
+    };
+
+    /** Слой создаём один раз за жест, а не на каждом кадре. */
+    const openLayer = () => {
+      const screen = currentScreenRef.current;
+      if (!screen) return;
+      screen.style.willChange = 'transform';
+      screen.style.boxShadow = '-10px 0 28px rgba(0,0,0,0.16)';
+    };
+
+    const closeLayer = () => {
+      const screen = currentScreenRef.current;
+      if (!screen) return;
+      screen.style.transform = '';
+      screen.style.transition = '';
+      screen.style.willChange = '';
+      screen.style.boxShadow = '';
+    };
+
+    const cancelFrame = () => {
+      if (motionFrameRef.current != null) {
+        cancelAnimationFrame(motionFrameRef.current);
+        motionFrameRef.current = null;
+      }
+    };
+
+    const finishCancel = () => {
+      const gesture = gestureRef.current;
+      const width = gesture?.width ?? window.innerWidth;
+      const wasHorizontal = gesture?.mode === 'horizontal';
+      gestureRef.current = null;
+      cancelFrame();
+      if (settleTimerRef.current != null) window.clearTimeout(settleTimerRef.current);
+      if (!wasHorizontal) {
+        // Жест так и не стал горизонтальным: ничего не монтировали и не
+        // двигали, снимать нечего.
+        return;
+      }
+      paint(0, width, true);
+      settleTimerRef.current = window.setTimeout(() => {
+        closeLayer();
+        setArmed(false);
+      }, SETTLE_MS);
+    };
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      if (settleTimerRef.current != null) window.clearTimeout(settleTimerRef.current);
+      const touch = event.touches[0];
+      gestureRef.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startedAt: performance.now(),
+        lastX: touch.clientX,
+        // Ширину снимаем один раз за жест: чтение window.innerWidth в теле
+        // рендера заставляло WebKit считать лейаут на каждом кадре.
+        width: window.innerWidth,
+        mode: 'pending',
+      };
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      const gesture = gestureRef.current;
+      if (!gesture || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      const dx = touch.clientX - gesture.startX;
+      const dy = touch.clientY - gesture.startY;
+      gesture.lastX = touch.clientX;
+
+      if (gesture.mode === 'pending') {
+        if (Math.abs(dy) > 10 && Math.abs(dy) > Math.max(0, dx)) {
+          gesture.mode = 'cancelled';
+          finishCancel();
+          return;
+        }
+        if (dx > 6 && dx > Math.abs(dy) * 1.15) {
+          gesture.mode = 'horizontal';
+          if (!previewRef.current) {
+            // Возвращаться некуда — жест не начинаем, прокрутку не забираем.
+            gesture.mode = 'cancelled';
+            gestureRef.current = null;
+            return;
+          }
+          openLayer();
+          setArmed(true);
+        }
+      }
+      if (gesture.mode !== 'horizontal') return;
+
+      // Не отдаём горизонтальный жест overscroll'у WKWebView.
+      event.preventDefault();
+      pendingXRef.current = Math.min(gesture.width, Math.max(0, dx));
+      // iPhone может присылать touchmove чаще частоты экрана. Оставляем ровно
+      // одно обновление на animation frame — экран следует за пальцем без
+      // дрожи. Пишем напрямую в style: React здесь не участвует.
+      if (motionFrameRef.current == null) {
+        motionFrameRef.current = requestAnimationFrame(() => {
+          motionFrameRef.current = null;
+          paint(pendingXRef.current, gesture.width, false);
+        });
+      }
+    };
+
+    const onTouchEnd = (event: TouchEvent) => {
+      const gesture = gestureRef.current;
+      if (!gesture) return;
+      if (gesture.mode !== 'horizontal') {
+        gestureRef.current = null;
+        cancelFrame();
+        return;
+      }
+      const width = gesture.width;
+      gestureRef.current = null;
+      cancelFrame();
+      const touch = event.changedTouches[0];
+      const dx = Math.max(0, (touch?.clientX ?? gesture.lastX) - gesture.startX);
+      const elapsed = Math.max(1, performance.now() - gesture.startedAt);
+      const velocity = dx / elapsed;
+      const commit = dx / Math.max(1, width) >= COMMIT_PROGRESS
+        || (dx >= FLICK_DISTANCE && velocity >= FLICK_VELOCITY);
+
+      if (!commit) {
+        gestureRef.current = { ...gesture, mode: 'horizontal' };
+        finishCancel();
+        return;
+      }
+
+      const screen = currentScreenRef.current;
+      let committed = false;
+      const commitBack = () => {
+        if (committed) return;
+        committed = true;
+        if (settleTimerRef.current != null) {
+          window.clearTimeout(settleTimerRef.current);
+          settleTimerRef.current = null;
+        }
+        screen?.removeEventListener('transitionend', onSettleEnd);
+        // Во время интерактивного pop предыдущий экран уже полностью виден
+        // под уходящим. Его реальный React-экран должен заменить preview без
+        // повторного fade-in: иначе на финальном кадре он темнел до 72%, что
+        // воспринималось как рывок. Атрибут живёт только два кадра — обычные
+        // переходы вперёд сохраняют короткое появление.
+        document.documentElement.dataset.iosEdgeBackCommit = 'true';
+        closeLayer();
+        setArmed(false);
+        onBackRef.current();
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          delete document.documentElement.dataset.iosEdgeBackCommit;
+        }));
+      };
+      const onSettleEnd = (settleEvent: TransitionEvent) => {
+        if (settleEvent.propertyName === 'transform') commitBack();
+      };
+      screen?.addEventListener('transitionend', onSettleEnd);
+      paint(width, width, true);
+      // transitionend может не прийти при системном Reduce Motion или если
+      // WKWebView потерял кадр. Резерв позже, а не раньше CSS-перехода.
+      settleTimerRef.current = window.setTimeout(commitBack, SETTLE_MS + 80);
+    };
+
+    edge.addEventListener('touchstart', onTouchStart, { passive: true });
+    edge.addEventListener('touchmove', onTouchMove, { passive: false });
+    edge.addEventListener('touchend', onTouchEnd, { passive: true });
+    edge.addEventListener('touchcancel', finishCancel, { passive: true });
+    return () => {
+      edge.removeEventListener('touchstart', onTouchStart);
+      edge.removeEventListener('touchmove', onTouchMove);
+      edge.removeEventListener('touchend', onTouchEnd);
+      edge.removeEventListener('touchcancel', finishCancel);
+    };
+  }, [enabled, currentScreenRef]);
+
+  if (!enabled) return null;
+
+  return (
+    <>
+      {armed && preview && (
+        <div
+          ref={previewShellRef}
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 0,
+            overflow: 'hidden',
+            pointerEvents: 'none',
+            background: 'var(--surface)',
+            willChange: 'transform',
+          }}
+        >
+          <div
+            ref={previewViewportRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              overflow: 'hidden',
+              transform: 'translateZ(0)',
+            }}
+          />
+          <div
+            ref={previewDimRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(0,0,0,0.12)',
+            }}
+          />
+        </div>
+      )}
+
+      <div
+        ref={edgeRef}
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          zIndex: 1000,
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: `${EDGE_WIDTH}px`,
+          touchAction: 'pan-y',
+        }}
+      />
+    </>
+  );
+}
