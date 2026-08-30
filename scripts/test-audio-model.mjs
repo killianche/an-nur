@@ -856,50 +856,6 @@ group('Мой список дуа', () => {
   clearDuaList();
 });
 
-// ─── Скрытые дуа ──────────────────────────────────────────────────────
-//
-// Скрытие — не удаление: текст остаётся в приложении и обязан
-// возвращаться. Если хранилище перестанет держать список, скрытое
-// станет потерянным, и заметить это по экрану невозможно.
-const hiddenMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/duaHidden.ts')).href);
-const {
-  readHiddenDua, writeHiddenDua, hideDua, unhideDua, isHiddenDua, unhideAllDua,
-} = hiddenMod;
-
-group('Скрытые дуа', () => {
-  localStorage.removeItem('dua.hidden');
-  check('на старте ничего не скрыто', readHiddenDua(), []);
-
-  hideDua('d1');
-  hideDua('d2');
-  check('порядок — тот, в котором скрывали', readHiddenDua(), ['d1', 'd2']);
-  hideDua('d1');
-  check('повторное скрытие не плодит дубль', readHiddenDua(), ['d1', 'd2']);
-
-  check('принадлежность проверяется',
-    [isHiddenDua('d1'), isHiddenDua('d9')], [true, false]);
-
-  unhideDua('d1');
-  check('возврат убирает из скрытых', readHiddenDua(), ['d2']);
-
-  // Скрытие и «Мой список» независимы: дуа может быть и там и там.
-  // Проверяем, что модули не лезут в чужое хранилище.
-  writeDuaList(['d2']);
-  hideDua('d2');
-  check('скрытие не трогает мой список', readDuaList(), ['d2']);
-  check('и мой список не трогает скрытые', readHiddenDua(), ['d2']);
-  clearDuaList();
-
-  localStorage.setItem('dua.hidden', 'не json');
-  check('битое хранилище даёт пустой список', readHiddenDua(), []);
-  localStorage.setItem('dua.hidden', '["x", "x", 7, null, "y"]');
-  check('мусор и дубли отбрасываются', readHiddenDua(), ['x', 'y']);
-
-  writeHiddenDua(['a', 'b']);
-  unhideAllDua();
-  check('вернуть всё разом', readHiddenDua(), []);
-});
-
 // ─── Шрифты мусхафа: пара «шрифт + страница» ──────────────────────────
 //
 // Здесь проверяется то, от чего зависит, какое СЛОВО окажется в аяте.

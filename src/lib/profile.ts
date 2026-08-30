@@ -70,7 +70,11 @@ export const LOCAL_DATA_KEYS: readonly string[] = [
   'azkar.arabicScale', 'azkar.russianScale', 'azkar.translitScale',
   'azkar.langTab',
   // Дуа
-  'dua.list', 'dua.hidden',
+  'dua.list',
+  // `dua.hidden` — наследие: скрытие дуа снято, но у тех, кто успел им
+  // воспользоваться, ключ лежит в памяти телефона. Приложение его больше
+  // не читает, а «удалить мои данные» обязано вычистить и его.
+  'dua.hidden',
   'dua.showArabic', 'dua.showRussian', 'dua.showTranslit',
   'dua.arabicFont', 'dua.russianFont', 'dua.translitFont',
   'dua.arabicScale', 'dua.russianScale', 'dua.translitScale',

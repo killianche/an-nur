@@ -39,7 +39,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Appearance, Check, Close, DragHandle, EyeOff, ICON_SIZE, MinusCircleFill, Plus,
+  Appearance, Check, DragHandle, ICON_SIZE, MinusCircleFill, Plus,
   Typography,
 } from '../components/icons';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
@@ -59,9 +59,6 @@ import {
   addToDuaList, insertIntoDuaList, moveInDuaList, onDuaListChange,
   readDuaList, removeFromDuaList,
 } from '../lib/duaList';
-import {
-  hideDua, onHiddenDuaChange, readHiddenDua, unhideDua,
-} from '../lib/duaHidden';
 
 type Props = { theme: Theme; setTheme: (t: Theme) => void };
 type Mode = 'mine' | 'all';
@@ -99,10 +96,6 @@ export function DuaScreen({ theme, setTheme }: Props) {
   }, []);
 
   useEffect(() => onDuaListChange(() => setList(readDuaList())), []);
-
-  const [hidden, setHidden] = useState<string[]>(readHiddenDua);
-  const [hiddenOpen, setHiddenOpen] = useState(false);
-  useEffect(() => onHiddenDuaChange(() => setHidden(readHiddenDua())), []);
 
   // Правка живёт только в «моём списке»: в витрине нечего переставлять.
   useEffect(() => { if (mode !== 'mine') setEditing(false); }, [mode]);
@@ -162,19 +155,14 @@ export function DuaScreen({ theme, setTheme }: Props) {
     setUndo(null);
   }, []);
 
-  // Витрина без скрытого: смысл скрытия в том, чтобы этого здесь не
-  // было.  «Мой список» не фильтруем — его человек собрал руками, и
-  // прятать оттуда никто не просил.
-  const visible = useMemo(
-    () => (data?.entries ?? []).filter(e => !hidden.includes(e.id)),
-    [data, hidden],
-  );
-  const shown = useMemo(() => (
-    category === null ? visible : visible.filter(e => e.category === category)
-  ), [visible, category]);
-  const hiddenEntries = hidden
-    .map(id => byId.get(id))
-    .filter((e): e is DuaEntry => !!e);
+  // Витрина показывает всё: скрытие дуа снято по решению владельца.
+  // Прежний ключ `dua.hidden` намеренно не читается — иначе у того, кто
+  // успел что-то скрыть, эти дуа остались бы невидимыми навсегда, без
+  // единой кнопки, чтобы их вернуть.
+  const shown = useMemo(() => {
+    const all = data?.entries ?? [];
+    return category === null ? all : all.filter(e => e.category === category);
+  }, [data, category]);
 
   return (
     <div style={{
@@ -292,36 +280,11 @@ export function DuaScreen({ theme, setTheme }: Props) {
         mode={mode}
         onChange={setMode}
         mineCount={mine.length}
-        allCount={visible.length}
+        allCount={data?.entries.length ?? 0}
       />
 
       {mode === 'all' && total > 0 && data && data.categories.length > 1 && (
         <CategoryChips data={data} value={category} onChange={setCategory} />
-      )}
-
-      {/* Кнопка появляется только когда есть что возвращать: пустой
-          пункт «Скрытые · 0» был бы мусором на экране. */}
-      {mode === 'all' && hiddenEntries.length > 0 && (
-        <button
-          onClick={() => setHiddenOpen(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
-            width: '100%', minHeight: '40px', padding: '0 var(--space-cozy)',
-            marginBottom: 'var(--space-margin)',
-            borderRadius: 'var(--radius-control)',
-            border: '1px dashed var(--hairline-strong)',
-            background: 'transparent',
-            color: 'var(--text-secondary)', cursor: 'pointer',
-            fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
-            textAlign: 'left',
-          }}
-        >
-          <EyeOff size={ICON_SIZE.sm} />
-          <span style={{ flex: 1 }}>Скрытые</span>
-          <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-tertiary)' }}>
-            {hiddenEntries.length}
-          </span>
-        </button>
       )}
 
       {!data && <Skeleton />}
@@ -371,7 +334,6 @@ export function DuaScreen({ theme, setTheme }: Props) {
                   inList={list.includes(e.id)}
                   delay={Math.min(i * 40, MAX_STAGGER_MS)}
                   onAdd={() => add(e)}
-                  onHide={() => hideDua(e.id)}
                   prefs={prefs}
                   count={counts[e.id] ?? 0}
                   onCount={() => inc(e.id)}
@@ -380,14 +342,6 @@ export function DuaScreen({ theme, setTheme }: Props) {
               ))}
             </div>
           )
-      )}
-
-      {hiddenOpen && (
-        <HiddenSheet
-          entries={hiddenEntries}
-          onUnhide={id => unhideDua(id)}
-          onClose={() => setHiddenOpen(false)}
-        />
       )}
 
       {undo && (
@@ -558,7 +512,7 @@ function CategoryChips({ data, value, onChange }: {
  * нет вовсе.  Рисовать кнопку, которой нечего проиграть, — обман.
  */
 function DuaCard({
-  entry, ordinal, inList, delay, onAdd, onHide,
+  entry, ordinal, inList, delay, onAdd,
   prefs, count, onCount, onResetCount,
 }: {
   entry: DuaEntry;
@@ -568,8 +522,6 @@ function DuaCard({
   /** Добавить в мой список.  Без него кнопки нет — так карточка в
    *  «Моём списке» остаётся без действий над списком. */
   onAdd?: () => void;
-  /** Скрыть из витрины.  Только в витрине. */
-  onHide?: () => void;
   prefs: DuaPrefs;
   count: number;
   onCount: () => void;
@@ -621,27 +573,6 @@ function DuaCard({
         }}>
           {entry.title_ru}
         </h3>
-
-        {onHide && (
-          <button
-            onClick={onHide}
-            aria-label={`Скрыть «${entry.title_ru}»`}
-            title="Скрыть из «Все дуа»"
-            style={{
-              position: 'relative',
-              flexShrink: 0,
-              width: '34px', height: '34px', borderRadius: 'var(--radius-pill)',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              border: 'none', background: 'transparent',
-              color: 'var(--text-tertiary)', cursor: 'pointer',
-              marginTop: '-2px',
-              WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            <HitArea />
-            <EyeOff size={ICON_SIZE.md} />
-          </button>
-        )}
 
         {onAdd && (
           /*
@@ -997,125 +928,6 @@ function EditList({ items, onRemove }: {
         );
       })}
     </div>
-  );
-}
-
-/**
- * Список скрытых дуа.
- *
- * Единственный путь вернуть скрытое — так попросил владелец, и это
- * честно: скрывают осознанно и надолго, всплывашка «вернуть» здесь была
- * бы шумом.  Зато сам список обязан быть на виду, иначе скрытое
- * превращается в потерянное — поэтому кнопка к нему стоит прямо в
- * витрине и показывает, сколько там лежит.
- *
- * Портал в body: экран задаёт свой контекст наложения, и без портала
- * лист уехал бы под панель вкладок.
- */
-function HiddenSheet({ entries, onUnhide, onClose }: {
-  entries: DuaEntry[];
-  onUnhide: (id: string) => void;
-  onClose: () => void;
-}) {
-  // Когда вернули последнее — закрываемся сами: пустой лист держать
-  // открытым незачем.
-  useEffect(() => { if (entries.length === 0) onClose(); }, [entries.length, onClose]);
-
-  return createPortal(
-    <>
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 60,
-          background: 'rgba(0,0,0,0.45)',
-          animation: 'fade-in 0.18s ease',
-        }}
-      />
-      <div
-        role="dialog"
-        aria-label="Скрытые дуа"
-        style={{
-          position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 61,
-          maxHeight: '78vh',
-          display: 'flex', flexDirection: 'column',
-          background: 'var(--surface)',
-          borderTopLeftRadius: 'var(--radius-shell)',
-          borderTopRightRadius: 'var(--radius-shell)',
-          borderTop: '1px solid var(--hairline)',
-          boxShadow: '0 -10px 40px rgba(0,0,0,0.32)',
-          animation: 'sheet-up 0.24s cubic-bezier(0.22,1,0.36,1)',
-        }}
-      >
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
-          padding: 'var(--space-margin) var(--space-margin) var(--space-cozy)',
-          borderBottom: '1px solid var(--hairline)',
-        }}>
-          <h2 className="display-serif" style={{
-            margin: 0, flex: 1, minWidth: 0,
-            fontSize: 'var(--font-title2)', lineHeight: 'var(--leading-title2)',
-            fontWeight: 'var(--weight-regular)', letterSpacing: '-0.015em',
-            color: 'var(--text-primary)',
-          }}>
-            Скрытые
-          </h2>
-          <button
-            onClick={onClose}
-            aria-label="Закрыть"
-            className="icon-btn"
-            style={{
-              position: 'relative',
-              width: '34px', height: '34px', flexShrink: 0,
-              borderRadius: 'var(--radius-pill)',
-              border: '1px solid var(--hairline)', background: 'transparent',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <HitArea />
-            <Close size={ICON_SIZE.sm} />
-          </button>
-        </div>
-
-        <div style={{ overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
-          {entries.map((e, i) => (
-            <div
-              key={e.id}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
-                padding: 'var(--space-cozy) var(--space-margin)',
-                borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',
-                overflow: 'hidden',
-              }}
-            >
-              <span style={{
-                flex: 1, minWidth: 0,
-                fontSize: 'var(--font-subhead)', color: 'var(--text-primary)',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {e.title_ru}
-              </span>
-              <button
-                onClick={() => onUnhide(e.id)}
-                style={{
-                  flexShrink: 0, minHeight: '32px', padding: '0 var(--space-cozy)',
-                  borderRadius: 'var(--radius-pill)',
-                  border: '1px solid var(--hairline)',
-                  background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
-                  color: 'var(--text-primary)', cursor: 'pointer',
-                  fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
-                  fontWeight: 'var(--weight-regular)',
-                }}
-              >
-                Вернуть
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ height: 'env(safe-area-inset-bottom)', flexShrink: 0 }} />
-      </div>
-    </>,
-    document.body,
   );
 }
 
