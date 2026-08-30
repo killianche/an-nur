@@ -36,7 +36,7 @@ import { Appearance, BookOpen, Typography, ICON_SIZE } from '../components/icons
 import { BottomDock } from '../components/BottomDock';
 import { QcfMushafPage } from '../components/QcfMushafPage';
 import { FontErrorBanner } from '../components/FontErrorBanner';
-import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { useAyahAudio } from '../hooks/useAyahAudio';
@@ -507,15 +507,24 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          // Панель фиксированная и места в потоке не занимает, поэтому
-          // отступ сверху отводим руками — иначе первая строка уезжает
-          // под неё. screenHeaderOffset уже учитывает «чёлку».
-          // Геометрия страницы постоянна и при скрытой панели: иначе
-          // ResizeObserver менял fitTo, а QCF заново подбирал кегль.
-          paddingTop: screenHeaderOffset(6),
-          // Резерв постоянный — появление плеера не запускает новый подбор
-          // кегля и лист не перекрывает нижнюю строку Корана.
-          paddingBottom: 'calc(env(safe-area-inset-bottom) + 76px)',
+          // Сверху отводим только «чёлку» и небольшой зазор, а не высоту
+          // панели. Панель фиксированная, лежит поверх и прячется тапом —
+          // а читают именно с убранной панелью. Прежний резерв в 64px
+          // держал эту полосу пустой ВСЕГДА, в том числе когда панель
+          // убрана, то есть в самом частом состоянии экрана. Плата за это:
+          // при показанной панели верхняя строка уходит под неё. Панель
+          // полупрозрачная и убирается одним тапом, поэтому обмен честный.
+          //
+          // Геометрия остаётся постоянной при любом состоянии панели —
+          // это важно: иначе ResizeObserver менял бы fitTo, и QCF заново
+          // подбирал кегль прямо во время чтения.
+          paddingTop: 'calc(env(safe-area-inset-top) + 6px)',
+          // Снизу резерв под плеер аята. Он постоянный по той же причине:
+          // появление плеера не должно запускать новый подбор кегля. Но
+          // 76px было с запасом — плеер сведён к одной строке и занимает
+          // около 48px над «домашней» полосой. 56px закрывают его целиком
+          // и не дают перекрыть нижнюю строку Корана.
+          paddingBottom: 'calc(env(safe-area-inset-bottom) + 56px)',
           position: 'relative',
           touchAction: 'pan-y pinch-zoom',
         }}
