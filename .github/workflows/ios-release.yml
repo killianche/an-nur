@@ -48,7 +48,11 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    # macos-26 — не «посвежее ради свежести»: Apple с 2026 года принимает
+    # только сборки с SDK iOS 26 и новее. На macos-15 стоит Xcode с SDK
+    # iOS 18.5, и выгрузка отклоняется на этапе проверки, уже ПОСЛЕ успешной
+    # сборки и подписи — то есть впустую тратится весь прогон.
+    runs-on: macos-26
     timeout-minutes: 90
 
     steps:
@@ -58,6 +62,14 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+
+      # Версию SDK печатаем ДО сборки: если образ раннера сменится и SDK
+      # окажется старым, это будет видно сразу в логе, а не через десять
+      # минут в отказе Apple.
+      - name: Версия Xcode и SDK
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos || true
 
       - name: Установить зависимости
         run: npm ci
