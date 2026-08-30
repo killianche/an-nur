@@ -530,7 +530,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
         )}
 
         {!error && !data && loading && (
-          <div style={{ width: '100%', padding: `0 ${20}px` }} aria-hidden>
+          <div style={{ width: '100%', padding: '0 max(4px, env(safe-area-inset-left), env(safe-area-inset-right))' }} aria-hidden>
             {Array.from({ length: 15 }).map((_, i) => (
               <div
                 key={i}
@@ -580,11 +580,6 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           </div>
         )}
 
-        {/* Зоны листания по краям — для тех, кто читает одной рукой и
-            не любит свайп.  Узкие и прозрачные, чтобы не мешать тапу
-            по аяту в теле страницы. */}
-        <EdgeTap side="right" disabled={page <= MUSHAF_FIRST_PAGE} onTap={() => setPage(page - 1)} />
-        <EdgeTap side="left"  disabled={page >= MUSHAF_LAST_PAGE}  onTap={() => setPage(page + 1)} />
       </div>
 
       {/* ── Лист выбранного аята ─────────────────────────────────────── */}
@@ -699,7 +694,7 @@ function PreparedMushafPage({
 
 function MushafPageSkeleton() {
   return (
-    <div style={{ width: '100%', padding: '18px 20px' }} aria-hidden>
+    <div style={{ width: '100%', padding: '18px max(4px, env(safe-area-inset-left), env(safe-area-inset-right))' }} aria-hidden>
       {Array.from({ length: 15 }).map((_, i) => (
         <div
           key={i}
@@ -719,28 +714,6 @@ function MushafPageSkeleton() {
 function clampPage(n: number): number {
   if (!Number.isFinite(n)) return MUSHAF_FIRST_PAGE;
   return Math.min(MUSHAF_LAST_PAGE, Math.max(MUSHAF_FIRST_PAGE, Math.round(n)));
-}
-
-/** Прозрачная полоса у края экрана: тап листает. */
-function EdgeTap({ side, disabled, onTap }: {
-  side: 'left' | 'right';
-  disabled: boolean;
-  onTap: () => void;
-}) {
-  if (disabled) return null;
-  return (
-    <button
-      onClick={onTap}
-      aria-label={side === 'left' ? 'Следующая страница' : 'Предыдущая страница'}
-      style={{
-        position: 'absolute', top: 0, bottom: 0, [side]: 0,
-        width: '11%', minWidth: '34px',
-        border: 'none', background: 'transparent',
-        cursor: 'pointer', padding: 0,
-        WebkitTapHighlightColor: 'transparent',
-      }}
-    />
-  );
 }
 
 /**
