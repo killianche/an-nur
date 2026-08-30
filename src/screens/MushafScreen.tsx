@@ -310,12 +310,26 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
 
   const onTouchStart = (e: React.TouchEvent) => {
     if (turning.current) return;
+    // Второй палец — это масштабирование (touchAction разрешает pinch-zoom).
+    // Без этой проверки он перезаписывал снимок касания, и отпускание одного
+    // пальца давало «неподвижный тап» с малым смещением: панель прыгала
+    // посреди щипка.
+    if (e.touches.length !== 1) {
+      touch.current = null;
+      clearLongPress();
+      return;
+    }
     const t = e.touches[0];
     const target = e.target instanceof Element ? e.target : null;
     // Первые 28 px принадлежат системному жесту «Назад» iOS. Пейджер не
     // конкурирует с ним и не пытается одновременно перелистнуть мусхаф.
+    // Список целей тот же, что в ленте: ссылки и заблокированные контролы
+    // тоже не должны переключать панель. WebKit доставляет события
+    // заблокированной кнопки предку, поэтому :disabled проверяется явно.
     const interactive = t.clientX <= 28
-      || !!target?.closest('button, input, textarea, select, [role="button"]');
+      || !!target?.closest(
+        'button, a, input, textarea, select, [role="button"], :disabled, [aria-disabled="true"]',
+      );
     const verseKey = target?.closest<HTMLElement>('[data-verse-key]')
       ?.dataset.verseKey ?? null;
     const now = performance.now();

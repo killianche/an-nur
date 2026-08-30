@@ -1232,12 +1232,6 @@ body {
   animation: app-screen-enter 150ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
-/* Interactive edge-pop уже сам анимирует уходящий экран. На кадре подмены
-   DOM-preview реальным предыдущим экраном второй fade давал заметную вспышку. */
-[data-ios-edge-back-commit="true"] .app-screen-enter {
-  animation: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .app-screen-enter { animation: none; }
 }

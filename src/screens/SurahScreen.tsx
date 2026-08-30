@@ -187,19 +187,31 @@ export function SurahScreen({
     x: number;
     y: number;
     startedAt: number;
+    /** Позиция ленты в момент касания — чтобы отличить тап от остановки прокрутки. */
+    scrollY: number;
     moved: boolean;
   } | null>(null);
   const closeAll = () => { setJumpOpen(false); setThemeOpen(false); setTypographyOpen(false); };
+  /** Когда лента последний раз прокручивалась. */
+  const lastScrollAtRef = useRef(0);
 
   const onReaderPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!e.isPrimary || e.button !== 0) return;
     const target = e.target instanceof Element ? e.target : null;
-    if (target?.closest('button, a, input, textarea, select, [role="button"]')) return;
+    // :disabled и aria-disabled — не придирка. WebKit доставляет
+    // указательные события ЗАБЛОКИРОВАННОГО контрола предку, а не самому
+    // контролу. Кнопка «слушать» блокируется на время загрузки аята, и
+    // нетерпеливое второе нажатие приходило на <article>, где closest не
+    // находил кнопку — регистрировался тап, и панель прыгала.
+    if (target?.closest(
+      'button, a, input, textarea, select, [role="button"], :disabled, [aria-disabled="true"]',
+    )) return;
     readerTapRef.current = {
       pointerId: e.pointerId,
       x: e.clientX,
       y: e.clientY,
       startedAt: performance.now(),
+      scrollY: window.scrollY,
       moved: false,
     };
   };
@@ -213,6 +225,16 @@ export function SurahScreen({
     readerTapRef.current = null;
     if (!start || start.pointerId !== e.pointerId || start.moved) return;
     if (performance.now() - start.startedAt > 340) return;
+    // Панель переключает только «необработанный» тап — так же, как у
+    // системного hidesBarsOnTap. Касание, которое ГАСИТ прокрутку, тапом
+    // не считается: в WKWebView оно даёт полноценные pointerdown/up (клик
+    // при этом подавляется), палец не двигается, и прежний распознаватель
+    // честно видел тап. Человек же всего лишь тормозил уезжающий текст —
+    // особенно заметно сразу после запуска аудио, когда лента едет к
+    // звучащему аяту сама.
+    if (isAutoScrollingRef.current) return;
+    if (performance.now() - lastScrollAtRef.current < 250) return;
+    if (Math.abs(window.scrollY - start.scrollY) > 2) return;
     closeAll();
     setHeaderVisible(v => !v);
   };
@@ -481,6 +503,9 @@ export function SurahScreen({
     let rafId: number | null = null;
     let persistTimer: number | null = null;
     const onScroll = () => {
+      // Отметка нужна распознавателю тапа: касание, останавливающее
+      // инерционную прокрутку, не должно переключать панель.
+      lastScrollAtRef.current = performance.now();
       if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;

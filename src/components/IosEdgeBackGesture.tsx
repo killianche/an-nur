@@ -265,18 +265,13 @@ export function IosEdgeBackGesture({
           settleTimerRef.current = null;
         }
         screen?.removeEventListener('transitionend', onSettleEnd);
-        // Во время интерактивного pop предыдущий экран уже полностью виден
-        // под уходящим. Его реальный React-экран должен заменить preview без
-        // повторного fade-in: иначе на финальном кадре он темнел до 72%, что
-        // воспринималось как рывок. Атрибут живёт только два кадра — обычные
-        // переходы вперёд сохраняют короткое появление.
-        document.documentElement.dataset.iosEdgeBackCommit = 'true';
+        // Повторное появление подавляет теперь сам App: переход, опознанный
+        // как возврат, не ставит класс анимации. Прежний приём с атрибутом
+        // на <html> давал ровно тот дефект, от которого защищал — снятие
+        // атрибута перезапускало анимацию через два кадра после жеста.
         closeLayer();
         setArmed(false);
         onBackRef.current();
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          delete document.documentElement.dataset.iosEdgeBackCommit;
-        }));
       };
       const onSettleEnd = (settleEvent: TransitionEvent) => {
         if (settleEvent.propertyName === 'transform') commitBack();

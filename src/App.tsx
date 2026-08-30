@@ -91,6 +91,22 @@ export default function App() {
   const { theme, setTheme } = useTheme();
   const [screen, setScreen] = useState<Screen>(INITIAL_SCREEN);
   const [backPreview, setBackPreview] = useState<IosBackPreview | null>(null);
+  /**
+   * Проигрывать ли короткое появление у следующего экрана.
+   *
+   * Только на переходах ВПЕРЁД. Возврат — свайпом, кнопкой или системной
+   * «назад» — не анимируется: экран, к которому вернулись, уже был виден
+   * человеку, и повторное проявление читается как мигание. На первом кадре
+   * приложения тоже не анимируем: там ещё стоит нативная заставка.
+   *
+   * Раньше это решалось атрибутом `data-ios-edge-back-commit` на <html> и
+   * правилом `animation: none` в CSS. Приём давал ровно тот дефект, от
+   * которого защищал: снятие атрибута меняло вычисленное `animation-name`
+   * с `none` на имя, и по спецификации CSS Animations запускалась НОВАЯ
+   * анимация — через пару кадров после жеста экран гас до 72% и проявлялся
+   * заново.
+   */
+  const [animateEnter, setAnimateEnter] = useState(false);
   const quranHomePreviewRef = useRef<IosBackPreview | null>(null);
   const isCosmic = themeMode(theme) === 'cosmic';
   const cosmicVariant = theme === 'aurora2' ? 'aurora2' as const : 'aurora' as const;
@@ -109,7 +125,15 @@ export default function App() {
   // Переключение вкладки — тоже переход вперёд: системный «назад»
   // возвращает на предыдущую вкладку, а не выбрасывает из приложения
   // сразу.  На Android это ожидаемое поведение.
-  const navigate = (next: Screen) => {
+  /**
+   * Переход между экранами.
+   *
+   * `back: true` — переход, который человек воспринимает как возврат, даже
+   * если технически это `pushState` (стрелка из режимов чтения всегда ведёт
+   * к выбору суры, а не по истории). Возврат не проигрывает анимацию
+   * появления: экран, к которому вернулись, не должен «приезжать» заново.
+   */
+  const navigate = (next: Screen, opts: { back?: boolean } = {}) => {
     // Позицию уходящей вкладки снимаем ЗДЕСЬ, а не в эффекте: к моменту
     // эффекта новый экран уже мог сбросить скролл (SurahScreen делает
     // это, когда восстанавливать нечего), и мы записали бы ноль.
@@ -122,7 +146,16 @@ export default function App() {
     // разбиралась WebKit'ом в первом кадре жеста, и это была самая дорогая
     // часть свайпа назад. Атрибут data-app-screen с копии снимаем, иначе
     // следующий querySelector нашёл бы клон вместо настоящего экрана.
-    const node = document.querySelector<HTMLElement>('[data-app-screen="current"]');
+    //
+    // Клон нужен только экранам «поверх»: у корневых вкладок нет жеста
+    // возврата от края, и preview им показывать негде. Раньше клонировали
+    // всегда — и выход из суры к списку тратил длинную синхронную задачу
+    // ровно в кадре перехода, копируя сотни статей с span'ом на каждое
+    // слово. Это и ощущалось как рывок при нажатии «назад».
+    const needsPreview = next.name !== 'tabs';
+    const node = needsPreview
+      ? document.querySelector<HTMLElement>('[data-app-screen="current"]')
+      : null;
     let captured: IosBackPreview | null = null;
     if (node) {
       const clone = node.cloneNode(true) as HTMLElement;
@@ -139,14 +172,16 @@ export default function App() {
         : captured,
     );
 
+    setAnimateEnter(!opts.back);
     setScreen(next);
     history.pushState({ screen: next }, '');
   };
   const goBack = () => {
     rememberTabScroll();
+    setAnimateEnter(false);
     history.back();
   };
-  const goQuranHome = () => navigate({ name: 'tabs', tab: 'quran' });
+  const goQuranHome = () => navigate({ name: 'tabs', tab: 'quran' }, { back: true });
 
   useEffect(() => {
     // Привязываем текущую запись истории к стартовому экрану, чтобы
@@ -162,6 +197,7 @@ export default function App() {
       // Нужно для системного «назад» между вкладками: программные
       // переходы это делают в navigate()/goBack().
       rememberTabScroll();
+      setAnimateEnter(false);
       // На самой первой записи истории state пуст — она соответствует
       // стартовому экрану.
       setScreen((e.state?.screen ?? INITIAL_SCREEN) as Screen);
@@ -263,7 +299,7 @@ export default function App() {
   // ── Экраны «поверх» ──────────────────────────────────────────────────────
   if (screen.name === 'surah') {
     return (
-      <Shell key="surah" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goQuranHome} edgeBackPreview={backPreview}>
+      <Shell key="surah" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goQuranHome} edgeBackPreview={backPreview}>
         <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="SurahScreen" onReset={goQuranHome}>
           <SurahScreen
@@ -282,7 +318,7 @@ export default function App() {
 
   if (screen.name === 'mushaf') {
     return (
-      <Shell key="mushaf" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goQuranHome} edgeBackPreview={backPreview}>
+      <Shell key="mushaf" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goQuranHome} edgeBackPreview={backPreview}>
         <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="MushafScreen" onReset={goQuranHome}>
           <MushafScreen
@@ -305,7 +341,7 @@ export default function App() {
 
   if (screen.name === 'qibla') {
     return (
-      <Shell key="qibla" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+      <Shell key="qibla" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
         <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="QiblaScreen" onReset={goBack}>
           <QiblaScreen theme={theme} setTheme={setTheme} onBack={goBack} />
@@ -317,7 +353,7 @@ export default function App() {
 
   if (screen.name === 'document') {
     return (
-      <Shell key="document" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+      <Shell key="document" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
         <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="DocumentScreen" onReset={goBack}>
           <DocumentScreen doc={screen.doc} onBack={goBack} />
@@ -329,7 +365,7 @@ export default function App() {
 
   if (screen.name === 'bookmarks') {
     return (
-      <Shell key="bookmarks" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+      <Shell key="bookmarks" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
         <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="BookmarksScreen" onReset={goBack}>
           <BookmarksScreen
@@ -346,7 +382,7 @@ export default function App() {
 
   if (screen.name === 'azkar-category') {
     return (
-      <Shell key="azkar-category" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+      <Shell key="azkar-category" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
         <Suspense fallback={<ScreenFallback />}>
         <ErrorBoundary name="AzkarCategoryScreen" onReset={goBack}>
           <AzkarCategoryScreen
@@ -364,7 +400,7 @@ export default function App() {
   // ── Корневые вкладки ─────────────────────────────────────────────────────
   const tab = screen.tab;
   return (
-    <Shell key={`tabs-${tab}`} isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant}>
+    <Shell key={`tabs-${tab}`} isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter}>
       {/* Вкладки под одним Suspense, а TabBar снаружи: иначе панель
           вкладок пропадала бы на время подгрузки чанка экрана. */}
       <Suspense fallback={<ScreenFallback />}>
@@ -438,6 +474,7 @@ function Shell({
   cosmicVariant,
   onEdgeBack,
   edgeBackPreview,
+  animateEnter,
   children,
 }: {
   isCosmic: boolean;
@@ -446,6 +483,8 @@ function Shell({
   cosmicVariant: 'aurora' | 'aurora2';
   onEdgeBack?: () => void;
   edgeBackPreview?: IosBackPreview | null;
+  /** Проигрывать короткое появление. Только на переходах вперёд. */
+  animateEnter?: boolean;
   children: ReactNode;
 }) {
   const currentScreenRef = useRef<HTMLDivElement>(null);
@@ -455,7 +494,7 @@ function Shell({
       <div
         ref={currentScreenRef}
         data-app-screen="current"
-        className="app-screen-enter"
+        className={animateEnter ? 'app-screen-enter' : undefined}
         style={{
           position: 'relative',
           zIndex: 1,
