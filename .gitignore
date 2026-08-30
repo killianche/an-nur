@@ -45,3 +45,10 @@ quranru-web.tar.gz
 # и контактные листы рядом (app-store/screenshots, app-store/previews) —
 # наоборот, готовые материалы карточки, их коммитим.
 app-store/archive/
+
+# Ключи App Store Connect. Файл .p8 Apple даёт скачать один раз, он даёт
+# право менять карточку приложения и отправлять сборки на ревью — в git ему
+# не место ни при каких условиях. Отзывается в App Store Connect →
+# Users and Access → Integrations одной кнопкой.
+secrets/
+*.p8

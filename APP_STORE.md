@@ -202,6 +202,11 @@ an-Nur — приложение для чтения Корана с русски
 
 ## Архив и загрузка
 
+> Пошаговый сценарий выпуска целиком — в `RELEASE.md`. Там же сказано, что
+> можно сделать удалённо, а что физически требует macOS, и как выдать ключ
+> App Store Connect API вместо пароля от аккаунта.
+
+
 1. В Xcode открыть `ios/App/App.xcodeproj`.
 2. В Signing & Capabilities выбрать Apple Developer Team. Xcode должен
    зарегистрировать `ru.annur.quran` и создать provisioning profile.

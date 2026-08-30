@@ -1,15 +1,21 @@
 /**
- * Статический preflight первого App Store-релиза.
+ * Статический preflight App Store-релиза.
  *
  * Не заменяет подпись и проверку App Store Connect: он ловит локальные
  * расхождения, из-за которых архив заведомо нельзя отправлять — неверный
  * Bundle ID, версия, пропущенный privacy manifest, прозрачная иконка,
  * старые ссылки PWA и несинхронная production-сборка.
+ *
+ * Работает на любой системе, не только на macOS. Раньше звал `plutil` и
+ * `sips`, и из-за этого гард запускался ровно в одном месте на свете — на
+ * Mac владельца, за минуту до архива. Всё, что он ловит, дешевле поймать
+ * заранее: на сервере, в рабочей среде, в CI. Разбор plist и заголовков
+ * изображений вынесен в scripts/lib/apple-assets.mjs.
  */
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { plistValue, imageInfo } from './lib/apple-assets.mjs';
 
 const root = process.cwd();
 const checks = [];
@@ -26,12 +32,23 @@ function sha(path) {
   return createHash('sha256').update(readFileSync(join(root, path))).digest('hex');
 }
 
-function command(...args) {
-  return execFileSync(args[0], args.slice(1), { cwd: root, encoding: 'utf8' }).trim();
+function bytes(path) {
+  return readFileSync(join(root, path));
 }
 
-const plist = command('plutil', '-convert', 'json', '-o', '-', 'ios/App/App/Info.plist');
-const info = JSON.parse(plist);
+/** Размеры и альфа изображения. null — файла нет либо формат не распознан. */
+function picture(path) {
+  if (!existsSync(join(root, path))) return null;
+  return imageInfo(bytes(path));
+}
+
+const infoPlist = text('ios/App/App/Info.plist');
+const info = {
+  CFBundleDevelopmentRegion: plistValue(infoPlist, 'CFBundleDevelopmentRegion'),
+  NSLocationWhenInUseUsageDescription: plistValue(infoPlist, 'NSLocationWhenInUseUsageDescription'),
+  UIBackgroundModes: plistValue(infoPlist, 'UIBackgroundModes'),
+  ITSAppUsesNonExemptEncryption: plistValue(infoPlist, 'ITSAppUsesNonExemptEncryption'),
+};
 const pkg = JSON.parse(text('package.json'));
 const project = text('ios/App/App.xcodeproj/project.pbxproj');
 const privacy = text('ios/App/App/PrivacyInfo.xcprivacy');
@@ -66,12 +83,10 @@ for (const size of [16, 32, 48, 72, 96, 128, 180, 192, 256, 512]) {
 add('PWA name an-Nur', manifest.name === 'an-Nur' && manifest.short_name === 'an-Nur');
 add('PWA icon paths', manifest.icons.every(icon => icon.src.endsWith('.png')));
 
-const iconInfo = command(
-  'sips', '-g', 'pixelWidth', '-g', 'pixelHeight', '-g', 'hasAlpha',
-  'ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png',
-);
-add('App Store icon 1024×1024', /pixelWidth: 1024/.test(iconInfo) && /pixelHeight: 1024/.test(iconInfo));
-add('App Store icon без alpha', /hasAlpha: no/.test(iconInfo));
+const appIcon = picture('ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png');
+add('App Store icon 1024×1024', appIcon?.width === 1024 && appIcon?.height === 1024);
+// Прозрачность в иконке App Store — отказ на загрузке, а не на ревью.
+add('App Store icon без alpha', appIcon?.hasAlpha === false);
 
 for (const nativeIndex of [
   'ios/App/App/public/index.html',
@@ -88,16 +103,10 @@ for (const [folder, width, height] of [
 ]) {
   for (const name of ['01-quran', '02-surah', '03-mushaf', '04-azkar', '05-prayer']) {
     const path = `app-store/screenshots/${folder}/${name}.jpg`;
-    const present = existsSync(join(root, path));
-    const imageInfo = present
-      ? command('sips', '-g', 'pixelWidth', '-g', 'pixelHeight', '-g', 'hasAlpha', path)
-      : '';
+    const shot = picture(path);
     add(
       `Скриншот ${folder}/${name}`,
-      present
-        && imageInfo.includes(`pixelWidth: ${width}`)
-        && imageInfo.includes(`pixelHeight: ${height}`)
-        && imageInfo.includes('hasAlpha: no'),
+      shot?.width === width && shot?.height === height && shot.hasAlpha === false,
     );
   }
 }
