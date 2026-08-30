@@ -1,0 +1,151 @@
+# Сборка и выгрузка iOS в App Store Connect на облачной macOS-машине.
+#
+# Зачем. Xcode существует только под macOS, поэтому архив нельзя собрать ни на
+# сервере разработки (Ubuntu), ни где-либо ещё. Раньше это означало «владелец
+# садится за Mac». Здесь ту же работу делает арендованный macOS-раннер GitHub:
+# к ноутбуку никто не подходит, а всё, что до архива, уже проверено обычным
+# Node — те же команды, что гоняются локально.
+#
+# Запуск только вручную (workflow_dispatch). Выпуск — намеренное действие, он
+# не должен случаться от каждого push.
+#
+# ── Что нужно один раз настроить ──────────────────────────────────────────
+#
+# Settings → Secrets and variables → Actions → New repository secret:
+#
+#   ASC_ISSUER_ID   Issuer ID из App Store Connect → Users and Access →
+#                   Integrations → App Store Connect API (общий на команду)
+#   ASC_KEY_ID      Key ID выпущенного ключа (10 символов)
+#   ASC_KEY_P8      СОДЕРЖИМОЕ файла AuthKey_XXXXXXXXXX.p8 целиком,
+#                   вместе со строками -----BEGIN PRIVATE KEY-----
+#
+# Роль ключа — App Manager. Порядок выпуска расписан в RELEASE.md.
+#
+# ── Чего этот сценарий НЕ делает ──────────────────────────────────────────
+#
+# Не поднимает номер сборки. `manageAppVersionAndBuildNumber` в
+# ExportOptions-AppStore.plist выставлен в false намеренно: версия живёт в
+# package.json (поля version и iosBuild) и попадает в проект осознанной
+# правкой, а не автоматикой на раннере. Apple отвергает повторную загрузку
+# уже существующего номера сборки — поэтому перед каждым выпуском iosBuild
+# и CURRENT_PROJECT_VERSION поднимаются вручную.
+
+name: iOS release
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: 'Выгружать в App Store Connect (false — только собрать и проверить)'
+        type: boolean
+        default: false
+
+concurrency:
+  # Две одновременные сборки релиза не нужны никогда: они борются за один и
+  # тот же номер сборки в App Store Connect.
+  group: ios-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Установить зависимости
+        run: npm ci
+
+      # Те же проверки, что и на сервере разработки. Гонятся до тяжёлой
+      # сборки Xcode: падать дешевле рано.
+      - name: Тесты
+        run: npm test
+
+      - name: Сакральный гард
+        run: npm run check:sacred
+
+      - name: Сборка веба
+        run: npm run build
+
+      - name: Перенос веб-ассетов в нативный проект
+        run: npx cap sync ios
+
+      - name: Предполётная проверка релиза
+        run: npm run check:ios-release
+
+      # Ключ кладём во временный файл вне рабочего дерева: в репозитории ему
+      # не место, и в артефакты сборки он попасть не должен.
+      - name: Подготовить ключ App Store Connect
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ASC_KEY_P8}" ]; then
+            echo "Секрет ASC_KEY_P8 не задан — см. шапку этого файла и RELEASE.md"
+            exit 1
+          fi
+          mkdir -p "${RUNNER_TEMP}/asc"
+          printf '%s' "${ASC_KEY_P8}" > "${RUNNER_TEMP}/asc/AuthKey.p8"
+          chmod 600 "${RUNNER_TEMP}/asc/AuthKey.p8"
+
+      # -allowProvisioningUpdates разрешает Xcode самому получить сертификат и
+      # profile через переданный ключ API. Это снимает необходимость выносить
+      # сертификат с чужого Mac — чего удалённо всё равно не сделать.
+      #
+      # CHECK при первом запуске: имена флагов -authenticationKeyPath /
+      # -authenticationKeyID / -authenticationKeyIssuerID сверить с
+      # `xcodebuild -help` на раннере. Они из Xcode 13+, но проверить надо
+      # фактически, а не по памяти.
+      - name: Архив
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "${RUNNER_TEMP}/an-Nur.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "${RUNNER_TEMP}/asc/AuthKey.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+
+      # В ExportOptions-AppStore.plist стоит destination=upload, поэтому этот
+      # шаг и собирает .ipa, и отправляет его в App Store Connect. Отдельный
+      # вызов altool не нужен — тем лучше, он у Apple объявлен устаревшим.
+      - name: Экспорт и выгрузка
+        if: ${{ inputs.upload }}
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath "${RUNNER_TEMP}/an-Nur.xcarchive" \
+            -exportOptionsPlist ios/ExportOptions-AppStore.plist \
+            -exportPath "${RUNNER_TEMP}/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "${RUNNER_TEMP}/asc/AuthKey.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+
+      - name: Убрать ключ
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/asc"
+
+      # Логи Xcode при неудаче — единственный способ понять причину, не имея
+      # доступа к машине. Сам архив весит за 300 МБ, поэтому сохраняем только
+      # его описание и результаты экспорта.
+      - name: Сохранить сведения о сборке
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-logs
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/an-Nur.xcarchive/Info.plist
+            ${{ runner.temp }}/export/**
