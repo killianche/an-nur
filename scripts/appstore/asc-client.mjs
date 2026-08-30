@@ -123,3 +123,39 @@ export async function ascGet(path, credentials, params = {}) {
   }
   return JSON.parse(body);
 }
+
+/**
+ * Запрос с телом: POST, PATCH, DELETE.
+ *
+ * Отдельно от ascGet намеренно. Чтение состояния безопасно и вызывается
+ * часто; запись меняет карточку приложения в App Store и в части случаев
+ * необратима (отправку на ревью нельзя «отменить незаметно»). Разные имена
+ * не дают перепутать одно с другим при беглом чтении кода.
+ *
+ * Некоторые эндпоинты отвечают 204 без тела — возвращаем null, а не падаем
+ * на разборе пустой строки.
+ */
+export async function ascSend(method, path, body, credentials) {
+  const token = makeToken(credentials);
+  const response = await fetch(`${API}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await response.text();
+
+  if (!response.ok) {
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text);
+      detail = (parsed.errors ?? [])
+        .map(e => [e.title, e.detail, e.source?.pointer].filter(Boolean).join(' — '))
+        .join('\n') || text;
+    } catch { /* оставляем как есть */ }
+    throw new Error(`App Store Connect ${response.status} на ${method} ${path}\n${detail}`);
+  }
+  return text ? JSON.parse(text) : null;
+}
