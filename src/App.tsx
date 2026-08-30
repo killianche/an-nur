@@ -160,6 +160,11 @@ export default function App() {
     if (node) {
       const clone = node.cloneNode(true) as HTMLElement;
       clone.removeAttribute('data-app-screen');
+      // Класс анимации появления с копии тоже снимаем. Вставка элемента с
+      // непустым animation-name запускает анимацию заново — и preview под
+      // пальцем гас до 72% и проявлялся. Тот самый дефект, от которого
+      // избавились на самом экране, переезжал в его копию.
+      clone.classList.remove('app-screen-enter');
       captured = { node: clone, scrollY: window.scrollY };
     }
     if (screen.name === 'tabs' && screen.tab === 'quran' && captured) {

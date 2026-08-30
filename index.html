@@ -47,6 +47,44 @@
 
   </head>
   <body>
+    <!--
+      Тема ставится ДО первого кадра, а не в эффекте React.
+      Иначе на тёмных темах холодный старт даёт светлую вспышку: первый
+      кадр рисуется палитрой :root по умолчанию (она светлая), а
+      `body { transition: background-color .2s }` растягивает подмену ещё
+      на 200 мс — и вспышка доезжает уже после снятия нативной заставки.
+      Логика повторяет readStoredTheme() из src/hooks/useTheme.ts, включая
+      миграцию значений, оставшихся от QuranIng. Держать её здесь
+      приходится потому, что модуль к этому моменту ещё не выполнен.
+    -->
+    <script>
+      (function () {
+        try {
+          var VALID = ['light', 'mushaf', 'dark', 'aurora', 'aurora2'];
+          var FIRST_RUN = 'aurora';
+          var v = localStorage.getItem('theme');
+          var t = FIRST_RUN;
+          if (v) {
+            if (VALID.indexOf(v) !== -1) {
+              t = v;
+            } else if (v.indexOf('cosmic') === 0) {
+              t = 'aurora2';
+            } else if (v === 'light-cream' || v === 'light-ivory') {
+              t = 'mushaf';
+            } else if (v.indexOf('light') === 0) {
+              t = 'light';
+            } else if (v.indexOf('dark') === 0) {
+              t = 'dark';
+            } else if (v === 'parchment' || v === 'sepia') {
+              t = 'mushaf';
+            }
+          }
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'aurora');
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

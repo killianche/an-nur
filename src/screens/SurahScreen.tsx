@@ -198,13 +198,16 @@ export function SurahScreen({
   const onReaderPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!e.isPrimary || e.button !== 0) return;
     const target = e.target instanceof Element ? e.target : null;
-    // :disabled и aria-disabled — не придирка. WebKit доставляет
-    // указательные события ЗАБЛОКИРОВАННОГО контрола предку, а не самому
-    // контролу. Кнопка «слушать» блокируется на время загрузки аята, и
-    // нетерпеливое второе нажатие приходило на <article>, где closest не
-    // находил кнопку — регистрировался тап, и панель прыгала.
+    // Кнопки, ссылки и поля ввода тап не переключают.
+    //
+    // `[aria-disabled]` здесь работает, а `:disabled` работать не мог бы:
+    // если WebKit отдаёт событие предку заблокированной кнопки, то closest
+    // идёт от предка ВВЕРХ, а кнопка лежит ниже — совпадения не будет
+    // никогда; если же событие приходит на саму кнопку, хватает и `button`.
+    // Поэтому кнопка воспроизведения помечается aria-disabled, а не
+    // disabled, и остаётся полноценной целью события.
     if (target?.closest(
-      'button, a, input, textarea, select, [role="button"], :disabled, [aria-disabled="true"]',
+      'button, a, input, textarea, select, [role="button"], [aria-disabled="true"]',
     )) return;
     readerTapRef.current = {
       pointerId: e.pointerId,
@@ -1366,10 +1369,20 @@ function PlayBtn({
   return (
     <button
       aria-label={loading ? 'Загрузка аята' : playing ? 'Пауза' : 'Слушать аят'}
-      onClick={e => { e.stopPropagation(); onPlay(); }}
+      // aria-disabled, а не disabled. У заблокированного контрола WebKit
+      // не доставляет указательные события самому контролу, и распознаватель
+      // тапа по области чтения видел нажатие на <article> — панель прыгала
+      // от нетерпеливого второго нажатия во время загрузки аята. С
+      // aria-disabled кнопка остаётся целью события, её ловит фильтр, а
+      // повторное нажатие гасится проверкой в обработчике.
+      onClick={e => {
+        e.stopPropagation();
+        if (loading) return;
+        onPlay();
+      }}
       className="icon-btn"
       data-active={isActive}
-      disabled={loading}
+      aria-disabled={loading || undefined}
       style={{
         width: '40px', height: '40px',
         color: isActive ? 'var(--text-primary)' : 'var(--text-tertiary)',

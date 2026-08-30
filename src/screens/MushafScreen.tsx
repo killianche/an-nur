@@ -306,11 +306,22 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
 
     const finish = () => {
       turnTimer.current = null;
+      // Порядок здесь важен, и он обратный тому, что кажется естественным.
+      //
+      // Сначала гасим длительность и возвращаем трек в ноль, и только потом
+      // меняем страницу. Раньше было наоборот, и это давало вторую
+      // «доездку» листа после свайпа: внутри flushSync монтируется новый
+      // слой QcfMushafPage, а его layout-эффекты читают clientWidth и
+      // getBoundingClientRect, чтобы подобрать кегль. Это принудительный
+      // пересчёт стилей — в момент, когда длительность перехода ещё 320ms,
+      // сдвиг ещё равен ширине экрана, а смещение слоёв уже новое. Переход
+      // стартовал, а последующая смена transition-duration уже идущий
+      // переход не отменяет.
+      track.style.setProperty('--mushaf-turn-duration', '0ms');
+      track.style.setProperty('--mushaf-drag-x', '0px');
       // flushSync не оставляет промежуточного кадра между новым номером
       // страницы и возвратом трека в нулевую координату.
       if (nextPage != null) flushSync(() => setPage(nextPage));
-      track.style.setProperty('--mushaf-turn-duration', '0ms');
-      track.style.setProperty('--mushaf-drag-x', '0px');
       pendingDrag.current = 0;
       turning.current = false;
     };
@@ -339,7 +350,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     // заблокированной кнопки предку, поэтому :disabled проверяется явно.
     const interactive = t.clientX <= 28
       || !!target?.closest(
-        'button, a, input, textarea, select, [role="button"], :disabled, [aria-disabled="true"]',
+        'button, a, input, textarea, select, [role="button"], [aria-disabled="true"]',
       );
     const verseKey = target?.closest<HTMLElement>('[data-verse-key]')
       ?.dataset.verseKey ?? null;
