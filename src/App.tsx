@@ -381,10 +381,20 @@ export default function App() {
   // Экраны «поверх» всегда открываются с начала.  Исключение — сура:
   // она сама восстанавливает позицию чтения, и сброс здесь гонялся бы
   // с её эффектом.
+  //
+  // Ключ зависимости — не только имя экрана. Раньше стояло `screen.name`, и
+  // переход «документ → другой документ» сбросом не считался: имя то же,
+  // эффект не срабатывал, и второй документ открывался на прокрутке
+  // первого. То же касается двух разных лент азкаров.
+  const overlayKey = screen.name === 'document' ? `document:${screen.doc}`
+    : screen.name === 'azkar-category' ? `azkar:${screen.category}`
+    : screen.name === 'mushaf' ? 'mushaf'
+    : screen.name;
   useLayoutEffect(() => {
     if (screen.name === 'tabs' || screen.name === 'surah') return;
     window.scrollTo(0, 0);
-  }, [screen.name]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlayKey]);
 
   // ── Экраны «поверх» ──────────────────────────────────────────────────────
   if (screen.name === 'surah') {

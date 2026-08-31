@@ -476,7 +476,30 @@ export function SurahScreen({
     // если аята с таким номером в суре нет вовсе.
     const deadline = Date.now() + 5000;
     let timer = 0;
+    // Человек важнее восстановления.
+    //
+    // Ждать якорь можно до пяти секунд, и всё это время лента живая: аяты
+    // домонтируются, читать уже можно. Если за это время человек тронул
+    // экран сам — восстановление обязано молча уступить. Прежде оно
+    // уступало только явному прыжку к аяту, а прикосновение игнорировало:
+    // человек начинал листать, а через секунду его уносило к сохранённой
+    // позиции. Хуже того, по истечении дедлайна стоял `scrollTo(0, 0)` —
+    // то есть читающего выбрасывало в начало суры.
+    //
+    // Это третья грабля проекта из CLAUDE.md: два механизма прокрутки
+    // дерутся, и побеждает тот, кто позже. Явное действие человека должно
+    // побеждать всегда.
+    let cancelled = false;
+    const cancel = () => { cancelled = true; };
+    // pointerdown, а не scroll: инерционную прокрутку от нашего же
+    // scrollIntoView мы бы приняли за действие человека и отменили сами
+    // себя. Касание однозначно принадлежит человеку.
+    window.addEventListener('pointerdown', cancel, { passive: true, capture: true });
+    window.addEventListener('wheel', cancel, { passive: true });
+    window.addEventListener('keydown', cancel);
+
     const tryScroll = () => {
+      if (cancelled) return;
       // Прыжок мог появиться, пока мы ждали якорь: уступаем ему.
       if (pendingJumpRef.current != null) return;
       const el = document.querySelector(`[data-ayah-anchor="${target}"]`) as HTMLElement | null;
@@ -485,13 +508,20 @@ export function SurahScreen({
         return;
       }
       if (Date.now() > deadline) {
-        window.scrollTo(0, 0);
+        // Молча сдаёмся. Прежний `scrollTo(0, 0)` был хуже, чем ничего:
+        // если аята с таким номером в суре нет, человек всё равно уже
+        // где-то читает, и прыжок в начало — потеря его места.
         return;
       }
       timer = window.setTimeout(tryScroll, 50);
     };
     tryScroll();
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pointerdown', cancel, { capture: true } as EventListenerOptions);
+      window.removeEventListener('wheel', cancel);
+      window.removeEventListener('keydown', cancel);
+    };
   }, [feedReady, surahNumber]);
 
   // ── Track the ayah currently at the top of the viewport on user scroll ───
@@ -578,6 +608,13 @@ export function SurahScreen({
   // settle (~700 ms covers most auto-scrolls; the listener is back
   // in time for the next user interaction).
   const isAutoScrollingRef = useRef(false);
+  /** Таймер снятия флага автопрокрутки. Один на экран, перезаводится. */
+  const autoScrollTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (autoScrollTimerRef.current != null) {
+      window.clearTimeout(autoScrollTimerRef.current);
+    }
+  }, []);
   useEffect(() => {
     if (!autoScrollRef.current) return;
     const ayah  = audio.currentAyah;
@@ -614,7 +651,17 @@ export function SurahScreen({
     // scrolls finish in one frame but we still wait so any settling
     // events don't trip the listener either.
     const settle = behavior === 'smooth' ? 700 : 120;
-    window.setTimeout(() => { isAutoScrollingRef.current = false; }, settle);
+    // Прежний таймер не отменялся ничем. При быстрой смене аятов короткая
+    // прокрутка (120 мс) снимала флаг, пока следующая, плавная (700 мс),
+    // была ещё в пути — и обработчик прокрутки успевал принять её за
+    // действие человека. Держим один таймер и перезаводим его.
+    if (autoScrollTimerRef.current != null) {
+      window.clearTimeout(autoScrollTimerRef.current);
+    }
+    autoScrollTimerRef.current = window.setTimeout(() => {
+      autoScrollTimerRef.current = null;
+      isAutoScrollingRef.current = false;
+    }, settle);
     updateRecentAyah(surah, ayah);
   }, [audio.currentAyah, audio.currentSurah, surahNumber]);
 
@@ -999,18 +1046,37 @@ function TajweedLoadNotice({
   if (!loading && !error) return null;
 
   return (
+    // Плашка лежит ПОВЕРХ ленты, а не в её потоке.
+    //
+    // В потоке она появлялась и исчезала прямо во время чтения: цветной
+    // таджвид грузится постранично, человек прокручивает на новую страницу
+    // мусхафа — плашка монтируется и сдвигает весь текст ниже, потом данные
+    // приезжают, плашка пропадает, и текст возвращается. Читать в это время
+    // невозможно.
+    //
+    // Фиксированное положение под шапкой снимает вопрос: геометрия ленты не
+    // меняется вовсе. `pointer-events` включены только у самой плашки —
+    // кнопка повтора должна нажиматься, а остальная площадь остаётся
+    // прозрачной для тапа по аяту.
     <div
       role="status"
       aria-live="polite"
       style={{
+        position: 'fixed',
+        top: screenHeaderOffset(8),
+        left: 'var(--space-margin)',
+        right: 'var(--space-margin)',
+        zIndex: 40,
+        maxWidth: 'min(100%, 760px)',
+        marginInline: 'auto',
         display: 'flex',
         alignItems: 'center',
         gap: '10px',
-        margin: '8px 0 16px',
         padding: '11px 13px',
-        borderRadius: '13px',
+        borderRadius: 'var(--radius-control)',
         border: '1px solid var(--hairline-strong)',
         background: 'color-mix(in srgb, var(--gold) 8%, var(--surface))',
+        boxShadow: '0 6px 18px rgba(0, 0, 0, 0.10)',
         color: 'var(--text-secondary)',
         fontSize: 'var(--font-footnote)',
         lineHeight: 1.4,

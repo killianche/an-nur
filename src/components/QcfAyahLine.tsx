@@ -37,7 +37,7 @@
  *   содержимое и слой арабского текста вообще не меняются.
  */
 
-import { Fragment, useRef } from 'react';
+import { Fragment, useLayoutEffect, useRef } from 'react';
 import { useQcfFont } from '../hooks/useQcfFont';
 import { useNearViewport } from '../hooks/useNearViewport';
 import { ArabicSkeleton } from './ArabicSkeleton';
@@ -96,6 +96,36 @@ function chunkWords(words: QcfWord[]): QcfWord[][] {
   return chunks;
 }
 
+/**
+ * Сколько слов мусхафа помещается в строку — измеренное, а не угаданное.
+ *
+ * Скелет обязан занимать столько же места, сколько займёт текст: иначе при
+ * подмене страница прыгает, и прыгает она у аята ВЫШЕ вьюпорта, то есть
+ * прямо под пальцем читающего. WebKit не поддерживает scroll anchoring,
+ * компенсировать нечем.
+ *
+ * Раньше здесь стояла константа «около 5.5 слов на строку». Она верна для
+ * одного сочетания кегля и ширины экрана и промахивается на всех прочих:
+ * на планшете и при мелком кегле слов помещается заметно больше, скелет
+ * выходил выше текста, и при подмене лента подтягивалась вверх.
+ *
+ * Считать ширину слова заранее нельзя — глифы PUA, метрик до загрузки
+ * шрифта нет. Поэтому калибруемся по факту: первый же аят, у которого
+ * шрифт приехал, даёт отношение «слов на строку» для своей пары
+ * (кегль, ширина). Остальные скелеты этой же пары используют измеренное.
+ *
+ * Ширина округляется до 20 px: точное значение не нужно, а грубые корзины
+ * не дают пересчитывать калибровку от каждого пикселя при повороте.
+ */
+const wordsPerLine = new Map<string, number>();
+const LINE_HEIGHT = 1.85;
+/** Пока не измерили — прежняя оценка. Она хотя бы не хуже, чем была. */
+const FALLBACK_WORDS_PER_LINE = 5.5;
+
+function calibrationKey(fontSize: number, width: number): string {
+  return `${Math.round(fontSize)}|${Math.round(width / 20)}`;
+}
+
 export function QcfAyahLine({
   words,
   fonts,
@@ -120,6 +150,31 @@ export function QcfAyahLine({
   const near = useNearViewport(containerRef, !eager);
   const fontsReady = useQcfFont(fonts, eager || near);
 
+  // Калибровка: измеряем ровно один раз на пару (кегль, ширина) и только
+  // по аяту, у которого текст уже нарисован. Дальше замер не повторяется —
+  // на горячем пути прокрутки лишних чтений геометрии быть не должно.
+  useLayoutEffect(() => {
+    if (!fontsReady) return;
+    const el = containerRef.current;
+    if (!el || words.length === 0) return;
+    const width = el.clientWidth;
+    if (width <= 0) return;
+    const key = calibrationKey(fontSize, width);
+    if (wordsPerLine.has(key)) return;
+    // Высота без вертикальных полей: они не участвуют в числе строк.
+    const inner = el.clientHeight - 8;
+    const lines = Math.round(inner / (fontSize * LINE_HEIGHT));
+    if (lines >= 1) wordsPerLine.set(key, words.length / lines);
+  }, [fontsReady, fontSize, words.length]);
+
+  const estimatedLines = () => {
+    const el = containerRef.current;
+    const width = el?.clientWidth ?? 0;
+    const perLine = (width > 0 ? wordsPerLine.get(calibrationKey(fontSize, width)) : undefined)
+      ?? FALLBACK_WORDS_PER_LINE;
+    return Math.max(1, Math.ceil(words.length / perLine));
+  };
+
   return (
     <div
       ref={containerRef}
@@ -138,11 +193,11 @@ export function QcfAyahLine({
     >
       {/* Шрифт ещё едет — держим место скелетом.  Кубики вместо слов аята
           недопустимы, а скелет той же высоты не даёт странице прыгнуть,
-          когда текст появится.  Оценка строк: около пяти с половиной слов
-          мусхафа на строку при обычном кегле. */}
+          когда текст появится.  Число строк — из измеренной калибровки
+          (см. wordsPerLine выше), а не из константы. */}
       {!fontsReady ? (
         <ArabicSkeleton
-          lines={Math.max(1, Math.ceil(words.length / 5.5))}
+          lines={estimatedLines()}
           fontSize={fontSize}
           align="right"
         />

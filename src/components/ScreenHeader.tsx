@@ -203,12 +203,23 @@ export function ScreenHeader({
             height: '2px', background: 'transparent',
           }}
         >
+          {/* scaleX, а не width: ширина — свойство лейаута, и её анимация
+              заставляет браузер пересчитывать раскладку на каждом кадре.
+              Полоса живёт в шапке над лентой тяжёлого арабского текста и
+              обновляется всё время воспроизведения — это ровно то место,
+              где такой пересчёт стоит дорого. transform считается
+              композитором и лейаут не трогает.
+
+              transform-origin слева: полоса растёт от начала строки. */}
           <div style={{
             height: '100%',
-            width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
+            width: '100%',
+            transformOrigin: 'left center',
+            transform: `scaleX(${Math.min(1, Math.max(0, progress)).toFixed(4)})`,
             background: 'var(--text-primary)',
             opacity: 0.7,
-            transition: 'width var(--dur-base) var(--ease-standard)',
+            transition: 'transform var(--dur-base) var(--ease-standard)',
+            willChange: 'transform',
           }} />
         </div>
       )}
