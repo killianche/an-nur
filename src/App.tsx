@@ -24,6 +24,7 @@ import { warmQuranSources } from './content/quran-sources-lazy';
 import { readActiveId, readCities } from './lib/prayerCities';
 import { startPrayerAlarmScheduler } from './lib/prayerNotifications';
 import type { AzkarCategoryId } from './lib/azkar';
+import { reconcile, stepsToQuranHome } from './lib/screenStack';
 
 /*
  * Экраны, кроме списка сур, грузятся отдельными чанками.
@@ -89,7 +90,42 @@ const INITIAL_SCREEN: Screen = { name: 'tabs', tab: 'quran' };
 
 export default function App() {
   const { theme, setTheme } = useTheme();
-  const [screen, setScreen] = useState<Screen>(INITIAL_SCREEN);
+  /**
+   * Стек экранов — источник истины. History API от него производен.
+   *
+   * Раньше в состоянии жил ровно один `screen`, а история была
+   * единственной памятью о том, откуда пришли. Из этого следовали три
+   * дефекта:
+   *
+   *   • стрелка «назад» из режимов чтения делала `pushState`, а не возврат
+   *     (она обязана вести к выбору суры, а не по истории), поэтому цикл
+   *     «вошёл в суру → вышел» добавлял ДВЕ записи и стек рос без предела;
+   *   • метка «мы в корне» оставалась только на записи 0, и аппаратная
+   *     «назад» на Android с главного экрана проваливалась обратно в суру
+   *     вместо сворачивания приложения;
+   *   • жест возврата и кнопка вели себя по-разному на внешне одинаковых
+   *     экранах: у части `goBack`, у части `goQuranHome`.
+   *
+   * Со стеком всё три уходят структурно. В историю кладётся только глубина;
+   * `popstate` приводит стек к ней идемпотентно, поэтому флаги «не
+   * реагировать на собственный переход» не нужны — главный источник ошибок
+   * в таких схемах снимается дизайном.
+   */
+  const [stack, setStack] = useState<Screen[]>([INITIAL_SCREEN]);
+  const screen = stack[stack.length - 1];
+  /**
+   * Синхронное зеркало стека.
+   *
+   * Нужно потому, что `history.pushState` — побочный эффект, а обновляющая
+   * функция `setStack` обязана быть чистой: в строгом режиме React вызывает
+   * её дважды, и запись истории добавилась бы два раза. Ref даёт актуальную
+   * длину прямо в обработчике события, до того как React перерисует.
+   */
+  const stackRef = useRef<Screen[]>([INITIAL_SCREEN]);
+  const applyStack = (next: Screen[]) => {
+    stackRef.current = next;
+    setStack(next);
+  };
   const [backPreview, setBackPreview] = useState<IosBackPreview | null>(null);
   /**
    * Проигрывать ли короткое появление у следующего экрана.
@@ -128,12 +164,11 @@ export default function App() {
   /**
    * Переход между экранами.
    *
-   * `back: true` — переход, который человек воспринимает как возврат, даже
-   * если технически это `pushState` (стрелка из режимов чтения всегда ведёт
-   * к выбору суры, а не по истории). Возврат не проигрывает анимацию
-   * появления: экран, к которому вернулись, не должен «приезжать» заново.
+   * Всегда вперёд: кладёт экран на вершину стека и добавляет запись в
+   * историю. Возвраты идут через `goBack` и `goQuranHome` — они не
+   * добавляют записей, а снимают их.
    */
-  const navigate = (next: Screen, opts: { back?: boolean } = {}) => {
+  const navigate = (next: Screen) => {
     // Позицию уходящей вкладки снимаем ЗДЕСЬ, а не в эффекте: к моменту
     // эффекта новый экран уже мог сбросить скролл (SurahScreen делает
     // это, когда восстанавливать нечего), и мы записали бы ноль.
@@ -177,16 +212,50 @@ export default function App() {
         : captured,
     );
 
-    setAnimateEnter(!opts.back);
-    setScreen(next);
-    history.pushState({ screen: next }, '');
+    setAnimateEnter(true);
+    const current = stackRef.current;
+    history.pushState({ depth: current.length }, '');
+    applyStack([...current, next]);
   };
+
+  /** Шаг назад: снимаем одну запись истории, стек выровняет popstate. */
   const goBack = () => {
     rememberTabScroll();
     setAnimateEnter(false);
     history.back();
   };
-  const goQuranHome = () => navigate({ name: 'tabs', tab: 'quran' }, { back: true });
+
+  /**
+   * Возврат к выбору суры из режимов чтения.
+   *
+   * Не переход вперёд: ищем в стеке ближайшую снизу запись «вкладка Коран»
+   * и снимаем ровно столько записей истории, сколько до неё. Раньше здесь
+   * был `pushState`, и выход из суры добавлял запись вместо того, чтобы
+   * её снять.
+   */
+  const goQuranHome = () => {
+    rememberTabScroll();
+    setAnimateEnter(false);
+    // Открыт попап — его запись лежит сверху. Один шаг назад закроет его,
+    // а не уведёт с экрана; арифметику по глубине в этот момент применять
+    // нельзя, она считает только экраны.
+    if (history.state?.sheet) {
+      history.back();
+      return;
+    }
+    // Обратный цикл, а не findLastIndex: цель сборки — ES2020, где его нет.
+    const steps = stepsToQuranHome(stackRef.current);
+    if (steps > 0) {
+      history.go(-steps);
+      return;
+    }
+    // steps === 0 — либо мы уже на выборе суры, либо его нет в стеке
+    // (состояние восстановилось из чужой истории). Во втором случае идём
+    // вперёд, в первом делать нечего.
+    if (screen.name !== 'tabs' || screen.tab !== 'quran') {
+      navigate({ name: 'tabs', tab: 'quran' });
+    }
+  };
 
   useEffect(() => {
     // Привязываем текущую запись истории к стартовому экрану, чтобы
@@ -195,17 +264,33 @@ export default function App() {
     // `root: true` помечает самую первую запись истории.  По ней
     // обработчик аппаратной «назад» на Android отличает «мы в корне,
     // выходить» от «есть куда возвращаться» — см. lib/androidBack.ts.
-    history.replaceState({ screen: INITIAL_SCREEN, root: true }, '');
+    // Глубина 0 помечает корень. По ней обработчик аппаратной «назад» на
+    // Android отличает «мы в корне, сворачиваться» от «есть куда
+    // возвращаться» — см. lib/androidBack.ts. Раньше признаком был флаг
+    // `root`, и он оставался только на записи 0, хотя корневым экраном
+    // приложение считало любую вкладку.
+    history.replaceState({ depth: 0 }, '');
     const onPop = (e: PopStateEvent) => {
       // popstate прилетает ДО перерисовки, поэтому window.scrollY здесь
       // ещё принадлежит уходящему экрану — момент снять его позицию.
-      // Нужно для системного «назад» между вкладками: программные
-      // переходы это делают в navigate()/goBack().
       rememberTabScroll();
       setAnimateEnter(false);
-      // На самой первой записи истории state пуст — она соответствует
-      // стартовому экрану.
-      setScreen((e.state?.screen ?? INITIAL_SCREEN) as Screen);
+      // Запись попапа не несёт глубины и экраном не является: её обработает
+      // сам попап, он закроется и снимет запись.
+      if (e.state?.sheet) return;
+      const depth = typeof e.state?.depth === 'number' ? e.state.depth : 0;
+      const current = stackRef.current;
+      const next = reconcile(current, depth, INITIAL_SCREEN);
+      // Приведение идемпотентно: тот же массив означает «менять нечего».
+      // На этом держится отсутствие флагов «это мой собственный переход» —
+      // главного источника ошибок в подобных схемах.
+      if (next === current) return;
+      // Глубина оказалась больше стека — человек нажал «вперёд» в браузере
+      // либо страница перезагрузилась поверх чужой истории. reconcile
+      // свернул нас в корень; чиним и историю, чтобы дальше стек и глубина
+      // снова совпадали.
+      if (depth + 1 > current.length) history.replaceState({ depth: 0 }, '');
+      applyStack(next);
     };
     window.addEventListener('popstate', onPop);
     const unwireBack = wireAndroidBackButton();

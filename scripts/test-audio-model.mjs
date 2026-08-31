@@ -617,8 +617,34 @@ const hhmm = d => d.toLocaleTimeString('ru-RU', {
   hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow',
 });
 
+/**
+ * Момент времени по назрановским часам.
+ *
+ * Назрань живёт по московскому времени: UTC+3 круглый год, перевода стрелок
+ * в России нет с 2014-го. Строить здесь `new Date(y, m, d, h, mm)` нельзя —
+ * это время в поясе МАШИНЫ. Ровно на этом тесты и падали: сервер переставили
+ * с UTC на America/Chicago, и «08:00» превратилось в 16:00 по Назрани, то
+ * есть следующим намазом оказывался магриб вместо зухра.
+ *
+ * Форматирование пояс уже фиксировало (hhmm выше), а построение момента —
+ * нет. Теперь обе стороны сравнения не зависят от машины.
+ */
+// ⚠️ Прогон закреплён на TZ=Europe/Moscow в package.json, и это не
+// перестраховка. `timesFor` определяет, ЗА КАКОЙ ДЕНЬ считать времена, по
+// календарной дате в поясе МАШИНЫ (`date.getMonth()`, `date.getDate()`, и
+// так же поступает adhan). Для человека, который находится в своём городе,
+// это верно: «сегодня» — это его сегодня. Но тест, запущенный в чужом
+// поясе, получал времена не того дня, и «ближайший намаз» уезжал.
+//
+// Пояс машины и пояс Назрани должны совпадать — иначе проверяется не то,
+// что подразумевалось. Закрепление в package.json делает это явным и
+// одинаковым везде: на сервере, у владельца и на раннере GitHub.
+const MOSCOW_OFFSET_HOURS = 3;
+const nazranMoment = (h = 0, m = 0) =>
+  new Date(Date.UTC(2026, 7, 11, h - MOSCOW_OFFSET_HOURS, m));
+
 group('Время намаза — расчёт по углам', () => {
-  const DAY = new Date(2026, 7, 11);
+  const DAY = nazranMoment(12, 0);   // полдень по Назрани — дата однозначна
   const KEYS = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
   const table = s => KEYS.map(k => hhmm(timesFor(NAZRAN, DAY, s)[k]));
 
@@ -662,7 +688,7 @@ group('Время намаза — расчёт по углам', () => {
 });
 
 group('Время намаза — ближайший намаз', () => {
-  const at = (h, m) => new Date(2026, 7, 11, h, m);
+  const at = (h, m) => nazranMoment(h, m);
 
   check('в 08:00 следующий — зухр',
     nextPrayer(NAZRAN, at(8, 0), DEFAULT_SETTINGS).key, 'dhuhr');
@@ -854,6 +880,57 @@ group('Мой список дуа', () => {
   insertIntoDuaList('a', 0);
   check('повторная вставка переносит, а не дублирует', readDuaList(), ['a', 'z', 'b', 'c']);
   clearDuaList();
+});
+
+// ─── Стек экранов ─────────────────────────────────────────────────────
+//
+// Навигация — то место, где ошибка не падает, а тихо уводит человека не
+// туда: «назад» с главного экрана проваливается обратно в суру, стек
+// растёт без предела, жест и кнопка расходятся. Всё это ловится здесь.
+const stackMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/screenStack.ts')).href);
+const { findQuranHome, stepsToQuranHome, reconcile, isRoot } = stackMod;
+
+const HOME = { name: 'tabs', tab: 'quran' };
+const AZKAR_TAB = { name: 'tabs', tab: 'azkar' };
+const SURAH = { name: 'surah' };
+const MUSHAF = { name: 'mushaf' };
+const BOOKMARKS = { name: 'bookmarks' };
+
+group('Стек экранов', () => {
+  check('на корне снимать нечего', stepsToQuranHome([HOME]), 0);
+  check('из суры — один шаг', stepsToQuranHome([HOME, SURAH]), 1);
+  check('из мусхафа через суру — два шага',
+    stepsToQuranHome([HOME, SURAH, MUSHAF]), 2);
+  check('из суры, открытой из закладок, — два шага',
+    stepsToQuranHome([HOME, BOOKMARKS, SURAH]), 2);
+
+  // Ближайшая снизу, а не первая попавшаяся: человек мог вернуться на
+  // вкладку «Коран» из другой вкладки, и снимать надо до неё.
+  check('берётся ближайшая вкладка «Коран», а не самая нижняя',
+    stepsToQuranHome([HOME, AZKAR_TAB, HOME, SURAH]), 1);
+  check('индекс ближайшей вкладки «Коран»',
+    findQuranHome([HOME, AZKAR_TAB, HOME, SURAH]), 2);
+  check('вкладки «Коран» нет — шагов ноль',
+    stepsToQuranHome([AZKAR_TAB, SURAH]), 0);
+
+  // Приведение к глубине. Тот же массив = менять нечего; на этом держится
+  // идемпотентность обработчика popstate.
+  const s3 = [HOME, SURAH, MUSHAF];
+  check('глубина совпадает — тот же массив', reconcile(s3, 2, HOME) === s3, true);
+  check('возврат обрезает стек',
+    reconcile(s3, 0, HOME).map(x => x.name), ['tabs']);
+  check('возврат на шаг',
+    reconcile(s3, 1, HOME).map(x => x.name), ['tabs', 'surah']);
+  check('повторное приведение к той же глубине ничего не меняет',
+    reconcile(reconcile(s3, 1, HOME), 1, HOME).map(x => x.name), ['tabs', 'surah']);
+  check('глубина больше стека — сворачиваемся в корень',
+    reconcile([HOME], 5, HOME).map(x => x.name), ['tabs']);
+
+  // Корень определяется глубиной, а не флагом на первой записи: раньше
+  // метка терялась после «вошёл в суру → вышел», и аппаратная «назад» с
+  // главного экрана проваливалась обратно в суру.
+  check('корень — глубина 0', [isRoot(0), isRoot(1), isRoot(undefined)],
+    [true, false, false]);
 });
 
 // ─── Шрифты мусхафа: пара «шрифт + страница» ──────────────────────────
