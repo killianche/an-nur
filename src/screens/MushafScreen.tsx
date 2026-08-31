@@ -49,7 +49,7 @@ import {
   useTajweedFont,
 } from '../hooks/useTajweedFont';
 import { preloadTajweedPage, useTajweedPage } from '../hooks/useTajweedPage';
-import { distinctFontRefs } from '../lib/qcf4';
+import { pageFontRefs, type QcfEdition } from '../lib/qcf4';
 import type { Theme } from '../hooks/useTheme';
 import {
   juzOfPage,
@@ -67,6 +67,8 @@ import { readPref } from '../lib/typography';
 import { fontFamilyForPage } from '../content/quran-tajweed-meta';
 import {
   readMushafFont,
+  mushafEdition,
+  mushafFontLabel,
   toggleMushafFont,
   writeMushafFont,
   type MushafFontId,
@@ -131,7 +133,11 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     'reciter', DEFAULT_RECITER, RECITERS.map(r => r.id),
   );
   const audio = useAyahAudio(reciter);
-  const { data, loading, error } = useQcfPage(page);
+  // Выбор шрифта определяет и издание: у «Мадани 1405» свои данные страниц
+  // в /qcf1/pages.  Смешать издания нельзя — PUA-коды у них общие, а слова
+  // за этими кодами разные.
+  const edition = mushafEdition(mushafFont);
+  const { data, loading, error } = useQcfPage(page, edition);
   const colourMode = mushafFont === 'qpc-v4-tajweed';
   const tajweedFamily = fontFamilyForPage(page);
   // Шрифт открытой страницы заказывается уже в первом рендере, до
@@ -176,7 +182,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       page - 1 >= MUSHAF_FIRST_PAGE ? page - 1 : null,
     ];
     for (const n of neighbours) {
-      preloadPage(n);
+      preloadPage(n, edition);
       if (n == null) continue;
       if (colourMode) {
         preloadTajweedPage(n);
@@ -185,15 +191,23 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       }
       // JSON соседней страницы может ещё ехать. Дожидаемся его вместо
       // одноразовой синхронной проверки, которая часто ничего не находила.
-      void ensurePage(n).then(known => {
-        const lines = colourMode
-          ? known.lines.filter(line => line.words.some(word =>
-              word.type === 'surah_header' || word.type === 'bismillah'))
-          : known.lines;
-        preloadQcfFonts(distinctFontRefs(lines.flatMap(line => line.words)));
+      void ensurePage(n, edition).then(known => {
+        // В цветном режиме основной текст рисует шрифт таджвида, и из QCF
+        // нужны только заголовок суры с басмалой.  Вне его — вся страница
+        // целиком, а какие у неё шрифты, знает pageFontRefs: у V4 они
+        // записаны на словах, у V1 — на самой странице.
+        if (colourMode) {
+          const decor = known.lines.filter(line => line.words.some(word =>
+            word.type === 'surah_header' || word.type === 'bismillah'));
+          preloadQcfFonts(
+            pageFontRefs({ ...known, lines: decor }),
+          );
+        } else {
+          preloadQcfFonts(pageFontRefs(known));
+        }
       }).catch(() => { /* соседняя страница не должна ломать текущую */ });
     }
-  }, [page, data, colourMode]);
+  }, [page, data, colourMode, edition]);
 
   // Клавиатура: стрелки листают. Влево — следующая страница, потому что
   // книга арабская и «вперёд» здесь физически налево.
@@ -446,7 +460,11 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
 
   const surahsHere = data?.surahs ?? [];
   const title = surahsHere.length
-    ? surahsHere.map(s => SURAH_BY_NUMBER[s.id]?.transliteration ?? s.name).join(' · ')
+    ? surahsHere
+        // В данных V1 названия сур нет — только номер, поэтому справочник
+        // приложения здесь основной источник, а поле страницы запасной.
+        .map(s => SURAH_BY_NUMBER[s.id]?.transliteration ?? s.name ?? `Сура ${s.id}`)
+        .join(' · ')
     : `Страница ${page}`;
 
   // useAyahAudio хранит activeKey как `чтец:сура:аят`. Данные мусхафа
@@ -463,7 +481,10 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   useEffect(() => {
     if (!audio.currentSurah || !audio.currentAyah || audio.audioState === 'idle') return;
     const verseKey = `${audio.currentSurah}:${audio.currentAyah}`;
-    const audioPage = pageOfAyah(audio.currentSurah, audio.currentAyah);
+    // Издание обязательно: у «Мадани 1405» своя разбивка страниц, и без
+    // него автоперелистывание за аудио встало бы на странице, где
+    // звучащего аята нет.
+    const audioPage = pageOfAyah(audio.currentSurah, audio.currentAyah, edition);
     if (audioPage !== page) {
       setPageS(audioPage);
       localStorage.setItem(PAGE_KEY, String(audioPage));
@@ -491,15 +512,16 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
             label: 'Вернуться к ленте с переводом',
             icon: <BookOpen size={ICON_SIZE.lg} />,
             onClick: () => {
-              const { surah, ayah } = surahAyahOfPage(page);
+              const { surah, ayah } = surahAyahOfPage(page, edition);
               onOpenFeed(surah, ayah);
             },
           }] : []),
           {
             key: 'mushaf-font',
-            label: colourMode
-              ? 'Включить обычный шрифт'
-              : 'Включить цветной таджвид',
+            // Вариантов больше двух, поэтому подпись называет СЛЕДУЮЩИЙ по
+            // кругу, а не описывает пару «включить/выключить»: иначе на
+            // третьем варианте кнопка врала бы о том, что она делает.
+            label: `Включить шрифт «${mushafFontLabel(toggleMushafFont(mushafFont))}»`,
             icon: <Typography size={ICON_SIZE.lg} />,
             onClick: () => setMushafFont(toggleMushafFont(mushafFont)),
           },
@@ -612,7 +634,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
             сама страница в этот момент показывает только заготовки строк
             и без объяснения выглядит сломанной. */}
         <div style={{ position: 'absolute', top: 0, left: 12, right: 12, zIndex: 2 }}>
-          <FontErrorBanner source={colourMode ? 'both' : 'qcf'} />
+          <FontErrorBanner source={colourMode ? 'both' : 'qcf'} edition={edition} />
         </div>
 
         {!error && (
@@ -635,6 +657,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
                 selectedVerseKey={selected}
                 landscapeWide={false}
                 variant={mushafFont}
+                edition={edition}
                 printed={printed}
               />
             ))}
@@ -689,6 +712,7 @@ function PreparedMushafPage({
   selectedVerseKey,
   landscapeWide,
   variant,
+  edition,
   printed,
 }: {
   page: number;
@@ -701,10 +725,16 @@ function PreparedMushafPage({
   selectedVerseKey: string | null;
   landscapeWide: boolean;
   variant: MushafFontId;
+  /**
+   * Издание страницы.  Приходит пропом, а не вычисляется из `variant`
+   * на месте: соседние слои монтируются заранее, и слой, загрузивший
+   * страницу не того издания, показал бы чужой арабский после свайпа.
+   */
+  edition: QcfEdition;
   /** Печатное оформление: кремовая страница в орнаментальной рамке. */
   printed: boolean;
 }) {
-  const { data } = useQcfPage(page);
+  const { data } = useQcfPage(page, edition);
   const colourMode = variant === 'qpc-v4-tajweed';
   const tajweedPage = useTajweedPage(page, colourMode);
   const family = fontFamilyForPage(page);

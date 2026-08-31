@@ -1,57 +1,102 @@
 /**
- * useQcfPage — loads and caches a single QCF V4 page JSON.
+ * useQcfPage — загружает и кэширует одну страницу мусхафа.
  *
- * Data lives at /qcf4/pages/NNN.json (3-digit zero-padded page number).
- * Results are kept in a module-level Map so navigating back to a page
- * already fetched is instant.
+ * Данные лежат в /qcf4/pages/NNN.json (издание V4) или /qcf1/pages/NNN.json
+ * (издание V1 «Мадани 1405»), номер страницы дополнен нулями до трёх цифр.
+ * Результат кладётся в кэш уровня модуля, поэтому возврат на уже
+ * загруженную страницу происходит мгновенно.
  *
- * Pass pageNum=null to disable the hook (used for adjacent-page preloading
- * when the adjacent page doesn't exist yet).
+ * ── Почему ключ кэша составной ────────────────────────────────────────
+ *
+ * Страница 106 существует в обоих изданиях, но набрана разными глифами.
+ * Кэш по одному номеру отдал бы данные V4 там, где просили V1, — и
+ * страница показала бы красивый, но ЧУЖОЙ арабский. Такую ошибку не
+ * поймают ни типы, ни сборка, ни беглый взгляд на экран: арабский на
+ * месте, просто не тот. Отсюда ключ «издание|номер» и сверка издания
+ * пришедшего файла с запрошенным.
+ *
+ * pageNum=null выключает хук (используется при подгрузке соседней
+ * страницы, когда соседа не существует).
  */
 
 import { useState, useEffect } from 'react';
-import { type QcfPageData, pageJsonPath, hydratePage } from '../lib/qcf4';
+import {
+  type QcfPageData,
+  type QcfEdition,
+  DEFAULT_QCF_EDITION,
+  pageJsonPath,
+  hydratePage,
+} from '../lib/qcf4';
 
-// Module-level cache: page number → loaded data
-const pageCache = new Map<number, QcfPageData>();
-// Deduplication: one in-flight fetch per page
-const pagePromises = new Map<number, Promise<QcfPageData>>();
+/** Ключ кэша: издание и номер вместе, по отдельности они не различают страницу. */
+function cacheKey(pageNum: number, edition: QcfEdition): string {
+  return `${edition}|${pageNum}`;
+}
 
-function fetchPage(pageNum: number): Promise<QcfPageData> {
-  const existing = pagePromises.get(pageNum);
+// Кэш уровня модуля: «издание|номер» → загруженные данные
+const pageCache = new Map<string, QcfPageData>();
+// Дедупликация: один запрос в полёте на страницу издания
+const pagePromises = new Map<string, Promise<QcfPageData>>();
+
+function fetchPage(pageNum: number, edition: QcfEdition): Promise<QcfPageData> {
+  const key = cacheKey(pageNum, edition);
+  const existing = pagePromises.get(key);
   if (existing) return existing;
 
-  const promise = fetch(pageJsonPath(pageNum))
+  const promise = fetch(pageJsonPath(pageNum, edition))
     .then(r => {
       if (!r.ok) throw new Error(`page ${pageNum} HTTP ${r.status}`);
       return r.json() as Promise<QcfPageData>;
     })
     .then(raw => {
-      // Номер страницы нужен каждому слову: шрифты нарезаны по страницам,
-      // и семейство выбирается по паре (шрифт, страница).
-      const data = hydratePage(raw);
-      pageCache.set(pageNum, data);
-      pagePromises.delete(pageNum);
+      // Файл, назвавший себя чужим изданием, до кэша не доходит. Это не
+      // паранойя: перепутанное издание выглядит как исправная страница
+      // мусхафа, и отличить её от правильной можно только по глифам.
+      //
+      // У V4 поля может не быть — так лежат все файлы, написанные до
+      // второго издания, и молчание там означает именно V4.  У любого
+      // другого издания поле обязательно: файл, который себя не назвал,
+      // этим изданием не является, чем бы он ни оказался на деле.
+      const declared = raw.edition
+        ?? (edition === DEFAULT_QCF_EDITION ? DEFAULT_QCF_EDITION : null);
+      if (declared !== edition) {
+        throw new Error(
+          `page ${pageNum}: ожидалось издание ${edition}, `
+          + `в файле ${raw.edition ?? 'издание не указано'}`,
+        );
+      }
+      // Номер страницы нужен каждому слову: шрифты V4 нарезаны по
+      // страницам, и семейство выбирается по паре (шрифт, страница).
+      // Заодно проставляется издание — в файлах V4 его нет.
+      const data = hydratePage(raw, edition);
+      pageCache.set(key, data);
+      pagePromises.delete(key);
       return data;
     })
     .catch(err => {
-      pagePromises.delete(pageNum);
+      pagePromises.delete(key);
       throw err;
     });
 
-  pagePromises.set(pageNum, promise);
+  pagePromises.set(key, promise);
   return promise;
 }
 
 /** Get cached page data synchronously, or null if not loaded yet. */
-export function getPageSync(pageNum: number): QcfPageData | null {
-  return pageCache.get(pageNum) ?? null;
+export function getPageSync(
+  pageNum: number,
+  edition: QcfEdition = DEFAULT_QCF_EDITION,
+): QcfPageData | null {
+  return pageCache.get(cacheKey(pageNum, edition)) ?? null;
 }
 
 /** Preload a page without subscribing to its state — fire-and-forget. */
-export function preloadPage(pageNum: number | null): void {
-  if (pageNum === null || pageCache.has(pageNum)) return;
-  fetchPage(pageNum).catch(() => { /* ignore preload errors */ });
+export function preloadPage(
+  pageNum: number | null,
+  edition: QcfEdition = DEFAULT_QCF_EDITION,
+): void {
+  if (pageNum === null || pageCache.has(cacheKey(pageNum, edition))) return;
+  fetchPage(pageNum, edition).catch(() => { /* ignore preload errors */ });
 }
 
 /**
@@ -62,22 +107,28 @@ export function preloadPage(pageNum: number | null): void {
  * экрана даже не начинал качаться.  Какие подмножества нужны странице,
  * известно только из её json — отсюда обещание, а не fire-and-forget.
  */
-export function ensurePage(pageNum: number): Promise<QcfPageData> {
-  const cached = pageCache.get(pageNum);
+export function ensurePage(
+  pageNum: number,
+  edition: QcfEdition = DEFAULT_QCF_EDITION,
+): Promise<QcfPageData> {
+  const cached = pageCache.get(cacheKey(pageNum, edition));
   if (cached) return Promise.resolve(cached);
-  return fetchPage(pageNum);
+  return fetchPage(pageNum, edition);
 }
 
-export function useQcfPage(pageNum: number | null): {
+export function useQcfPage(
+  pageNum: number | null,
+  edition: QcfEdition = DEFAULT_QCF_EDITION,
+): {
   data: QcfPageData | null;
   loading: boolean;
   error: string | null;
 } {
   const [data, setData] = useState<QcfPageData | null>(
-    () => (pageNum !== null ? pageCache.get(pageNum) ?? null : null),
+    () => (pageNum !== null ? pageCache.get(cacheKey(pageNum, edition)) ?? null : null),
   );
   const [loading, setLoading] = useState<boolean>(
-    () => pageNum !== null && !pageCache.has(pageNum),
+    () => pageNum !== null && !pageCache.has(cacheKey(pageNum, edition)),
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -90,7 +141,7 @@ export function useQcfPage(pageNum: number | null): {
     }
 
     // Already in cache — instant
-    const cached = pageCache.get(pageNum);
+    const cached = pageCache.get(cacheKey(pageNum, edition));
     if (cached) {
       setData(cached);
       setLoading(false);
@@ -103,7 +154,7 @@ export function useQcfPage(pageNum: number | null): {
     setError(null);
     setData(null);
 
-    fetchPage(pageNum)
+    fetchPage(pageNum, edition)
       .then(page => {
         if (cancelled) return;
         setData(page);
@@ -116,16 +167,20 @@ export function useQcfPage(pageNum: number | null): {
       });
 
     return () => { cancelled = true; };
-  }, [pageNum]);
+  }, [pageNum, edition]);
 
   // После смены pageNum эффект обновит state только после первого кадра.
   // Не отдаём в этот кадр данные предыдущей страницы: иначе шапка уже
   // показывает новый номер, а под ней на мгновение остаётся старый текст.
+  //
+  // Издание проверяется наравне с номером: при смене шрифта номер
+  // страницы не меняется, и без этой проверки в кадр переключения попали
+  // бы данные прошлого издания — то есть чужие глифы.
   const currentData = pageNum === null
     ? null
-    : data?.page === pageNum
+    : data?.page === pageNum && (data.edition ?? DEFAULT_QCF_EDITION) === edition
       ? data
-      : pageCache.get(pageNum) ?? null;
+      : pageCache.get(cacheKey(pageNum, edition)) ?? null;
 
   return {
     data: currentData,

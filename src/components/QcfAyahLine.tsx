@@ -254,7 +254,13 @@ function QcfWordSpan({ word, isActive }: WordSpanProps) {
         // Семейство с суффиксом страницы: одни и те же PUA-коды в разных
         // шрифтах означают разные слова, поэтому подмножества страниц не
         // должны делить имя — иначе в аяте окажется чужое слово.
-        fontFamily: `'${qcfPageFamily(word.font, word.page ?? 0)}', serif`,
+        // `?? ''` — только ради типа: поле стало необязательным из-за
+        // данных V1, но лента работает на V4, где шрифт назван у каждого
+        // слова (проверено по всем 604 файлам).  Если он всё же окажется
+        // пустым, семейство выйдет `_p106`, такого `@font-face` нет, и
+        // браузер откатится на serif — то есть покажет КУБИК, а не пустое
+        // место.  Поэтому пустой `font` здесь недопустим, а не безобиден.
+        fontFamily: `'${qcfPageFamily(word.font ?? '', word.page ?? 0)}', serif`,
         // Default colour for inactive words. The active-word colour is
         // applied via the CSS `[data-active-word]` rule (with !important
         // to win against this inline default) so the user's theme- and

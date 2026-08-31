@@ -147,12 +147,12 @@ function assembleFeed(surahNumber: number, pages: QcfPageData[]): QcfAyahFeed {
   // Какие подмножества нужны каждому аяту.  Считаем по парам «шрифт +
   // страница»: аят на стыке страниц берёт слова из двух подмножеств.
   for (const entry of ayahMap.values()) {
-    entry.fonts = distinctFontRefs(entry.words);
+    entry.fonts = distinctFontRefs(entry.words, 'qcf-v4');
   }
 
   const ayahs = Array.from(ayahMap.values()).sort((a, b) => a.ayah - b.ayah);
 
-  const decorFonts = distinctFontRefs([...headerWords, ...basmalaWords]);
+  const decorFonts = distinctFontRefs([...headerWords, ...basmalaWords], 'qcf-v4');
 
   return {
     decor: {

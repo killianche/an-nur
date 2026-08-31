@@ -71,6 +71,7 @@ import { type Theme } from '../hooks/useTheme';
 import { getAutoScroll, subscribeAudioPrefs } from '../lib/audioPrefs';
 import { pushRecent, updateRecentAyah, readRecents } from '../lib/recents';
 import { pageOfAyah } from '../lib/mushafPages';
+import { mushafEdition, readMushafFont } from '../lib/mushafFont';
 import { isBookmarked, toggleBookmark } from '../lib/bookmarks';
 import {
   readPref, readNumber,
@@ -361,7 +362,7 @@ export function SurahScreen({
     ensurePage(page)
       .then(data => {
         if (cancelled) return;
-        preloadQcfFonts(distinctFontRefs(data.lines.flatMap(l => l.words)));
+        preloadQcfFonts(distinctFontRefs(data.lines.flatMap(l => l.words), 'qcf-v4'));
       })
       .catch(() => { /* лента загрузится обычным путём и покажет ошибку */ });
     return () => { cancelled = true; };
@@ -852,7 +853,10 @@ export function SurahScreen({
                   ?? (audio.currentSurah === surahNumber ? audio.currentAyah : null)
                   ?? initialAyah
                   ?? 1;
-                onOpenMushaf(pageOfAyah(surahNumber, ayah));
+                // Открываем полноэкранный мусхаф, а у него своё издание:
+                // страницы «Мадани 1405» и 1441 расходятся, и без издания
+                // человек попал бы на страницу без запрошенного аята.
+                onOpenMushaf(pageOfAyah(surahNumber, ayah, mushafEdition(readMushafFont())));
               },
             }] : []),
             {
@@ -1218,7 +1222,8 @@ function SurahTitleBlock({ meta, decor }: {
               dir="rtl"
               style={{
                 // Семейство с суффиксом страницы — см. qcfPageFamily.
-                fontFamily: `'${qcfPageFamily(w.font, w.page ?? 0)}', serif`,
+                // `?? ''` — только ради типа: у слов V4 шрифт назван всегда.
+                fontFamily: `'${qcfPageFamily(w.font ?? '', w.page ?? 0)}', serif`,
                 whiteSpace: 'nowrap',
                 letterSpacing: '0',
                 wordSpacing: '0',

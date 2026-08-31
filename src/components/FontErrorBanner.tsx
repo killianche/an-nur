@@ -21,14 +21,24 @@
  */
 
 import { useQcfFontFailure } from '../hooks/useQcfFont';
+import type { QcfEdition } from '../lib/qcf4';
 import { useTajweedFontFailure } from '../hooks/useTajweedFont';
 
 type Props = {
   source?: 'qcf' | 'both';
+  /**
+   * Показывать неудачи только этого издания мусхафа.
+   *
+   * Полноэкранный режим передаёт своё издание: иначе плашка об упавшем
+   * шрифте «Мадани 1405» осталась бы висеть поверх исправной страницы
+   * обычного мусхафа после переключения. Лента издание не передаёт — она
+   * рисует оба, и там честнее показывать любую неудачу.
+   */
+  edition?: QcfEdition;
 };
 
-export function FontErrorBanner({ source = 'qcf' }: Props) {
-  const qcf = useQcfFontFailure();
+export function FontErrorBanner({ source = 'qcf', edition }: Props) {
+  const qcf = useQcfFontFailure(edition);
   const tajweed = useTajweedFontFailure();
   const tajweedFailed = source === 'both' && tajweed.failed;
   const failed = qcf.failed || tajweedFailed;

@@ -1,5 +1,10 @@
 /**
- * QcfMushafPage — одна страница мединского мусхафа (QCF V4), целиком.
+ * QcfMushafPage — одна страница мединского мусхафа, целиком.
+ *
+ * Изданий два: QCF V4 (мусхаф 1441 г.х.) и QCF V1 («Мадани 1405»).
+ * Формат данных у них общий, а вот шрифты устроены по-разному, и
+ * компонент обязан брать издание из `pageData.edition`, а не угадывать
+ * его по имени шрифта: PUA-коды у изданий общие, слова за ними разные.
  *
  * Каждое слово на странице — ОДИН глиф из области частного использования
  * (U+F100…), нарисованный шрифтом, под который эта страница свёрстана.
@@ -38,7 +43,7 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQcfFont } from '../hooks/useQcfFont';
 import { ArabicSkeleton } from './ArabicSkeleton';
 import { SurahPlate } from './SurahPlate';
-import { distinctFontRefs, qcfPageFamily } from '../lib/qcf4';
+import { distinctFontRefs, editionOf, pageFontRefs, qcfWordFamily } from '../lib/qcf4';
 import type { QcfPageData, QcfWord } from '../lib/qcf4';
 import { fontFamilyForPage } from '../content/quran-tajweed-meta';
 import { PALETTE_NAME } from '../lib/tajweedPalette';
@@ -121,9 +126,18 @@ export const QcfMushafPage = memo(function QcfMushafPage({
   const qcfLines = useMemo(() => variant === 'qpc-v4-tajweed'
     ? pageData.lines.filter(line => !tajweedLines.has(line.line))
     : pageData.lines, [variant, pageData.lines, tajweedLines]);
+  // Издание страницы решает, где искать шрифт слова, и берётся только из
+  // самих данных: в них оно проставлено загрузчиком и всегда однозначно.
+  const edition = editionOf(pageData);
+  // У V1 шрифт страницы назван на самой странице, а не на каждом слове,
+  // поэтому список считается по странице целиком.  Цветной таджвид на V1
+  // не распространяется (это шрифт поверх данных V4), и фильтрация строк
+  // здесь не нужна.
   const fontRefs = useMemo(
-    () => distinctFontRefs(qcfLines.flatMap(l => l.words)),
-    [qcfLines],
+    () => edition === 'qcf-v1'
+      ? pageFontRefs(pageData)
+      : distinctFontRefs(qcfLines.flatMap(l => l.words), 'qcf-v4'),
+    [edition, pageData, qcfLines],
   );
   // @font-face инжектится в фазе рендера, а не в эффекте: браузер должен
   // начать качать шрифт в том же кадре, в котором появился текст.
@@ -275,6 +289,7 @@ export const QcfMushafPage = memo(function QcfMushafPage({
               <QcfWordSpan
                 key={i}
                 word={word}
+                pageData={pageData}
                 fontSize={fontSize}
                 isActive={
                   !!word.verse_key
@@ -337,6 +352,8 @@ export const QcfMushafPage = memo(function QcfMushafPage({
 
 type WordSpanProps = {
   word: QcfWord;
+  /** Нужна целиком: у V1 шрифт обычного слова записан на странице. */
+  pageData: QcfPageData;
   fontSize: number;
   isActive: boolean;
   isWholeAyahActive: boolean;
@@ -345,7 +362,7 @@ type WordSpanProps = {
 };
 
 function QcfWordSpan({
-  word, fontSize, isActive, isWholeAyahActive, isSelected, onTap,
+  word, pageData, fontSize, isActive, isWholeAyahActive, isSelected, onTap,
 }: WordSpanProps) {
   const isHeader = word.type === 'surah_header';
   // Маркер конца аята — золочёная розетка с номером, как в печатном
@@ -363,9 +380,11 @@ function QcfWordSpan({
       {...(isSelected ? { 'data-mushaf-selected': '' } : {})}
       onClick={key && onTap ? () => onTap(key) : undefined}
       style={{
-        // Семейство с суффиксом страницы — см. qcfPageFamily: одни и те же
-        // PUA-коды в разных шрифтах означают разные слова.
-        fontFamily: `'${qcfPageFamily(word.font, word.page ?? 0)}', serif`,
+        // Семейство считается по изданию страницы — см. qcfWordFamily:
+        // у V4 к имени шрифта добавляется номер страницы, у V1 имя шрифта
+        // уже постраничное.  Одни и те же PUA-коды в разных шрифтах
+        // означают разные слова, поэтому ошибка здесь не видна глазом.
+        fontFamily: `'${qcfWordFamily(word, pageData)}', serif`,
         fontSize: isHeader ? `${fontSize * 0.82}px` : `${fontSize}px`,
         color: isActive
           ? 'var(--qcf-active, var(--accent, #1a6b3c))'

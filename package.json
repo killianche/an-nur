@@ -12,13 +12,14 @@
     "audio:split-luhaidan": "node --experimental-strip-types --no-warnings scripts/gen/split-luhaidan-ayahs.mjs",
     "audio:split-luhaidan:server": "python3 scripts/gen/split-luhaidan-ayahs.py",
     "check:sacred": "node scripts/check-sacred-text.mjs",
+    "check:mushaf-pages": "node --experimental-strip-types --no-warnings --import ./scripts/ts-resolve.mjs scripts/gen/build-mushaf-page-index.mjs",
     "check:ios-release": "node scripts/check-ios-release.mjs",
     "asc:status": "node scripts/appstore/asc-status.mjs",
     "asc:submit": "node scripts/appstore/asc-submit.mjs",
     "ios:release-check": "npm run check && npm run sync && npm run check:ios-release",
     "sync": "npm run build && npx cap sync",
     "test": "TZ=Europe/Moscow node --experimental-strip-types --no-warnings --import ./scripts/ts-resolve.mjs scripts/test-audio-model.mjs",
-    "check": "npm run test && npm run check:sacred && npm run build"
+    "check": "npm run test && npm run check:sacred && npm run check:mushaf-pages && npm run build"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

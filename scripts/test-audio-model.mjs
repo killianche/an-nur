@@ -70,7 +70,10 @@ const {
   TOTAL_AYAHS, TOTAL_SURAHS,
 } = mod;
 const { tajweedVisualWordPosition } = tajweedAudioMod;
-const { normaliseMushafFont, MUSHAF_FONT_OPTIONS, toggleMushafFont } = mushafFontMod;
+const {
+  normaliseMushafFont, MUSHAF_FONT_OPTIONS, toggleMushafFont,
+  mushafEdition, mushafFontLabel,
+} = mushafFontMod;
 const { tajweedPageJsonPath, tajweedAyahFromPage } = tajweedPageMod;
 const {
   mushafActiveVerseKey,
@@ -133,17 +136,57 @@ group('Цветной таджвид: аудиопозиция совпадае�
 });
 
 group('Полноэкранный мусхаф: выбор шрифта', () => {
-  check('доступны обычный и цветной варианты',
+  check('доступны обычный, цветной и «Мадани 1405»',
     MUSHAF_FONT_OPTIONS.map(option => option.id),
-    ['qcf-v4', 'qpc-v4-tajweed']);
+    ['qcf-v4', 'qpc-v4-tajweed', 'qcf-v1']);
   check('сохранённый цветной вариант восстанавливается',
     normaliseMushafFont('qpc-v4-tajweed'), 'qpc-v4-tajweed');
+  // Обратная совместимость: значение, сохранённое до появления третьего
+  // варианта, должно открывать ровно тот же мусхаф, что и раньше.
+  check('сохранённый обычный вариант восстанавливается',
+    normaliseMushafFont('qcf-v4'), 'qcf-v4');
+  check('сохранённый «Мадани 1405» восстанавливается',
+    normaliseMushafFont('qcf-v1'), 'qcf-v1');
   check('неизвестное значение безопасно возвращает обычный мусхаф',
     normaliseMushafFont('old-font'), 'qcf-v4');
+  check('пустое хранилище даёт обычный мусхаф',
+    normaliseMushafFont(null), 'qcf-v4');
+
+  // Переключатель — цикл по списку вариантов, а не пара значений: иначе
+  // третий вариант оказался бы недоступен из шапки экрана.
   check('быстрый переключатель включает цветной таджвид',
     toggleMushafFont('qcf-v4'), 'qpc-v4-tajweed');
-  check('повторное нажатие возвращает обычный мусхаф',
-    toggleMushafFont('qpc-v4-tajweed'), 'qcf-v4');
+  check('следующим идёт «Мадани 1405»',
+    toggleMushafFont('qpc-v4-tajweed'), 'qcf-v1');
+  check('круг замыкается на обычном мусхафе',
+    toggleMushafFont('qcf-v1'), 'qcf-v4');
+  check('цикл проходит все варианты ровно по разу',
+    (() => {
+      const seen = [];
+      let font = 'qcf-v4';
+      for (let i = 0; i < MUSHAF_FONT_OPTIONS.length; i++) {
+        seen.push(font);
+        font = toggleMushafFont(font);
+      }
+      return [seen, font];
+    })(),
+    [['qcf-v4', 'qpc-v4-tajweed', 'qcf-v1'], 'qcf-v4']);
+  check('неизвестное значение не ломает переключатель',
+    toggleMushafFont('old-font'), 'qcf-v4');
+
+  check('подпись кнопки берётся из списка вариантов',
+    mushafFontLabel('qcf-v1'), 'Мадани 1405');
+
+  // Издание решает, ИЗ КАКОГО каталога грузить страницу.  Цветной
+  // таджвид — шрифт поверх данных V4, поэтому издание у него общее с
+  // обычным вариантом, а не своё.
+  check('обычный мусхаф — издание V4',
+    mushafEdition('qcf-v4'), 'qcf-v4');
+  check('цветной таджвид остаётся на данных V4',
+    mushafEdition('qpc-v4-tajweed'), 'qcf-v4');
+  check('«Мадани 1405» — издание V1',
+    mushafEdition('qcf-v1'), 'qcf-v1');
+
   check('путь страницы дополнен нулями',
     tajweedPageJsonPath(7), '/tajweed/pages/007.json');
 });
@@ -1042,6 +1085,304 @@ group('Шрифты мусхафа: страница проставляется 
     out.lines.flatMap(l => l.words).map(w => w.page), [77, 77, 77]);
 });
 
+// ─── Два издания мусхафа: V4 и V1 «Мадани 1405» ───────────────────────
+//
+// Издания делят и формат данных, и диапазон PUA-кодов, но означают этими
+// кодами РАЗНЫЕ слова.  Поэтому любая путаница между ними выглядит как
+// исправная страница мусхафа с чужим арабским: ни типы, ни сборка, ни
+// беглый взгляд её не поймают.  Отсюда тесты на две вещи — как издание
+// выбирает семейство шрифта и как оно разделяет кэш страниц.
+const {
+  editionOf, qcfFontFamily, qcfWordFamily, pageFontRefs, v1PageFontRefs,
+  pageJsonPath, DEFAULT_QCF_EDITION,
+} = qcfMod;
+const arabicFontMod = await import(
+  pathToFileURL(resolve(ROOT, 'src/hooks/useArabicPageFont.ts')).href
+);
+const { v1FontSlot, arabicPageFamily } = arabicFontMod;
+
+/** Страница V1 в том виде, в каком её отдаёт /qcf1/pages/106.json. */
+function v1Page() {
+  return {
+    page: 106,
+    edition: 'qcf-v1',
+    font: 'QCF1_P106',
+    surahs: [{ id: 5, verse_start: 1, verse_end: 2 }],
+    lines: [
+      // Заголовок суры и басмала — единственные слова V1, у которых
+      // шрифт назван явно.
+      { line: 6, words: [
+        { code: 64396, char: 'A', text: '', type: 'surah_header', font: 'QCF1_BSML', sura: 5 },
+        { code: 64401, char: 'B', text: '', type: 'surah_header', font: 'QCF1_BSML', sura: 5 },
+      ] },
+      // У обычного слова поля font нет — это не пропуск в данных, а
+      // экономия ~1.7 МБ на каждый нативный пакет.
+      { line: 7, words: [
+        { code: 64337, char: 'C', text: 'قُلِ', type: 'word', verse_key: '5:1', position: 1 },
+      ] },
+    ],
+  };
+}
+
+/** Страница V4 того же номера — данные другие, номер тот же. */
+function v4Page() {
+  return {
+    page: 106,
+    font: 'QCF4_Hafs_08',
+    surahs: [{ id: 5, name: "Al-Ma'idah", name_arabic: 'المائدة', verse_start: 1, verse_end: 2 }],
+    lines: [
+      { line: 6, words: [
+        { code: 61700, char: 'A', text: '', type: 'surah_header', font: 'QCF4_QBSML', sura: 5 },
+      ] },
+      { line: 7, words: [
+        { code: 63702, char: 'C', text: '', type: 'word', font: 'QCF4_Hafs_08', verse_key: '5:1', position: 1 },
+      ] },
+    ],
+  };
+}
+
+group('Два издания: путь к данным страницы', () => {
+  check('без указания издания путь ведёт в V4',
+    pageJsonPath(106), '/qcf4/pages/106.json');
+  check('издание V4 названо явно — тот же путь',
+    pageJsonPath(106, 'qcf-v4'), '/qcf4/pages/106.json');
+  check('издание V1 берёт данные из своего каталога',
+    pageJsonPath(106, 'qcf-v1'), '/qcf1/pages/106.json');
+  check('номер дополняется нулями в обоих изданиях',
+    [pageJsonPath(7, 'qcf-v4'), pageJsonPath(7, 'qcf-v1')],
+    ['/qcf4/pages/007.json', '/qcf1/pages/007.json']);
+  check('умолчание издания — V4', DEFAULT_QCF_EDITION, 'qcf-v4');
+  check('страница без поля edition считается страницей V4',
+    editionOf({ page: 1 }), 'qcf-v4');
+  check('поле edition читается как есть',
+    editionOf({ page: 1, edition: 'qcf-v1' }), 'qcf-v1');
+});
+
+group('Два издания: семейство шрифта считается по изданию', () => {
+  // V4: шрифт нарезан по страницам, поэтому семейство несёт номер.
+  check('V4 добавляет номер страницы к имени шрифта',
+    qcfFontFamily({ font: 'QCF4_Hafs_08', page: 106, edition: 'qcf-v4' }),
+    'QCF4_Hafs_08_p106');
+  check('ссылка без издания ведёт себя как V4',
+    qcfFontFamily({ font: 'QCF4_Hafs_08', page: 106 }), 'QCF4_Hafs_08_p106');
+  // V1: файл сам постраничный, суффикс сделал бы имя, под которым нет
+  // ни одного @font-face, — страница осталась бы вечным скелетом.
+  check('V1 берёт имя шрифта как есть, без суффикса',
+    qcfFontFamily({ font: 'QCF1_P106', page: 106, edition: 'qcf-v1' }), 'QCF1_P106');
+  check('служебный шрифт V1 тоже без суффикса',
+    qcfFontFamily({ font: 'QCF1_BSML', page: 106, edition: 'qcf-v1' }), 'QCF1_BSML');
+  check('одна и та же страница в двух изданиях — разные семейства',
+    qcfFontFamily({ font: 'QCF1_P106', page: 106, edition: 'qcf-v1' })
+      === qcfFontFamily({ font: 'QCF1_P106', page: 106, edition: 'qcf-v4' }),
+    false);
+
+  const v1 = v1Page();
+  const v4 = v4Page();
+  check('обычное слово V1 берёт шрифт страницы',
+    qcfWordFamily(v1.lines[1].words[0], v1), 'QCF1_P106');
+  check('заголовок суры V1 берёт свой шрифт',
+    qcfWordFamily(v1.lines[0].words[0], v1), 'QCF1_BSML');
+  check('слово V4 получает семейство с номером страницы',
+    qcfWordFamily({ ...v4.lines[1].words[0], page: 106 }, v4), 'QCF4_Hafs_08_p106');
+  check('слово V4 без проставленной страницы берёт номер у страницы',
+    qcfWordFamily(v4.lines[1].words[0], v4), 'QCF4_Hafs_08_p106');
+});
+
+group('Два издания: какие шрифты заказывает страница', () => {
+  const v1 = v1Page();
+  check('V1 просит страничный шрифт и служебный BSML',
+    v1PageFontRefs(v1),
+    [
+      { font: 'QCF1_P106', page: 106, edition: 'qcf-v1' },
+      { font: 'QCF1_BSML', page: 106, edition: 'qcf-v1' },
+    ]);
+  check('pageFontRefs выбирает V1 по полю edition',
+    pageFontRefs(v1), v1PageFontRefs(v1));
+
+  // Страница V1 без заголовка суры: у всех слов шрифта нет, и единственный
+  // источник — сама страница.  Пустой список означал бы вечный скелет.
+  const plain = {
+    page: 200, edition: 'qcf-v1', font: 'QCF1_P200', surahs: [],
+    lines: [{ line: 1, words: [{ code: 1, char: 'A', text: '', type: 'word' }] }],
+  };
+  check('страница V1 без заголовка всё равно просит свой шрифт',
+    v1PageFontRefs(plain), [{ font: 'QCF1_P200', page: 200, edition: 'qcf-v1' }]);
+
+  const v4 = v4Page();
+  hydratePage(v4);
+  // Издание проставляется каждой ссылке: `distinctFontRefs` требует его
+  // явно, чтобы слова V1 нельзя было случайно посчитать по правилам V4.
+  check('V4 по-прежнему считает шрифты по словам, и каждая ссылка названа изданием',
+    pageFontRefs(v4),
+    [
+      { font: 'QCF4_QBSML', page: 106, edition: 'qcf-v4' },
+      { font: 'QCF4_Hafs_08', page: 106, edition: 'qcf-v4' },
+    ]);
+});
+
+group('Два издания: имена файлов шрифтов V1', () => {
+  check('страница V1 даёт своё семейство',
+    arabicPageFamily('v1', 106), 'QCF1_P106');
+  check('басмала V1 — общий на весь мусхаф шрифт',
+    arabicPageFamily('v1', 'bsml'), 'QCF1_BSML');
+  // v1FontSlot — обратная функция к имени семейства: по ней повтор после
+  // сбоя сети восстанавливает @font-face, зная только имя.
+  check('имя семейства разбирается обратно в номер страницы',
+    v1FontSlot('QCF1_P106'), 106);
+  check('первая и последняя страницы разбираются',
+    [v1FontSlot('QCF1_P001'), v1FontSlot('QCF1_P604')], [1, 604]);
+  check('имя басмалы разбирается в свой ключ',
+    v1FontSlot('QCF1_BSML'), 'bsml');
+  check('семейство V4 не принимается за V1',
+    v1FontSlot('QCF4_Hafs_08_p106'), null);
+  check('несуществующая страница отвергается',
+    [v1FontSlot('QCF1_P000'), v1FontSlot('QCF1_P605')], [null, null]);
+  check('разбор обратен сборке на всех 604 страницах',
+    (() => {
+      for (let page = 1; page <= 604; page++) {
+        if (v1FontSlot(arabicPageFamily('v1', page)) !== page) return page;
+      }
+      return 'ok';
+    })(), 'ok');
+});
+
+// Кэш страниц.  Самый опасный сценарий фичи: страница 106 есть в обоих
+// изданиях, и кэш по одному номеру молча отдал бы данные V4 там, где
+// просили V1.  На экране был бы красивый, но ЧУЖОЙ арабский.
+await groupAsync('Два издания: кэш страниц их не смешивает', async () => {
+  const pageHookMod = await import(
+    pathToFileURL(resolve(ROOT, 'src/hooks/useQcfPage.ts')).href
+  );
+  const { ensurePage, getPageSync } = pageHookMod;
+
+  const requested = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    requested.push(url);
+    if (url === '/qcf1/pages/300.json') {
+      // Подложенный файл V4: издание в нём не названо вовсе.
+      return { ok: true, json: async () => ({ ...v4Page(), page: 300 }) };
+    }
+    if (url === '/qcf4/pages/301.json') {
+      // Обратный случай: файл назвал чужое издание явно.
+      return { ok: true, json: async () => ({ ...v1Page(), page: 301 }) };
+    }
+    const data = url.startsWith('/qcf1/') ? v1Page() : v4Page();
+    return { ok: true, json: async () => data };
+  };
+
+  try {
+    const fromV4 = await ensurePage(106);
+    const fromV1 = await ensurePage(106, 'qcf-v1');
+
+    check('за каждым изданием ушёл свой запрос',
+      requested, ['/qcf4/pages/106.json', '/qcf1/pages/106.json']);
+    check('издание V4 отдало свой шрифт страницы',
+      fromV4.font, 'QCF4_Hafs_08');
+    check('издание V1 отдало свой шрифт страницы',
+      fromV1.font, 'QCF1_P106');
+    check('страницы разных изданий — разные объекты',
+      fromV4 === fromV1, false);
+
+    // hydratePage проставляет издание, потому что в файлах V4 его нет:
+    // дальше по коду издание читается только из данных.
+    check('странице V4 проставлено её издание', fromV4.edition, 'qcf-v4');
+    check('издание из файла V1 сохранено', fromV1.edition, 'qcf-v1');
+
+    check('синхронный кэш различает издания',
+      [getPageSync(106).font, getPageSync(106, 'qcf-v1').font],
+      ['QCF4_Hafs_08', 'QCF1_P106']);
+
+    await ensurePage(106);
+    await ensurePage(106, 'qcf-v1');
+    check('повторный запрос идёт из кэша, а не в сеть', requested.length, 2);
+
+    let mismatch = null;
+    try {
+      await ensurePage(300, 'qcf-v1');
+    } catch (err) {
+      mismatch = String(err.message);
+    }
+    check('файл, не назвавший себя V1, до кэша не доходит',
+      mismatch, 'page 300: ожидалось издание qcf-v1, в файле издание не указано');
+    check('чужой файл не осел в кэше', getPageSync(300, 'qcf-v1'), null);
+
+    let reverse = null;
+    try {
+      await ensurePage(301);
+    } catch (err) {
+      reverse = String(err.message);
+    }
+    check('файл, назвавший чужое издание, тоже отвергается',
+      reverse, 'page 301: ожидалось издание qcf-v4, в файле qcf-v1');
+    check('и он в кэше не остался', getPageSync(301), null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── Данные и шрифты V1: комплект на месте ────────────────────────────
+//
+// Та же дешёвая защита, что и для V4: страница просит шрифт по имени, и
+// если файла нет, аят молча остаётся пустым.  Проверка идёт по данным —
+// для каждой страницы смотрим, какие шрифты она реально просит.
+group('Мусхаф V1: данные и шрифты сходятся', () => {
+  const pagesDir = resolve(ROOT, 'public/qcf1/pages');
+  const fontsDir = resolve(ROOT, 'public/qcf1/fonts-woff2');
+
+  if (!existsSync(pagesDir) || !existsSync(fontsDir)) {
+    check('издание V1 в этом клоне не собрано — это не ошибка кода',
+      'нет каталога qcf1', 'нет каталога qcf1');
+    return;
+  }
+
+  const files = readdirSync(pagesDir).filter(f => /^\d{3}\.json$/.test(f)).sort();
+  check('страниц ровно 604', files.length, 604);
+
+  const badEdition = [];
+  const badPageNumber = [];
+  const missingFonts = new Set();
+  const emptyPages = [];
+  // Слово, чьё семейство не заказано, покажет кубик: скелет снимется, а
+  // @font-face под это имя никто не вставит.  Проверяем замкнутость:
+  // множество семейств слов ⊆ множество заказанных шрифтов.
+  const unrequested = new Set();
+
+  for (const file of files) {
+    const num = Number(file.slice(0, 3));
+    const data = JSON.parse(readFileSync(resolve(pagesDir, file), 'utf8'));
+    // Издание обязано стоять в самих данных: экран выбирает шрифт по нему,
+    // а не по имени файла или префиксу шрифта.
+    if (data.edition !== 'qcf-v1') badEdition.push(file);
+    if (data.page !== num) badPageNumber.push(file);
+    if (!data.lines?.length) emptyPages.push(file);
+
+    const requestedFamilies = new Set(v1PageFontRefs(data).map(qcfFontFamily));
+    for (const line of data.lines) {
+      for (const word of line.words) {
+        const family = qcfWordFamily(word, data);
+        if (!requestedFamilies.has(family)) unrequested.add(`${file}:${family}`);
+      }
+    }
+
+    for (const ref of v1PageFontRefs(data)) {
+      const slot = v1FontSlot(ref.font);
+      if (slot === null) { missingFonts.add(ref.font); continue; }
+      const name = slot === 'bsml' ? 'QCF_BSML' : `QCF_P${String(slot).padStart(3, '0')}`;
+      const path = resolve(fontsDir, `${name}.woff2`);
+      if (!existsSync(path) || statSync(path).size === 0) missingFonts.add(name);
+    }
+  }
+
+  check('у каждой страницы проставлено издание qcf-v1', badEdition, []);
+  check('номер внутри файла совпадает с именем файла', badPageNumber, []);
+  check('пустых страниц нет', emptyPages, []);
+  check('все запрошенные шрифты V1 лежат на месте',
+    Array.from(missingFonts).sort(), []);
+  check('каждое слово рисуется семейством, которое страница заказала',
+    Array.from(unrequested).sort(), []);
+});
+
 // ─── Шрифты мусхафа: все ли файлы на месте ────────────────────────────
 //
 // Самая дешёвая защита от самой дорогой ошибки: данные страниц правятся
@@ -1213,6 +1554,55 @@ await groupAsync('Цветной шрифт: ошибка видна и загр
     globalThis.document = originalDocument;
     globalThis.window = originalWindow;
   }
+});
+
+// ─── Разбивка страниц зависит от издания ─────────────────────────────
+//
+// Издания «Мадани 1405» (V1) и 1441 (V4) расходятся: у 25 страниц разный
+// первый аят. Взять таблицу не того издания — значит открыть страницу, на
+// которой запрошенного аята нет. Ничего при этом не падает, поэтому без
+// теста ошибка вернулась бы незамеченной.
+
+await groupAsync('Мусхаф: разбивка страниц у изданий своя', async () => {
+  const mod = await import(
+    pathToFileURL(resolve(ROOT, 'src/lib/mushafPages.ts')).href
+  );
+  const { pageOfAyah, firstAyahOfPage, surahAyahOfPage, MUSHAF_PAGES } = mod;
+
+  // Опорный расхождение: сура Ат-Тин. В издании 1405 она открывает
+  // страницу 597, в издании 1441 на той же странице ещё идёт сура 94.
+  check('95:1 в издании 1405 — страница 597',
+    pageOfAyah(95, 1, 'qcf-v1'), 597);
+  check('в издании 1441 страница 597 начинается не с 95:1',
+    surahAyahOfPage(597, 'qcf-v4').surah !== 95, true);
+
+  check('умолчание совпадает с изданием 1441',
+    pageOfAyah(95, 1), pageOfAyah(95, 1, 'qcf-v4'));
+
+  // Переход в обе стороны обязан сходиться на одной странице, иначе
+  // «открыть в мусхафе» и «вернуться к ленте» уводят человека всё дальше.
+  for (const edition of ['qcf-v1', 'qcf-v4']) {
+    let mismatch = 0;
+    let notRising = 0;
+    let prev = 0;
+    for (let page = 1; page <= MUSHAF_PAGES; page++) {
+      const first = firstAyahOfPage(page, edition);
+      if (first <= prev) notRising++;
+      prev = first;
+      const { surah, ayah } = surahAyahOfPage(page, edition);
+      if (pageOfAyah(surah, ayah, edition) !== page) mismatch++;
+    }
+    check(`${edition}: первые аяты страниц строго возрастают`, notRising, 0);
+    check(`${edition}: переход «страница → аят → страница» сходится`, mismatch, 0);
+  }
+
+  // Издания обязаны именно расходиться: если таблицы совпали, значит одну
+  // из них подменили другой, и тест обязан это заметить.
+  let differ = 0;
+  for (let page = 1; page <= MUSHAF_PAGES; page++) {
+    if (firstAyahOfPage(page, 'qcf-v1') !== firstAyahOfPage(page, 'qcf-v4')) differ++;
+  }
+  check('таблицы изданий расходятся ровно на 25 страницах', differ, 25);
 });
 
 // ─── Итог ─────────────────────────────────────────────────────────────

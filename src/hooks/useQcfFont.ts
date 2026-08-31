@@ -29,14 +29,29 @@
  *
  * `font-display: block` в правиле остаётся — на случай, если готовность
  * почему-то не отследилась: пустая строка лучше кубиков.
+ *
+ * ── Почему тот же учёт обслуживает и QCF V1 ───────────────────────────
+ *
+ * У V1 («Мадани 1405») шрифты не режутся: файл `QCF_P106.woff2` сам и
+ * есть страница 106, а семейство равно имени шрифта.  Само правило
+ * `@font-face` для него вставляет hooks/useArabicPageFont.ts — там
+ * живут имена файлов V1.  Но учёт готовности, признак неудачи и повтор
+ * остаются здесь, общими на оба издания: у PUA-кодов V1 запасного глифа
+ * ровно так же нет, а плашка об ошибке в шапке экрана одна.
  */
 
 import { useEffect, useState } from 'react';
 import {
-  qcfPageFamily,
+  DEFAULT_QCF_EDITION,
+  qcfFontFamily,
   qcfPageFontUrl,
+  type QcfEdition,
   type QcfFontRef,
 } from '../lib/qcf4';
+import {
+  injectV1FamilyFont,
+  resetArabicPageFont,
+} from './useArabicPageFont';
 
 /**
  * Уже подключённые семейства и пары, из которых они собраны.
@@ -77,6 +92,35 @@ const ready = new Set<string>();
  * что текст не приехал, и дать повторить.
  */
 const failed = new Set<string>();
+
+/**
+ * Издание, которому принадлежит семейство.
+ *
+ * Берётся из `injected`, куда ссылку кладёт `injectQcfFont` — то есть из
+ * записанного факта, а не из разбора префикса имени.  Разбор префикса
+ * здесь запрещён: он прячет правило внутри строки.
+ */
+function matchesEdition(family: string, edition?: QcfEdition): boolean {
+  if (!edition) return true;
+  return (injected.get(family)?.edition ?? DEFAULT_QCF_EDITION) === edition;
+}
+
+/**
+ * Есть ли непрогруженные шрифты у этого издания.
+ *
+ * 🔴 Фильтр по изданию нужен не для красоты. Плашка «шрифт не приехал»
+ * глобальная, а набор неудач общий на всё приложение. Без фильтра
+ * сценарий такой: в «Мадани 1405» на плохой сети падает шрифт страницы,
+ * человек переключается на обычный мусхаф, тот берётся из кэша и рисуется
+ * целиком — а красная плашка об ошибке висит поверх исправного текста и
+ * не уходит, пока не нажать «Повторить», который потянет ненужный сейчас
+ * шрифт другого издания.
+ */
+function hasFailed(edition?: QcfEdition): boolean {
+  if (!edition) return failed.size > 0;
+  for (const family of failed) if (matchesEdition(family, edition)) return true;
+  return false;
+}
 /** Загрузки в полёте, чтобы не просить одно и то же дважды. */
 const inFlight = new Map<string, Promise<void>>();
 
@@ -91,9 +135,19 @@ const FAILED_EVENT = 'qcf-font-failed';
  * лишний кадр ожидания.
  */
 export function injectQcfFont(ref: QcfFontRef): string {
-  const family = qcfPageFamily(ref.font, ref.page);
+  const family = qcfFontFamily(ref);
   if (injected.has(family) || typeof document === 'undefined') return family;
   injected.set(family, ref);
+
+  // У V1 правило вставляет useArabicPageFont: имена файлов этого издания
+  // описаны там, и дублировать их здесь значило бы завести второй
+  // источник истины про одни и те же 605 файлов.  Если имя семейства
+  // окажется чужим, правила не появится — это увидит waitFor и честно
+  // отметит неудачу, вместо того чтобы показать кубики.
+  if ((ref.edition ?? 'qcf-v4') === 'qcf-v1') {
+    injectV1FamilyFont(family);
+    return family;
+  }
 
   const style = document.createElement('style');
   style.dataset.qcfFont = family;
@@ -164,10 +218,10 @@ function waitFor(family: string): Promise<void> {
  * `@font-face` пересоздаём, а не просто просим ещё раз: браузер помнит
  * неудачу по правилу и второй запрос за файлом сам не отправит.
  */
-export function retryFailedQcfFonts(): void {
+export function retryFailedQcfFonts(edition?: QcfEdition): void {
   if (typeof document === 'undefined') return;
-  const again = Array.from(failed);
-  failed.clear();
+  const again = Array.from(failed).filter(family => matchesEdition(family, edition));
+  for (const family of again) failed.delete(family);
 
   for (const family of again) {
     const ref = injected.get(family);
@@ -175,6 +229,10 @@ export function retryFailedQcfFonts(): void {
       .querySelectorAll<HTMLStyleElement>(`style[data-qcf-font="${family}"]`)
       .forEach(el => el.remove());
     injected.delete(family);
+    // Правило V1 живёт в другом модуле и под другим атрибутом — снять его
+    // надо там же, иначе повторная вставка окажется пустой операцией и
+    // браузер продолжит помнить неудачу.
+    if (ref && (ref.edition ?? 'qcf-v4') === 'qcf-v1') resetArabicPageFont(family);
     if (!ref) continue;
     // Просим сами, а не ждём перерисовки: список семейств у компонентов
     // не изменился, поэтому их эффект загрузки повторно не сработает —
@@ -191,7 +249,9 @@ export function retryFailedQcfFonts(): void {
  * Экран показывает по этому признаку одну общую плашку с повтором —
  * сообщение у каждого аята превратило бы страницу в список ошибок.
  */
-export function useQcfFontFailure(): { failed: boolean; retry: () => void } {
+export function useQcfFontFailure(
+  edition?: QcfEdition,
+): { failed: boolean; retry: () => void } {
   const [, bump] = useState(0);
 
   useEffect(() => {
@@ -205,14 +265,14 @@ export function useQcfFontFailure(): { failed: boolean; retry: () => void } {
   }, []);
 
   return {
-    failed: failed.size > 0,
-    retry: retryFailedQcfFonts,
+    failed: hasFailed(edition),
+    retry: () => retryFailedQcfFonts(edition),
   };
 }
 
 /** Готово ли семейство прямо сейчас — без ожидания. */
 export function isQcfFontReady(ref: QcfFontRef): boolean {
-  return ready.has(qcfPageFamily(ref.font, ref.page));
+  return ready.has(qcfFontFamily(ref));
 }
 
 /**

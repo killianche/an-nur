@@ -79,6 +79,55 @@ function inject(family: string, url: string): void {
   document.head.appendChild(style);
 }
 
+/**
+ * Разобрать имя семейства V1 обратно в аргумент `injectV1PageFont`.
+ *
+ * Точная обратная функция к `v1Info`: обе живут в этом модуле, поэтому
+ * разбор имени здесь не догадка, а чтение собственного формата.  Нужна
+ * потому, что готовность шрифтов отслеживается по ИМЕНИ семейства
+ * (см. hooks/useQcfFont.ts): повтору после сбоя сети надо пересоздать
+ * `@font-face`, а из имени семейства сам URL не выводится.
+ *
+ * Возвращает null для чужого имени — вызывающий на этом останавливается,
+ * вместо того чтобы запрашивать несуществующий файл.
+ */
+export function v1FontSlot(family: string): number | 'bsml' | null {
+  if (family === 'QCF1_BSML') return 'bsml';
+  const match = /^QCF1_P(\d{3})$/.exec(family);
+  if (!match) return null;
+  const page = Number(match[1]);
+  return page >= 1 && page <= 604 ? page : null;
+}
+
+/**
+ * Подключить шрифт V1 по имени семейства.
+ *
+ * Возвращает false, если имя не принадлежит V1 — тогда шрифта под этим
+ * именем не появится, и текст показывать нельзя.
+ */
+export function injectV1FamilyFont(family: string): boolean {
+  const slot = v1FontSlot(family);
+  if (slot === null) return false;
+  injectV1PageFont(slot);
+  return true;
+}
+
+/**
+ * Забыть подключённое семейство и убрать его правило из документа.
+ *
+ * Нужно повтору после сбоя: браузер помнит неудачу по конкретному
+ * `@font-face` и второй запрос за файлом по тому же правилу не отправит.
+ * Без снятия правила «повторить» убирало бы плашку, но за файлом никто
+ * бы не шёл.
+ */
+export function resetArabicPageFont(family: string): void {
+  injected.delete(family);
+  if (typeof document === 'undefined') return;
+  document.head
+    .querySelectorAll<HTMLStyleElement>(`style[data-arabic-page-font="${family}"]`)
+    .forEach(el => el.remove());
+}
+
 /** Resolve the family name for a (version, page) pair without injecting. */
 export function arabicPageFamily(version: 'v1' | 'v2', page: number | 'bsml'): string {
   return version === 'v1' ? v1Info(page).family : v2Info(page).family;

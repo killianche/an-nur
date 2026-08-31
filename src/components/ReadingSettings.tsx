@@ -560,8 +560,13 @@ function MushafFontCard({ font, onPick }: {
         gridTemplateColumns: '1fr 1fr',
         gap: '6px',
       }}>
-        {MUSHAF_FONT_OPTIONS.map(option => {
+        {MUSHAF_FONT_OPTIONS.map((option, i) => {
           const active = option.id === font;
+          // Вариантов нечётное число, и последний иначе повис бы половиной
+          // строки рядом с пустой клеткой.  Растягиваем его на обе колонки:
+          // сетка остаётся ровной при любом числе вариантов.
+          const lastAlone = i === MUSHAF_FONT_OPTIONS.length - 1
+            && MUSHAF_FONT_OPTIONS.length % 2 === 1;
           return (
             <button
               key={option.id}
@@ -569,6 +574,7 @@ function MushafFontCard({ font, onPick }: {
               aria-pressed={active}
               onClick={() => onPick(option.id)}
               style={{
+                gridColumn: lastAlone ? '1 / -1' : undefined,
                 minHeight: '38px',
                 padding: '7px 10px',
                 borderRadius: '10px',
