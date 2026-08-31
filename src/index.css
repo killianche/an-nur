@@ -703,13 +703,26 @@ body {
   0%, 100% { opacity: 0.55; }
   50%      { opacity: 1; }
 }
+/* 🔴 Пульсирует только то, что видно. Лента монтирует все аяты суры, а на
+   экране их два-три: в пике 625 полосок анимировались одновременно, ни
+   одной на экране. Столько бесконечных анимаций браузер уже не выносит на
+   отдельные слои и считает в главном потоке — это и было главной причиной
+   дёрганья при входе в суру (25 длинных задач и 1661 мс блокировки против
+   5 задач и 430 мс без пульса).
+
+   Класс `is-visible` вешает общий IntersectionObserver из
+   ArabicSkeleton.tsx. Невидимые полоски выглядят ровно как при
+   «уменьшить движение» — статично; увидеть эту разницу нельзя по
+   определению. */
 .arabic-skeleton-bar {
+  opacity: 0.75;
+}
+.arabic-skeleton.is-visible .arabic-skeleton-bar {
   animation: arabicSkeletonPulse 1.5s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .arabic-skeleton-bar {
+  .arabic-skeleton.is-visible .arabic-skeleton-bar {
     animation: none;
-    opacity: 0.75;
   }
 }
 

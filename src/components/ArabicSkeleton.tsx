@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react';
+
 /**
  * ArabicSkeleton — то, что стоит на месте арабского текста, пока грузится
  * шрифт мусхафа.
@@ -23,7 +25,49 @@
  * Движение — мягкий пульс, не «бегущий блик»: экран с аятом не место для
  * аттракциона.  При `prefers-reduced-motion` пульс выключается (правило
  * в src/index.css), полоски остаются.
+ *
+ * ── 🔴 Пульсируют только видимые скелеты ──────────────────────────────
+ *
+ * Это не украшение кода, а исправление главной причины дёрганья при входе
+ * в суру. Замер на Аль-Бакаре (процессор замедлен вчетверо): в пике
+ * **625 полосок пульсировали одновременно, и ни одна не была на экране** —
+ * лента монтирует все 286 аятов, а видно два-три. Шестьсот бесконечных
+ * анимаций браузер уже не выносит на отдельные слои и считает в главном
+ * потоке каждый кадр. Цена: 25 длинных задач и 1661 мс блокировки за один
+ * переход. Без пульса — 5 задач и 430 мс.
+ *
+ * Поэтому анимация включается классом `is-visible`, который вешает общий
+ * на все скелеты IntersectionObserver. Невидимые выглядят ровно так же,
+ * как при `prefers-reduced-motion`: те же полоски, просто без движения.
+ * Никто этого не увидит по определению — они за краем экрана.
+ *
+ * Почему наблюдатель, а не `content-visibility: auto`: тот пропускает и
+ * раскладку тоже, и высоту пришлось бы объявлять заранее. Ошибка в ней
+ * дала бы скачок прокрутки, а в этом экране на прокрутке висят и
+ * восстановление позиции, и синхронизация с аудио.
  */
+
+/**
+ * Общий наблюдатель на все скелеты сразу: отдельный на каждый обошёлся бы
+ * дороже самой анимации. Запас в 200px — чтобы пульс успел начаться до
+ * того, как строка выедет на экран.
+ */
+let observer: IntersectionObserver | null = null;
+
+function watcher(): IntersectionObserver | null {
+  if (typeof IntersectionObserver === 'undefined') return null;
+  if (!observer) {
+    observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          entry.target.classList.toggle('is-visible', entry.isIntersecting);
+        }
+      },
+      { rootMargin: '200px 0px' },
+    );
+  }
+  return observer;
+}
 
 type Props = {
   /** Сколько строк занять — обычно длина аята в строках мусхафа. */
@@ -42,13 +86,31 @@ type Props = {
 const WIDTHS = [0.97, 0.93, 0.99, 0.88, 0.95, 0.91, 0.98, 0.72];
 
 export function ArabicSkeleton({ lines = 2, fontSize, align = 'right' }: Props) {
+  const box = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const node = box.current;
+    const io = watcher();
+    if (!node || !io) {
+      // Без наблюдателя честнее оставить пульс, чем молча выключить его
+      // всем: неподдерживаемых браузеров мало, а статичный скелет там
+      // выглядел бы как зависшая загрузка.
+      node?.classList.add('is-visible');
+      return;
+    }
+    io.observe(node);
+    return () => io.unobserve(node);
+  }, []);
+
   const count = Math.max(1, Math.min(lines, 12));
   const lineHeight = fontSize * 1.85;   // как в QcfAyahLine
   const barHeight = Math.round(fontSize * 0.42);
 
   return (
     <div
+      ref={box}
       aria-hidden="true"
+      className="arabic-skeleton"
       style={{
         display: 'flex',
         flexDirection: 'column',
