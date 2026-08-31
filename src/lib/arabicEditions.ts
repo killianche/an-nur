@@ -1,14 +1,23 @@
 /**
  * arabicEditions — lazy loader for the bundled multi-edition Arabic data
- * (V1 codes, V2 codes, Uthmani Hafs Unicode), keyed by verseKey "S:A".
- * The dataset lives at /arabic-editions.json (~3.9 MB gzipped to ~1.5 MB)
- * and is fetched once on first use; subsequent lookups are synchronous
- * through the cached promise.
+ * (V1 codes, Uthmani Hafs Unicode), keyed by verseKey "S:A".
+ * The dataset lives at /arabic-editions.json (1.8 MB) and is fetched once
+ * on first use; subsequent lookups are synchronous through the cached
+ * promise.
  *
- * The JSON still carries an `indopak` column from when IndoPak rendering
- * was a picker option; the field stays in the on-wire payload (no point
- * regenerating the dataset for a few KB) but is no longer surfaced in
- * the TypeScript type so accidental reads error at compile time.
+ * ── Что из набора выкинуто 31.08.2026 и почему ────────────────────────
+ *
+ * Прежде файл вёз ещё три столбца: `indopak` (1,4 МБ) от удалённого режима
+ * IndoPak и `v2Page` / `v2Words` (0,8 МБ) под шрифты QCF V2, которых в
+ * проекте нет и никогда не было — каталога `public/qcf2` не существует.
+ * Ни один из трёх не читался ни строчкой кода.
+ *
+ * Комментарий на их месте раньше оправдывал это так: «нет смысла
+ * перегенерировать набор ради нескольких килобайт». Оценка была неверной —
+ * не килобайты, а **2 МБ**, и втрое: в `public` и в двух нативных пакетах.
+ * Файл статический, генератора у него нет, поэтому «перегенерировать» и не
+ * требовалось: столбцы удалены на месте, а значения оставшихся полей
+ * сверены посимвольно (хеш всего текста Усмани до и после совпал).
  *
  * Why bundle as one JSON instead of inlining into quran-sources.ts:
  *   - quran-sources.ts already weighs in at hundreds of KB compressed;
@@ -24,10 +33,6 @@ export type AyahEditionData = {
   v1Page: number;
   /** Concatenated PUA codepoints for the whole ayah in V1 (no spaces) */
   v1Codes: string;
-  /** V2 font page index — pick QCF2{page:03d}.woff2 */
-  v2Page: number;
-  /** Per-word PUA codepoints in V2 (already split by space) */
-  v2Words: string[];
   /** KFGQPC Uthmanic Hafs orthography text (matches UthmanicHafs1/v22 fonts) */
   uthmani: string;
 };
