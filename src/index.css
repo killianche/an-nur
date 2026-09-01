@@ -539,7 +539,11 @@
     0,
     0
   );
-  transition: transform var(--mushaf-turn-duration) cubic-bezier(.22, 1, .36, 1);
+  /* Кривая та же, что у выезжающих панелей проекта: сильный старт и долгое
+     мягкое торможение. Прежняя (.22, 1, .36, 1) проходила девять десятых пути
+     за первую треть времени — в паре с фиксированной длительностью это и
+     читалось как рывок. */
+  transition: transform var(--mushaf-turn-duration) cubic-bezier(0.32, 0.72, 0, 1);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }

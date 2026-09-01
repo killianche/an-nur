@@ -37,6 +37,7 @@ import { BottomDock } from '../components/BottomDock';
 import { QcfMushafPage } from '../components/QcfMushafPage';
 import { FontErrorBanner } from '../components/FontErrorBanner';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
+import { pageTurnDuration } from '../lib/mushafTurn';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { useAyahAudio } from '../hooks/useAyahAudio';
@@ -98,8 +99,6 @@ type Props = {
 };
 
 const PAGE_KEY = 'mushaf.page';
-const PAGE_TURN_MS = 220;
-
 /** Запомненная страница — чтобы режим открывался там, где закрыли. */
 export function readMushafPage(): number {
   if (typeof window === 'undefined') return MUSHAF_FIRST_PAGE;
@@ -293,13 +292,16 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   // Фиксируем страницу только после завершения движения. До этого React не
   // получает ни одного обновления: тяжёлые арабские строки уже находятся в
   // соседнем GPU-слое и просто следуют за пальцем.
-  const settlePageTurn = useCallback((dragX: number, nextPage: number | null) => {
+  const settlePageTurn = useCallback((dragX: number, nextPage: number | null, velocity = 0) => {
     const track = pageTrackRef.current;
     if (!track || turning.current) return;
     turning.current = true;
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const duration = reducedMotion ? 0 : PAGE_TURN_MS;
+    const width = Math.max(1, track.clientWidth || window.innerWidth);
+    const duration = reducedMotion
+      ? 0
+      : pageTurnDuration(dragX - pendingDrag.current, width, velocity);
     if (dragFrame.current != null) {
       cancelAnimationFrame(dragFrame.current);
       dragFrame.current = null;
@@ -431,8 +433,8 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       && (Math.abs(dx) >= Math.min(104, width * 0.18)
         || (Math.abs(dx) >= 20 && velocity >= 0.48));
 
-    if (committed) settlePageTurn(delta > 0 ? width : -width, next);
-    else settlePageTurn(0, null);
+    if (committed) settlePageTurn(delta > 0 ? width : -width, next, velocity);
+    else settlePageTurn(0, null, velocity);
   };
 
   const onTouchCancel = () => {
