@@ -41,8 +41,9 @@
  *            означает контраст светлой и тёмной тем.
  *    Внутри одной фигуры `fill` и `stroke` не смешиваются, и ни один
  *    контур не рисуется дважды (раньше так были сделаны «Компас» и
- *    «Оформление»).  У залитых состояний внутренние линии выбиваются
- *    цветом подложки `var(--surface)` — это вырубка, а не второй штрих.
+ *    «Оформление»).  У залитых состояний внутренние линии ВЫРУБАЮТСЯ
+ *    маской (см. `useCutId`), а не закрашиваются цветом подложки: под
+ *    иконкой не всегда `--surface`.
  *
  * 5. ОПТИЧЕСКОЕ ВЫРАВНИВАНИЕ.  Габарит каждого рисунка с учётом
  *    половины штриха уложен около центра 12/12; у направленных фигур
@@ -50,6 +51,7 @@
  *    иначе они кажутся сдвинутыми назад.
  */
 
+import { useId } from 'react';
 import type { CSSProperties } from 'react';
 
 /**
@@ -101,6 +103,28 @@ const solid = (size: number, className?: string, style?: CSSProperties) => ({
   'aria-hidden': true,
 });
 
+/**
+ * Идентификатор для маски-вырубки.
+ *
+ * 🔴 Вырубка делается маской, а НЕ закраской цветом подложки.
+ *
+ * Раньше внутренние линии залитых иконок рисовались цветом
+ * `var(--surface)`, и в комментарии это называлось вырубкой. Вырубкой оно не
+ * было: это непрозрачная краска цвета фона. Пока фон совпадал с `--surface`,
+ * разницы не было видно. Но у выбранной вкладки под иконкой лежит
+ * тонированная подложка, а сама панель — полупрозрачное стекло, и «вырубка»
+ * оказывалась полоской чужого цвета поперёк глифа.
+ *
+ * Маска вырезает по-настоящему: сквозь неё видно то, что под иконкой, каким
+ * бы оно ни было. Идентификатор берётся из `useId`, потому что на экране
+ * одновременно бывает несколько таких иконок, а совпадение id тихо сломало бы
+ * все, кроме первой. Двоеточия из него убираются: они допустимы в атрибуте
+ * `id`, но ломают ссылку `url(#…)`.
+ */
+function useCutId(): string {
+  return 'cut' + useId().replace(/:/g, '');
+}
+
 /* ── Навигация ──────────────────────────────────────────────────────
    Один шеврон под тремя углами: те же 45°, та же длина плеча.  Раньше
    левый и правый были нарисованы дугой Безье с радиусом на изломе, а
@@ -132,8 +156,10 @@ export const ChevronDown = ({ size = ICON_SIZE.md, className, style }: Props) =>
  */
 export const Sparkle = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
   <svg {...stroke(size, className, style)} fill={isFilled ? 'currentColor' : 'none'}>
-    <path d="M11 3.4c.45 3.9 1.7 5.9 4.6 6.7-2.9.8-4.15 2.8-4.6 6.7-.45-3.9-1.7-5.9-4.6-6.7 2.9-.8 4.15-2.8 4.6-6.7Z" />
-    <path d="M17.8 14.2c.2 1.75.75 2.65 2.05 3-1.3.35-1.85 1.25-2.05 3-.2-1.75-.75-2.65-2.05-3 1.3-.35 1.85-1.25 2.05-3Z" />
+    {/* Обе звезды подросли: по замеру глиф был легче среднего по набору на
+        четверть, а малая звезда на кегле панели почти не читалась. */}
+    <path d="M10.5 2.3c.55 4.6 2 6.95 5.45 7.9-3.45.95-4.9 3.3-5.45 7.9-.55-4.6-2-6.95-5.45-7.9 3.45-.95 4.9-3.3 5.45-7.9Z" />
+    <path d="M18 13.2c.25 2.2.95 3.35 2.6 3.8-1.65.45-2.35 1.6-2.6 3.8-.25-2.2-.95-3.35-2.6-3.8 1.65-.45 2.35-1.6 2.6-3.8Z" />
   </svg>
 );
 
@@ -266,12 +292,18 @@ export const Plus = ({ size = ICON_SIZE.md, className, style }: Props) => (
  * цветом подложки, это вырубка внутри залитой фигуры, а не второй
  * штрих поверх неё.
  */
-export const MinusCircleFill = ({ size = ICON_SIZE.md, className, style }: Props) => (
-  <svg {...solid(size, className, style)}>
-    <circle cx="12" cy="12" r="9.25" fill="currentColor" />
-    <path d="M8 12h8" stroke="var(--surface)" strokeWidth={STROKE} strokeLinecap="round" />
-  </svg>
-);
+export const MinusCircleFill = ({ size = ICON_SIZE.md, className, style }: Props) => {
+  const cut = useCutId();
+  return (
+    <svg {...solid(size, className, style)}>
+      <mask id={cut} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+        <rect x="0" y="0" width="24" height="24" fill="white" />
+        <path d="M8 12h8" stroke="black" strokeWidth={STROKE} strokeLinecap="round" />
+      </mask>
+      <circle cx="12" cy="12" r="9.25" fill="currentColor" mask={`url(#${cut})`} />
+    </svg>
+  );
+};
 
 /** Хват для перетаскивания — три полосы справа у строки в режиме правки. */
 export const DragHandle = ({ size = ICON_SIZE.md, className, style }: Props) => (
@@ -305,23 +337,38 @@ export const Check = ({ size = ICON_SIZE.md, className, style }: Props) => (
  */
 export const Flower = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
   <svg {...stroke(size, className, style)}>
-    {[0, 60, 120, 180, 240, 300].map(a => (
+    {/* Оптическое уменьшение. Плотные фигуры в наборе рисуют мельче
+        остальных — иначе они кажутся крупнее при одинаковом габарите.
+        Замер площади чернил: без этого цветок был тяжелее среднего по
+        панели на 40%. */}
+    <g transform="translate(12 12) scale(0.88) translate(-12 -12)">
+    {[0, 72, 144, 216, 288].map(a => (
       <path
         key={a}
-        d="M12 12C12 12 9.4 9.6 9.4 7.1C9.4 5.4 10.6 4 12 4C13.4 4 14.6 5.4 14.6 7.1C14.6 9.6 12 12 12 12Z"
+        // Пять лепестков, а не шесть, и начинаются они не в центре.
+        //
+        // Замер площади чернил в габарите глифа: цветок был на 46% тяжелее
+        // остальных в панели при разбросе по набору в 70% — в ряду он
+        // «кричал». Шесть лепестков сходились в одну точку, укладывая там
+        // шесть штрихов друг на друга, а на кегле панели сливались в пятно.
+        // Пять разведённых читаются как цветок и весят меньше.
+        d="M12 9.4C10.2 8.6 9.5 6.9 9.5 5.9C9.5 4.6 10.6 3.9 12 3.9C13.4 3.9 14.5 4.6 14.5 5.9C14.5 6.9 13.8 8.6 12 9.4Z"
         transform={`rotate(${a} 12 12)`}
         fill={isFilled ? 'currentColor' : 'none'}
       />
     ))}
-    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none" />
+    </g>
   </svg>
 );
 
 /** Человек — раздел «Аккаунт». */
 export const Person = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
   <svg {...stroke(size, className, style)} fill={isFilled ? 'currentColor' : 'none'}>
-    <circle cx="12" cy="8.2" r="3.6" />
-    <path d="M4.8 20c0-3.6 3.2-6 7.2-6s7.2 2.4 7.2 6" />
+    {/* Немного крупнее прежнего (r 3.6, плечи 4.8…19.2): по замеру глиф
+        был легче среднего по набору на четверть и проваливался в ряду. */}
+    <circle cx="12" cy="7.9" r="4.05" />
+    <path d="M4.2 20.2c0-3.95 3.5-6.5 7.8-6.5s7.8 2.55 7.8 6.5" />
   </svg>
 );
 
@@ -352,13 +399,24 @@ export const CheckCircle = ({ size = ICON_SIZE.md, className, style }: Props) =>
 );
 
 /** Раскрытая книга — вкладка «Коран» и метка «источник» у азкаров. */
-export const BookOpen = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
-  <svg {...stroke(size, className, style)} fill={isFilled ? 'currentColor' : 'none'}>
-    <path d="M12 6.75c-1.6-1.2-3.6-1.8-5.5-1.8-.6 0-1.15.05-1.75.15v11.4c.6-.1 1.15-.15 1.75-.15 1.9 0 3.9.6 5.5 1.8" />
-    <path d="M12 6.75c1.6-1.2 3.6-1.8 5.5-1.8.6 0 1.15.05 1.75.15v11.4c-.6-.1-1.15-.15-1.75-.15-1.9 0-3.9.6-5.5 1.8" />
-    <path d="M12 6.75v11.4" stroke={isFilled ? 'var(--surface)' : 'currentColor'} />
-  </svg>
-);
+export const BookOpen = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => {
+  const cut = useCutId();
+  return (
+    <svg {...stroke(size, className, style)} fill={isFilled ? 'currentColor' : 'none'}>
+      {isFilled && (
+        <mask id={cut} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+          <rect x="0" y="0" width="24" height="24" fill="white" />
+          <path d="M12 6.75v11.4" stroke="black" strokeWidth={STROKE} strokeLinecap="round" />
+        </mask>
+      )}
+      <g mask={isFilled ? `url(#${cut})` : undefined}>
+        <path d="M12 6.75c-1.6-1.2-3.6-1.8-5.5-1.8-.6 0-1.15.05-1.75.15v11.4c.6-.1 1.15-.15 1.75-.15 1.9 0 3.9.6 5.5 1.8" />
+        <path d="M12 6.75c1.6-1.2 3.6-1.8 5.5-1.8.6 0 1.15.05 1.75.15v11.4c-.6-.1-1.15-.15-1.75-.15-1.9 0-3.9.6-5.5 1.8" />
+      </g>
+      {!isFilled && <path d="M12 6.75v11.4" />}
+    </svg>
+  );
+};
 
 /** Восход — утренние азкары. */
 export const Sunrise = ({ size = ICON_SIZE.md, className, style }: Props) => (
@@ -382,12 +440,23 @@ export const Sunset = ({ size = ICON_SIZE.md, className, style }: Props) => (
 );
 
 /** Циферблат — вкладка «Намаз». */
-export const Clock = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
-  <svg {...stroke(size, className, style)}>
-    <circle cx="12" cy="12" r="8.25" fill={isFilled ? 'currentColor' : 'none'} />
-    <path d="M12 7.75V12l2.75 1.75" stroke={isFilled ? 'var(--surface)' : 'currentColor'} />
-  </svg>
-);
+export const Clock = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => {
+  const cut = useCutId();
+  return (
+    <svg {...stroke(size, className, style)}>
+      {isFilled && (
+        <mask id={cut} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+          <rect x="0" y="0" width="24" height="24" fill="white" />
+          <path d="M12 7.75V12l2.75 1.75" fill="none" stroke="black"
+                strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round" />
+        </mask>
+      )}
+      <circle cx="12" cy="12" r="8.25" fill={isFilled ? 'currentColor' : 'none'}
+              mask={isFilled ? `url(#${cut})` : undefined} />
+      {!isFilled && <path d="M12 7.75V12l2.75 1.75" />}
+    </svg>
+  );
+};
 
 /**
  * Компас киблы.  Кольцо — контур, стрелка — залитая метка-указатель:

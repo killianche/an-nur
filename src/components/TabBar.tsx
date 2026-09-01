@@ -25,8 +25,12 @@ export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer' | 'account';
 
 /** Размер глифа вкладки — ступень `--icon-tab` из общей шкалы.  В JSX
  *  он приходит числом (иконки принимают `size`), поэтому значение здесь
- *  и в CSS-токене нужно держать одинаковым. */
-const TAB_ICON = 28;
+ *  и в CSS-токене нужно держать одинаковым.
+ *
+ *  Было 28 при подписи в 11px — глиф перевешивал строку, и панель читалась
+ *  тяжелее, чем весь остальной экран. 25 возвращает привычную для панели
+ *  иерархию: сначала узнаётся значок, потом дочитывается подпись. */
+const TAB_ICON = 25;
 
 const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }[] = [
   { id: 'quran', label: 'Коран', icon: selected => <BookOpen size={TAB_ICON} isFilled={selected} /> },
