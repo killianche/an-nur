@@ -146,14 +146,17 @@ export function TabBar({ active, onSelect }: {
                 aria-hidden="true"
                 className="ios-tab-icon"
                 style={{
-                  width: '42px',
-                  height: '34px',
+                  // Подложка шире иконки: 42×34 давала почти круг, и
+                  // залитый глиф выбранной вкладки читался в нём пятном.
+                  // Вытянутая капсула возвращает иконке форму.
+                  width: '52px',
+                  height: '32px',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderRadius: 'var(--radius-pill)',
                   background: selected
-                    ? 'color-mix(in srgb, var(--text-primary) 12%, transparent)'
+                    ? 'color-mix(in srgb, var(--text-primary) 9%, transparent)'
                     : 'transparent',
                   transform: selected ? 'scale(1)' : 'scale(0.96)',
                   transition:
