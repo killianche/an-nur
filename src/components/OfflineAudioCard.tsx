@@ -146,7 +146,19 @@ function SurahRow({ reciter, surah }: { reciter: ReciterId; surah: number }) {
           <ActionButton
             label="Пауза"
             icon={<Pause size={ICON_SIZE.sm} />}
-            onClick={() => pauseDownload(reciter)}
+            onClick={() => {
+              pauseDownload(reciter);
+              // Если человек останавливает НЕ ту загрузку, которую сам
+              // затеял для этой суры, значит он останавливает фоновую
+              // автозагрузку всего Корана. Тогда это отказ от неё — иначе
+              // она вернётся при следующем появлении Wi-Fi, и кнопка будет
+              // выглядеть неработающей (правило записано в
+              // `audioAutoDownload.ts`, но здесь раньше не соблюдалось).
+              //
+              // А вот паузу СВОЕЙ загрузки суры отказом считать нельзя:
+              // человек остановил одну суру, а не отказался от офлайна.
+              if (!busyOnThis) void optOutOfAutoDownload();
+            }}
           />
         ) : (
           <ActionButton

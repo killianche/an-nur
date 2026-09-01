@@ -14,7 +14,8 @@
  *
  *  • Один раз.  Если пользователь нажал «Пауза», значит он не хочет —
  *    больше не начинаем сами, пусть управляет вручную.  Флаг живёт в
- *    Preferences, чтобы решение пережило перезапуск.
+ *    Preferences, чтобы решение пережило перезапуск.  Проверяется он при
+ *    КАЖДОЙ попытке старта, а не только при взводе: см. `tryStart`.
  *
  *  • Не мешаем старту.  Запуск отложен, чтобы первые секунды после
  *    открытия приложение занималось экраном, а не сетью.
@@ -27,7 +28,7 @@
 
 import { DEFAULT_RECITER } from './reciters';
 import { isOfflineSupported, downloadedCount, TOTAL_AYAHS } from './audioStore';
-import { startDownload, getDownloadState } from './audioDownloads';
+import { startDownload, getDownloadState, type DownloadStatus } from './audioDownloads';
 
 const PREFS_KEY = 'audio.autoDownload.optedOut';
 
@@ -67,8 +68,39 @@ async function isOnWifi(): Promise<boolean> {
   }
 }
 
-function tryStart() {
-  if (getDownloadState(DEFAULT_RECITER).status === 'running') return;
+/**
+ * Можно ли начинать автозагрузку прямо сейчас.
+ *
+ * Вынесено отдельной чистой функцией, потому что здесь легко ошибиться, а
+ * ошибка не видна: приложение просто начинает качать 850 МБ после того, как
+ * человек это остановил.
+ *
+ * `paused` — это не «пока не качается», а «человек нажал Паузу». Отличать
+ * его от `idle` обязательно.
+ */
+export function shouldAutoStart(status: DownloadStatus, optedOut: boolean): boolean {
+  if (optedOut) return false;
+  return status === 'idle';
+}
+
+/**
+ * 🔴 Проверять отказ КАЖДЫЙ раз, а не один раз при взводе.
+ *
+ * Здесь была ошибка, которую владелец поймал на своём телефоне. Прежняя
+ * версия смотрела только «не идёт ли уже загрузка», а отказ пользователя
+ * читала единожды, в `armAutoDownload`. Дальше на каждое событие
+ * `networkStatusChange` — а телефон переключает сеть постоянно — она
+ * запускала загрузку заново, поверх нажатой «Паузы».
+ *
+ * Со стороны это выглядело так: человек жмёт «Пауза», состояние на миг
+ * становится `paused`, следующее сетевое событие возвращает `running`, и
+ * кнопка кажется неработающей. Причём именно у чтеца по умолчанию — у
+ * остальных автозагрузки нет, и там всё «работало».
+ */
+async function tryStart() {
+  if (!shouldAutoStart(getDownloadState(DEFAULT_RECITER).status, await hasOptedOut())) {
+    return;
+  }
   void startDownload(DEFAULT_RECITER, { kind: 'all' });
 }
 
@@ -92,7 +124,7 @@ export async function armAutoDownload(): Promise<void> {
     try {
       const { Network } = await import('@capacitor/network');
       const handle = await Network.addListener('networkStatusChange', s => {
-        if (s.connected && s.connectionType === 'wifi') tryStart();
+        if (s.connected && s.connectionType === 'wifi') void tryStart();
       });
       unsubscribe = () => { void handle.remove(); };
     } catch { /* нет плагина — просто не качаем сами */ }
