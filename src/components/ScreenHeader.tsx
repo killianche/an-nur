@@ -28,18 +28,29 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
 import { ChevronLeft } from './icons';
+import { GLASS_BLUR } from '../lib/glass';
 
-/** Высота панели без safe-area.  Экраны отводят под неё верхний
- *  отступ — экспортируем, чтобы значение не разъезжалось по файлам. */
+/** Высота самой капсулы. */
 export const SCREEN_HEADER_HEIGHT = 64;
+/** Зазор между капсулой и верхней безопасной областью. */
+const CAPSULE_TOP = 8;
+/** Зазор от боковых краёв экрана. */
+const CAPSULE_SIDE = 12;
 
 /** Длительность выезда/ухода панели — держим рядом с разметкой, чтобы
  *  флаг will-change снимался ровно после перехода, а не «примерно». */
 const HIDE_TRANSITION_MS = 180;
 
-/** Готовый отступ сверху для контента под панелью. */
+/**
+ * Готовый отступ сверху для контента под панелью.
+ *
+ * 🔴 Считает ВСЁ занятое панелью место, вместе с зазором до безопасной
+ * области: панель плавающая, и без зазора в расчёте первая строка экрана
+ * уходила бы под стекло. Оно полупрозрачное, поэтому такая ошибка не
+ * выглядит как ошибка — текст «вроде виден», просто не читается.
+ */
 export const screenHeaderOffset = (extra = 0) =>
-  `calc(${SCREEN_HEADER_HEIGHT + extra}px + env(safe-area-inset-top))`;
+  `calc(${SCREEN_HEADER_HEIGHT + CAPSULE_TOP + extra}px + env(safe-area-inset-top))`;
 
 export type HeaderAction = {
   key: string;
@@ -86,23 +97,24 @@ export function ScreenHeader({
   return (
     <header
       role="banner"
-      className="screen-header"
+      className="screen-header liquid-glass"
       data-animating={animating}
       style={{
+        ...GLASS_BLUR,
         position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
+        top: `calc(env(safe-area-inset-top) + ${CAPSULE_TOP}px)`,
+        left: `${CAPSULE_SIDE}px`,
+        right: `${CAPSULE_SIDE}px`,
         zIndex: 30,
-        paddingTop: 'env(safe-area-inset-top)',
-        background: 'color-mix(in srgb, var(--surface) 82%, transparent)',
-        borderBottom: '0.5px solid var(--hairline)',
-        // Размытие взято из общей шкалы: было 30px, а поверх этой же
-        // области лежал ещё и StatusBarScrim со своим размытием — одна
-        // полоса экрана пересчитывалась дважды за кадр прокрутки.
-        backdropFilter: 'saturate(var(--saturate-chrome)) blur(var(--blur-chrome))',
-        WebkitBackdropFilter: 'saturate(var(--saturate-chrome)) blur(var(--blur-chrome))',
-        transform: visible ? 'translate3d(0, 0, 0)' : 'translate3d(0, -105%, 0)',
+        height: `${SCREEN_HEADER_HEIGHT}px`,
+        boxSizing: 'border-box',
+        borderRadius: '24px',
+        overflow: 'hidden',
+        // Уезжает выше собственной высоты вместе с зазором и безопасной
+        // областью — иначе край стекла остаётся торчать под часами.
+        transform: visible
+          ? 'translate3d(0, 0, 0)'
+          : `translate3d(0, calc(-100% - ${CAPSULE_TOP}px - env(safe-area-inset-top)), 0)`,
         opacity: visible ? 1 : 0,
         pointerEvents: visible ? 'auto' : 'none',
         transition:
@@ -112,7 +124,7 @@ export function ScreenHeader({
       aria-hidden={!visible}
     >
       <div style={{
-        height: `${SCREEN_HEADER_HEIGHT}px`,
+        height: '100%',
         display: 'flex',
         alignItems: 'center',
         gap: 'var(--space-tight)',

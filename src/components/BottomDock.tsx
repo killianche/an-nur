@@ -1,4 +1,5 @@
 import { SkipBack, SkipForward, Play as PlayIc, Pause as PauseIc, Close as CloseIc } from './icons';
+import { GLASS_BLUR } from '../lib/glass';
 
 type AudioState = 'idle' | 'loading' | 'playing' | 'paused';
 
@@ -46,6 +47,7 @@ export function BottomDock({
     <div
       role="region"
       aria-label="Audio player"
+      className="liquid-glass"
       style={{
         position: inline ? 'relative' : 'fixed',
         left: inline ? undefined : '50%',
@@ -55,18 +57,15 @@ export function BottomDock({
         transform: inline ? undefined : 'translateX(-50%)',
         zIndex: inline ? undefined : 25,
         height: inline ? '48px' : '76px',
-        background: 'color-mix(in srgb, var(--surface) 94%, transparent)',
-        border: '1px solid var(--hairline)',
         borderRadius: inline ? 'var(--radius-card)' : 'var(--radius-pill)',
-        boxShadow: 'rgba(0,0,0,0.04) 0 1px 2px, rgba(0,0,0,0.12) 0 14px 36px',
         display: 'flex',
         alignItems: 'center',
         gap: inline ? 'var(--space-hair)' : 'var(--space-snug)',
         padding: inline ? '0 var(--space-tight)' : '0 var(--space-cozy)',
-        // Общее для всей навигации значение размытия вместо собственных
-        // 20px — плеер, шапка и вкладки должны быть из одного материала.
-        backdropFilter: 'saturate(var(--saturate-chrome)) blur(var(--blur-chrome))',
-        WebkitBackdropFilter: 'saturate(var(--saturate-chrome)) blur(var(--blur-chrome))',
+        // Материал, грань, блик и тени — из общего класса `.liquid-glass`,
+        // размытие — инлайном оттуда же, где и у остальных панелей: из CSS
+        // его съедает минификатор (см. `src/lib/glass.ts`).
+        ...GLASS_BLUR,
         width: inline ? '100%' : undefined,
         maxWidth: inline ? 'none' : 'min(96vw, 400px)',
         justifyContent: inline ? 'space-between' : undefined,

@@ -1,3 +1,4 @@
+import { GLASS_BLUR } from '../lib/glass';
 import { useState, useRef, useEffect, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ALL_THEMES, THEME_LABELS, isLightTheme, type Theme } from '../hooks/useTheme';
@@ -382,6 +383,7 @@ export function SettingsSheet({
       <div
         ref={sheetRef}
         data-reading-sheet=""
+        className="liquid-glass"
         onClick={e => e.stopPropagation()}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
@@ -389,9 +391,10 @@ export function SettingsSheet({
         style={{
           position: 'fixed',
           zIndex: 40,
-          background: 'color-mix(in srgb, var(--surface) 92%, transparent)',
-          backdropFilter: 'saturate(180%) blur(20px)',
-          WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+          // Материал, грань, блик и тени приходят классом `.liquid-glass`;
+          // размытие — инлайном оттуда же, где и у остальных панелей: из CSS
+          // его съедает минификатор (см. `src/lib/glass.ts`).
+          ...GLASS_BLUR,
           overflowY: 'auto',
           touchAction: 'pan-y',
           transition: dragging

@@ -1,16 +1,25 @@
 /**
  * TabBar — общая нижняя навигация Web / iOS / Android.
  *
- * Геометрия повторяет системную iOS-панель: 49 pt занимает ряд вкладок,
- * нижняя safe-area входит в фон самой панели, а не превращается в пустой
- * зазор под плавающей капсулой. Внешней тени и отдельного «тумана» нет —
- * разделение с контентом даёт только полупрозрачный материал и hairline.
+ * Панель — плавающая стеклянная капсула, отделённая от краёв экрана.
+ * Содержимое подтекает под неё, а не упирается в глухую полосу: это и
+ * читается как стекло. Рецепт самого стекла общий с шапкой — класс
+ * `.liquid-glass` в `index.css`, чтобы две панели не разъехались по
+ * прозрачности и тени.
+ *
+ * 🔴 `TAB_BAR_HEIGHT` — не высота капсулы, а всё занятое ею место снизу,
+ * вместе с зазором до края. Шесть экранов считают по нему нижний отступ
+ * содержимого (`SurahPicker`, `AccountScreen`, `DuaScreen`,
+ * `PrayerTimesScreen`, `ComingSoonScreen` и другие). Если экспортировать
+ * высоту самой капсулы, последняя строка списка окажется под стеклом —
+ * молча, потому что стекло полупрозрачное и текст под ним «вроде виден».
  */
 
 import { useRef, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
 import { BookOpen, Sparkle, Clock, Flower, Person } from './icons';
+import { GLASS_BLUR } from '../lib/glass';
 
 export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer' | 'account';
 
@@ -27,8 +36,15 @@ const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }
   { id: 'account', label: 'Аккаунт', icon: selected => <Person size={TAB_ICON} isFilled={selected} /> },
 ];
 
-/** Системная высота ряда вкладок iPhone без нижней safe-area. */
-export const TAB_BAR_HEIGHT = 64;
+/** Высота самой капсулы. */
+const CAPSULE_HEIGHT = 64;
+/** Зазор между капсулой и нижним краем безопасной области. */
+const CAPSULE_INSET = 10;
+/** Зазор от боковых краёв экрана. */
+const CAPSULE_SIDE = 12;
+
+/** Сколько места панель занимает снизу — см. предупреждение в шапке. */
+export const TAB_BAR_HEIGHT = CAPSULE_HEIGHT + CAPSULE_INSET;
 
 /** Максимальная пауза между двумя тапами по активной вкладке. */
 const DOUBLE_TAP_MS = 420;
@@ -42,30 +58,30 @@ export function TabBar({ active, onSelect }: {
   return (
     <nav
       aria-label="Разделы"
+      className="liquid-glass"
       style={{
+        ...GLASS_BLUR,
         position: 'fixed',
-        left: 0,
-        right: 0,
-        bottom: 0,
+        left: `${CAPSULE_SIDE}px`,
+        right: `${CAPSULE_SIDE}px`,
+        bottom: `calc(env(safe-area-inset-bottom) + ${CAPSULE_INSET}px)`,
         zIndex: 40,
-        height: `calc(${TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom))`,
-        paddingBottom: 'env(safe-area-inset-bottom)',
+        height: `${CAPSULE_HEIGHT}px`,
         boxSizing: 'border-box',
-        background: 'color-mix(in srgb, var(--surface) 84%, transparent)',
-        // Одно значение размытия на всю навигацию (было 32px): широкий
-        // радиус дорог в WKWebView на каждом кадре прокрутки, а на
-        // полупрозрачной панели разницы с 16px не видно.
-        backdropFilter: 'saturate(var(--saturate-chrome)) blur(var(--blur-chrome))',
-        WebkitBackdropFilter: 'saturate(var(--saturate-chrome)) blur(var(--blur-chrome))',
-        borderTop: '0.5px solid var(--hairline)',
+        // Радиус чуть меньше половины высоты: полная капсула на пять
+        // подписей выглядит аптечной пилюлей, а не панелью.
+        borderRadius: '26px',
+        // На планшете панель не растягивается во всю ширину: ряд из пяти
+        // вкладок шириной в лист выглядит потерянным.
+        maxWidth: '560px',
+        margin: '0 auto',
+        overflow: 'hidden',
       }}
     >
       <div
         style={{
           width: '100%',
-          maxWidth: '720px',
-          height: `${TAB_BAR_HEIGHT}px`,
-          margin: '0 auto',
+          height: '100%',
           display: 'grid',
           gridTemplateColumns: `repeat(${TABS.length}, minmax(0, 1fr))`,
         }}
@@ -106,7 +122,7 @@ export function TabBar({ active, onSelect }: {
               data-active={selected}
               style={{
                 minWidth: 0,
-                height: `${TAB_BAR_HEIGHT}px`,
+                height: '100%',
                 padding: 'var(--space-tight) var(--space-hair)',
                 border: 'none',
                 borderRadius: 0,
