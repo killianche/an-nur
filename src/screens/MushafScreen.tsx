@@ -32,10 +32,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Appearance, BookOpen, Flower, Typography, ICON_SIZE } from '../components/icons';
+import { Appearance, BookOpen, Typography, ICON_SIZE } from '../components/icons';
 import { BottomDock } from '../components/BottomDock';
 import { QcfMushafPage } from '../components/QcfMushafPage';
-import { MushafFrame } from '../components/MushafFrame';
 import { FontErrorBanner } from '../components/FontErrorBanner';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { ThemeSettings } from '../components/ReadingSettings';
@@ -73,10 +72,6 @@ import {
   writeMushafFont,
   type MushafFontId,
 } from '../lib/mushafFont';
-import {
-  readMushafPageStyle, writeMushafPageStyle, toggleMushafPageStyle,
-  type MushafPageStyleId,
-} from '../lib/mushafPageStyle';
 import {
   audioStateForVerse,
   mushafActiveVerseKey,
@@ -119,12 +114,6 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   const [headerVisible, setHeaderVisible] = useState(true);
   const [themeOpen, setThemeOpen] = useState(false);
   const [mushafFont, setMushafFontState] = useState<MushafFontId>(readMushafFont);
-  const [pageStyle, setPageStyleState] = useState<MushafPageStyleId>(readMushafPageStyle);
-  const setPageStyle = (next: MushafPageStyleId) => {
-    setPageStyleState(next);
-    writeMushafPageStyle(next);
-  };
-  const printed = pageStyle === 'printed';
   const themeBtnRef = useRef<HTMLButtonElement>(null);
 
   // Чтец — тот же, что выбран в ленте: настройка одна на приложение,
@@ -525,21 +514,6 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
             icon: <Typography size={ICON_SIZE.lg} />,
             onClick: () => setMushafFont(toggleMushafFont(mushafFont)),
           },
-          // Оформление — отдельной кнопкой, а не третьим состоянием шрифта:
-          // рамка сочетается и с обычным начертанием, и с цветным таджвидом,
-          // и сваливать их в один переключатель значило бы плодить пары.
-          {
-            key: 'mushaf-page-style',
-            label: printed
-              ? 'Убрать печатное оформление'
-              : 'Печатное оформление страницы',
-            // Не Appearance: этой иконкой уже помечена кнопка выбора темы
-            // соседним пунктом, и две одинаковые в одной шапке неразличимы.
-            // Flower читается как орнамент — ровно то, что включает кнопка.
-            icon: <Flower size={ICON_SIZE.lg} />,
-            active: printed,
-            onClick: () => setPageStyle(toggleMushafPageStyle(pageStyle)),
-          },
           {
             key: 'theme',
             label: 'Оформление',
@@ -670,7 +644,6 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
                 landscapeWide={false}
                 variant={mushafFont}
                 edition={edition}
-                printed={printed}
               />
             ))}
           </div>
@@ -725,7 +698,6 @@ function PreparedMushafPage({
   landscapeWide,
   variant,
   edition,
-  printed,
 }: {
   page: number;
   visible: boolean;
@@ -743,8 +715,6 @@ function PreparedMushafPage({
    * страницу не того издания, показал бы чужой арабский после свайпа.
    */
   edition: QcfEdition;
-  /** Печатное оформление: кремовая страница в орнаментальной рамке. */
-  printed: boolean;
 }) {
   const { data } = useQcfPage(page, edition);
   const colourMode = variant === 'qpc-v4-tajweed';
@@ -778,18 +748,6 @@ function PreparedMushafPage({
         contain: 'layout paint style',
       } as React.CSSProperties}
     >
-      {/* Печатная страница: кремовая подложка под текстом и рамка поверх.
-          Подложка лежит ПОД текстом отдельным слоем, а не фоном самого
-          блока: у блока подбирается кегль, и любое вмешательство в его
-          геометрию запускает пересчёт. Рамка — тоже отдельный слой с
-          pointer-events: none, чтобы не перехватывать тап по аяту. */}
-      {printed && (
-        <div
-          aria-hidden="true"
-          className="mushaf-printed-sheet"
-          style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-        />
-      )}
       {data ? (
         <QcfMushafPage
           pageData={data}
@@ -806,7 +764,6 @@ function PreparedMushafPage({
       ) : (
         <MushafPageSkeleton />
       )}
-      {printed && <MushafFrame />}
     </div>
   );
 }

@@ -1249,36 +1249,3 @@ body {
   .app-screen-enter { animation: none; }
 }
 
-/* ── Печатное оформление страницы мусхафа ─────────────────────────────
- *
- * Кремовая подложка и цвета орнамента заданы здесь, а не в компоненте:
- * оформление обязано оставаться читаемым во всех пяти темах. В тёмной
- * теме страница не становится белой — она остаётся тёмной, но получает
- * ту же рамку тёплым золотом: печатный вид не имеет права ломать
- * выбранную человеком тему (тот же принцип, что у цветного таджвида).
- */
-.mushaf-printed-sheet {
-  background: #f6efdf;
-  box-shadow: inset 0 0 42px rgba(120, 96, 54, 0.10);
-}
-
-:root {
-  --mushaf-frame-ink: #7a6434;
-  --mushaf-frame-accent: #b9993f;
-  --mushaf-frame-rule: rgba(122, 100, 52, 0.45);
-}
-
-/* Тёмные темы: подложка не светлеет, орнамент приглушается, иначе рамка
-   на чёрном фоне бьёт по глазам сильнее самого текста. */
-[data-theme="dark"] .mushaf-printed-sheet,
-[data-theme="aurora2"] .mushaf-printed-sheet {
-  background: #0f0d09;
-  box-shadow: inset 0 0 42px rgba(0, 0, 0, 0.5);
-}
-
-[data-theme="dark"],
-[data-theme="aurora2"] {
-  --mushaf-frame-ink: #6b5a30;
-  --mushaf-frame-accent: #8c7434;
-  --mushaf-frame-rule: rgba(140, 116, 52, 0.4);
-}
