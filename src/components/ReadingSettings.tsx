@@ -528,24 +528,111 @@ type ThemeProps = {
    *  picker's palette button) can omit it; HighlightCard is hidden in
    *  that case. */
   reciter?: ReciterId;
-  /** Полноэкранный режим передаёт свой выбор из двух постраничных лиц. */
-  mushafFont?: MushafFontId;
-  setMushafFont?: (font: MushafFontId) => void;
 };
 
 export function ThemeSettings(p: ThemeProps) {
   return (
     <SettingsSheet onClose={p.onClose} title="Оформление" placement="top-popover" anchorEl={p.anchorEl}>
       <div style={{ display: 'grid', gap: '10px' }}>
-        {p.mushafFont && p.setMushafFont && (
-          <MushafFontCard font={p.mushafFont} onPick={p.setMushafFont} />
-        )}
+        {/* Шрифт страницы переехал в поповер «Чтение» под кнопкой «Аа»:
+            там же теперь и выбор чтеца, а здесь остался только вид. */}
         <ThemePicker theme={p.theme} setTheme={p.setTheme} />
         {/* Цвет сияния есть только у «Авроры 2». */}
         {p.theme === 'aurora2' && (
           <AuroraColourCard variant={p.theme} />
         )}
         {p.reciter && <HighlightCard reciter={p.reciter} />}
+      </div>
+    </SettingsSheet>
+  );
+}
+
+/**
+ * ReciterCard — выбор чтеца.
+ *
+ * Вынесен из листа «Чтение» отдельным компонентом, потому что тот же выбор
+ * нужен полноэкранному мусхафу: держать две копии одной сетки — верный
+ * способ однажды добавить чтеца в одном месте и забыть про другое.
+ */
+export function ReciterCard({ reciter, onPick }: {
+  reciter: ReciterId;
+  onPick: (id: ReciterId) => void;
+}) {
+  return (
+    <section style={settingCard}>
+      <p style={{ ...cardTitle, display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Microphone size={ICON_SIZE.sm} />
+        Чтец
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+        {RECITERS.map(r => {
+          const active = reciter === r.id;
+          return (
+            <button
+              key={r.id}
+              onClick={() => onPick(r.id)}
+              aria-pressed={active}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                minHeight: '38px',
+                padding: '8px 10px',
+                borderRadius: '10px',
+                border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline)'}`,
+                background: active
+                  ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
+                  : 'color-mix(in srgb, var(--ink) 3%, transparent)',
+                boxShadow: active ? 'inset 0 0 0 1px var(--text-primary)' : 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                textAlign: 'left',
+                overflow: 'hidden',
+                fontSize: 'var(--font-caption1)',
+                fontWeight: 'var(--weight-regular)',
+                letterSpacing: '0.005em',
+                color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+                transition: 'box-shadow 140ms ease, background 140ms ease',
+              }}
+            >
+              {r.label}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * MushafReadingSettings — поповер кнопки «Аа» в полноэкранном мусхафе.
+ *
+ * Здесь живёт всё, что относится к ЧТЕНИЮ страницы: каким начертанием она
+ * набрана и чьим голосом читается. Оформление (тема, сияние, подсветка
+ * слова) осталось за соседней кнопкой — так у каждой кнопки одна тема, и
+ * не приходится гадать, в какой из двух искать нужное.
+ *
+ * Прежде «Аа» просто перебирала шрифты по кругу, а выбор шрифта заодно
+ * лежал в поповере оформления. Выбор чтеца в полноэкранном режиме был
+ * недоступен вовсе — за ним приходилось выходить в ленту.
+ */
+export function MushafReadingSettings({
+  font, setFont, reciter, setReciter, onClose, anchorEl,
+}: {
+  font: MushafFontId;
+  setFont: (font: MushafFontId) => void;
+  reciter: ReciterId;
+  setReciter: (id: ReciterId) => void;
+  onClose: () => void;
+  anchorEl?: HTMLElement | null;
+}) {
+  return (
+    <SettingsSheet onClose={onClose} title="Чтение" placement="top-popover" anchorEl={anchorEl}>
+      <div style={{ display: 'grid', gap: '10px' }}>
+        <MushafFontCard font={font} onPick={setFont} />
+        <ReciterCard reciter={reciter} onPick={setReciter} />
       </div>
     </SettingsSheet>
   );
@@ -878,55 +965,7 @@ export function TypographySettings(p: TypographyProps) {
     // одну строку, и весь попап снова читается одним куском без
     // переключения вкладок.
     <SettingsSheet onClose={p.onClose} title="Чтение" placement="top-popover" anchorEl={p.anchorEl}>
-      {/* ── Чтец ───────────────────────────────────────────────────── */}
-      <section style={settingCard}>
-        <p style={{ ...cardTitle, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Microphone size={ICON_SIZE.sm} />
-          Чтец
-        </p>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '6px',
-        }}>
-          {RECITERS.map(r => {
-            const active = p.reciter === r.id;
-            return (
-              <button
-                key={r.id}
-                onClick={() => p.setReciter(r.id)}
-                aria-pressed={active}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'flex-start',
-                  minHeight: '38px',
-                  padding: '8px 10px',
-                  borderRadius: '10px',
-                  border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline)'}`,
-                  background: active
-                    ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
-                    : 'color-mix(in srgb, var(--ink) 3%, transparent)',
-                  boxShadow: active ? 'inset 0 0 0 1px var(--text-primary)' : 'none',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  textAlign: 'left',
-                  overflow: 'hidden',
-                  fontSize: 'var(--font-caption1)',
-                  fontWeight: 'var(--weight-regular)',
-                  letterSpacing: '0.005em',
-                  color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  whiteSpace: 'nowrap',
-                  textOverflow: 'ellipsis',
-                  transition: 'box-shadow 140ms ease, background 140ms ease',
-                }}
-              >
-                {r.label}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+      <ReciterCard reciter={p.reciter} onPick={p.setReciter} />
 
       {/* ── Офлайн-загрузка ────────────────────────────────────────── */}
       <OfflineAudioCard reciter={p.reciter} surahNumber={p.surahNumber} />

@@ -38,7 +38,7 @@ import { QcfMushafPage } from '../components/QcfMushafPage';
 import { FontErrorBanner } from '../components/FontErrorBanner';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { pageTurnDuration } from '../lib/mushafTurn';
-import { ThemeSettings } from '../components/ReadingSettings';
+import { MushafReadingSettings, ThemeSettings } from '../components/ReadingSettings';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { useAyahAudio } from '../hooks/useAyahAudio';
 import { ensurePage, preloadPage, useQcfPage } from '../hooks/useQcfPage';
@@ -68,8 +68,6 @@ import { fontFamilyForPage } from '../content/quran-tajweed-meta';
 import {
   readMushafFont,
   mushafEdition,
-  mushafFontLabel,
-  toggleMushafFont,
   writeMushafFont,
   type MushafFontId,
 } from '../lib/mushafFont';
@@ -112,14 +110,23 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   const [selected, setSelected] = useState<string | null>(null);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [readingOpen, setReadingOpen] = useState(false);
+  const readingBtnRef = useRef<HTMLButtonElement>(null);
   const [mushafFont, setMushafFontState] = useState<MushafFontId>(readMushafFont);
   const themeBtnRef = useRef<HTMLButtonElement>(null);
 
   // Чтец — тот же, что выбран в ленте: настройка одна на приложение,
-  // и переключаться между режимами ради него было бы странно.
-  const reciter = readPref<ReciterId>(
+  // и переключаться между режимами ради него было бы странно. Раньше он
+  // здесь только читался и поменять его из полноэкранного режима было
+  // нельзя — приходилось выходить в ленту. Теперь это состояние, и его
+  // меняет поповер «Чтение» под кнопкой «Аа».
+  const [reciter, setReciterState] = useState<ReciterId>(() => readPref<ReciterId>(
     'reciter', DEFAULT_RECITER, RECITERS.map(r => r.id),
-  );
+  ));
+  const setReciter = (id: ReciterId) => {
+    setReciterState(id);
+    localStorage.setItem('reciter', id);
+  };
   const audio = useAyahAudio(reciter);
   // Выбор шрифта определяет и издание: у «Мадани 1405» свои данные страниц
   // в /qcf1/pages.  Смешать издания нельзя — PUA-коды у них общие, а слова
@@ -508,13 +515,18 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
             },
           }] : []),
           {
-            key: 'mushaf-font',
-            // Вариантов больше двух, поэтому подпись называет СЛЕДУЮЩИЙ по
-            // кругу, а не описывает пару «включить/выключить»: иначе на
-            // третьем варианте кнопка врала бы о том, что она делает.
-            label: `Включить шрифт «${mushafFontLabel(toggleMushafFont(mushafFont))}»`,
+            key: 'mushaf-reading',
+            // Кнопка открывает выбор, а не перебирает варианты по кругу.
+            // Перебор годился, пока вариант был один — шрифт; с чтецом это
+            // уже два независимых списка, и цикл по ним был бы угадайкой.
+            label: 'Чтение: шрифт и чтец',
             icon: <Typography size={ICON_SIZE.lg} />,
-            onClick: () => setMushafFont(toggleMushafFont(mushafFont)),
+            active: readingOpen,
+            ref: readingBtnRef,
+            onClick: () => {
+              setThemeOpen(false);
+              setReadingOpen(v => !v);
+            },
           },
           {
             key: 'theme',
@@ -526,6 +538,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
               // Пока человек открывает оформление и выбирает цветной
               // вариант, текущий файл уже едет в фоне.
               warmCurrentTajweed();
+              setReadingOpen(false);
               setThemeOpen(v => !v);
             },
           },
@@ -537,8 +550,17 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           theme={theme} setTheme={setTheme}
           onClose={() => setThemeOpen(false)}
           anchorEl={themeBtnRef.current}
-          mushafFont={mushafFont}
-          setMushafFont={setMushafFont}
+        />
+      )}
+
+      {readingOpen && (
+        <MushafReadingSettings
+          font={mushafFont}
+          setFont={setMushafFont}
+          reciter={reciter}
+          setReciter={setReciter}
+          onClose={() => setReadingOpen(false)}
+          anchorEl={readingBtnRef.current}
         />
       )}
 
