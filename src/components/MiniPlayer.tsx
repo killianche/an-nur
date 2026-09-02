@@ -28,7 +28,7 @@ import { reciterById } from '../lib/reciters';
 import { GLASS_BLUR } from '../lib/glass';
 import { TAB_BAR_HEIGHT } from './TabBar';
 
-export function MiniPlayer({ onOpen }: { onOpen: (surah: number) => void }) {
+export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
   const { currentSurah, audioState, reciter } = useAudioState();
   const audio = useAudioActions();
 
@@ -62,8 +62,8 @@ export function MiniPlayer({ onOpen }: { onOpen: (surah: number) => void }) {
       }}
     >
       <button
-        onClick={() => onOpen(currentSurah)}
-        aria-label={`Открыть суру ${meta?.transliteration ?? currentSurah}`}
+        onClick={onOpen}
+        aria-label={`Открыть плеер: ${meta?.transliteration ?? currentSurah}`}
         style={{
           flex: 1, minWidth: 0,
           display: 'flex', flexDirection: 'column', alignItems: 'flex-start',

@@ -41,6 +41,7 @@ const MushafScreen = lazy(() => import('./screens/MushafScreen').then(m => ({ de
 const AzkarScreen = lazy(() => import('./screens/AzkarScreen').then(m => ({ default: m.AzkarScreen })));
 const DuaScreen = lazy(() => import('./screens/DuaScreen').then(m => ({ default: m.DuaScreen })));
 const AzkarCategoryScreen = lazy(() => import('./screens/AzkarCategoryScreen').then(m => ({ default: m.AzkarCategoryScreen })));
+const PlayerScreen = lazy(() => import('./screens/PlayerScreen').then(m => ({ default: m.PlayerScreen })));
 const BookmarksScreen = lazy(() => import('./screens/BookmarksScreen').then(m => ({ default: m.BookmarksScreen })));
 const PrayerTimesScreen = lazy(() => import('./screens/PrayerTimesScreen').then(m => ({ default: m.PrayerTimesScreen })));
 const QiblaScreen = lazy(() => import('./screens/QiblaScreen').then(m => ({ default: m.QiblaScreen })));
@@ -72,6 +73,11 @@ type Screen =
   // Кибла ушла из вкладок: открывается с экрана намаза и имеет свою
   // запись в истории, поэтому системная «назад» возвращает к намазу.
   | { name: 'qibla' }
+  // Плеер — отдельный экран, а не лист поверх: слушают Коран иначе, чем
+  // читают, и у слушания своя запись в истории. Что именно звучит, экран
+  // не хранит — это состояние общего аудио, иначе оно разошлось бы с
+  // полоской на вкладках.
+  | { name: 'player' }
   // Юридические документы — вложенный экран, а не ссылка наружу: они
   // лежат в пакете и обязаны открываться без интернета.
   | { name: 'document'; doc: DocumentId };
@@ -452,6 +458,18 @@ export default function App() {
     );
   }
 
+  if (screen.name === 'player') {
+    return (
+      <Shell key="player" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+        <Suspense fallback={<ScreenFallback />}>
+        <ErrorBoundary name="PlayerScreen" onReset={goBack}>
+          <PlayerScreen onBack={goBack} />
+        </ErrorBoundary>
+        </Suspense>
+      </Shell>
+    );
+  }
+
   if (screen.name === 'document') {
     return (
       <Shell key="document" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
@@ -550,7 +568,7 @@ export default function App() {
       </Suspense>
       {/* Полоска звучащей суры. Только на вкладках: в ленте и мусхафе свой
           плеер, и две панели разом были бы лишними. */}
-      <MiniPlayer onOpen={n => navigate({ name: 'surah', number: n })} />
+      <MiniPlayer onOpen={() => navigate({ name: 'player' })} />
       <TabBar
         active={tab}
         onSelect={next => {
