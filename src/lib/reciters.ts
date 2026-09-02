@@ -138,6 +138,18 @@ export function supportsAyahOffline(id: ReciterId): boolean {
  * Аль-Бакары: браузеру не приходится открывать и перематывать 100+ МБ.
  * Посурный поток остаётся только fallback для будущего чтеца без
  * поаятного источника. */
+/**
+ * Есть ли у чтеца непрерывная запись суры целиком.
+ *
+ * Не то же самое, что `requiresSurahAudioStream`: та отвечает «другого
+ * источника нет», а эта — «такой источник есть». Для непрерывного чтения
+ * суры важна именно вторая: сплошной файл предпочтителен даже у чтецов, у
+ * которых есть и поаятные записи.
+ */
+export function hasSurahAudio(id: ReciterId): boolean {
+  return Boolean(reciterById(id).surahAudioBase);
+}
+
 export function requiresSurahAudioStream(id: ReciterId): boolean {
   const reciter = reciterById(id);
   const hasPerAyahSource = Boolean(

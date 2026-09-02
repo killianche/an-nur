@@ -817,9 +817,15 @@ export function SurahScreen({
     if (audio.audioState === 'playing') {
       audio.pause();
     } else if (audio.currentSurah && audio.currentAyah) {
-      audio.playFrom(audio.currentSurah, audio.currentAyah, meta?.ayahs ?? 9999);
+      // Возобновление сохраняет режим: прервали непрерывное чтение суры —
+      // продолжаем им же, иначе после паузы вернулись бы швы между аятами.
+      audio.playFrom(
+        audio.currentSurah, audio.currentAyah, meta?.ayahs ?? 9999, audio.currentMode(),
+      );
     } else {
-      audio.playFrom(surahNumber, 1, meta?.ayahs ?? 9999);
+      // Запуск с начала суры — это намерение слушать её целиком, значит
+      // непрерывная запись: склейка из поаятных даёт паузу на каждой границе.
+      audio.playFrom(surahNumber, 1, meta?.ayahs ?? 9999, 'surah');
     }
   };
 

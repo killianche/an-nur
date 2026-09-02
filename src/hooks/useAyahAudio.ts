@@ -3,8 +3,8 @@ import { ayahAudioUrl } from '../lib/quranUtils';
 import { ayahAudioRange } from '../lib/ayahAudioRange';
 import { cacheAyah } from '../lib/audioDownloads';
 import {
-  DEFAULT_RECITER, RECITERS_WITH_SEGMENTS, requiresSurahAudioStream, surahAudioUrl,
-  type ReciterId,
+  DEFAULT_RECITER, RECITERS_WITH_SEGMENTS, hasSurahAudio, requiresSurahAudioStream,
+  surahAudioUrl, type ReciterId,
 } from '../lib/reciters';
 import {
   setMediaSessionMetadata, setMediaSessionPlaybackState,
@@ -79,11 +79,28 @@ function cacheKey(reciter: ReciterId, surah: number, ayah: number) {
   return `${reciter}:${surah}:${ayah}`;
 }
 
-/** Полную запись суры открываем только тогда, когда у чтеца нет отдельного
- * файла выбранного аята. Иначе холодный запуск в середине Аль-Бакары сначала
- * открывал 100+ МБ и лишь затем делал seek. Все пять источников теперь
- * стартуют из короткого MP3, а следующий файл прогревается заранее. */
+/**
+ * Режим текущей сессии воспроизведения.
+ *
+ * `ayah` — человек ткнул в отдельный аят. Берём короткий файл этого аята:
+ * холодный старт в середине Аль-Бакары иначе открывал бы 100+ МБ ради
+ * одного seek.
+ *
+ * `surah` — человек включил суру целиком. Здесь всё наоборот: нужен один
+ * непрерывный файл, потому что склейка из поаятных даёт слышимую паузу на
+ * каждой границе. Это ровно то, на что жаловался владелец. Одна медленная
+ * загрузка в начале — честная плата за чтение без швов.
+ *
+ * Флаг модульный, а не в состоянии хука: звучащая сессия в приложении одна,
+ * а решение о режиме нужно шести местам ниже по коду, включая ключ кэша
+ * элементов. Протаскивать его параметром через все шесть значило бы
+ * менять сигнатуры ради того, что и так глобально по смыслу.
+ */
+export type PlaybackMode = 'ayah' | 'surah';
+let playbackMode: PlaybackMode = 'ayah';
+
 function usesContinuousAudio(reciter: ReciterId) {
+  if (playbackMode === 'surah' && hasSurahAudio(reciter)) return true;
   return requiresSurahAudioStream(reciter);
 }
 
@@ -416,6 +433,9 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
 
   /** Tap on an ayah — play / pause that ayah, joining the queue. */
   const handlePlay = useCallback((surah: number, ayah: number, lastAyah?: number) => {
+    // Тап по отдельному аяту — это всегда поаятный режим: человек ждёт
+    // звук сразу, а не загрузку сплошного файла ради одного аята.
+    playbackMode = 'ayah';
     const k = cacheKey(reciterRef.current, surah, ayah);
 
     if (queueRef.current?.surah !== surah) {
@@ -434,7 +454,17 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
   }, [activeKey, audioState, pauseCurrent, playOne]);
 
   /** Start sequential playback from `fromAyah` through `lastAyah`. */
-  const playFrom = useCallback((surah: number, fromAyah: number, lastAyah: number) => {
+  /**
+   * Включить суру подряд.
+   *
+   * `mode: 'surah'` переводит источник на непрерывную запись — только так
+   * между аятами не остаётся паузы. Умолчание оставлено прежним, чтобы
+   * никакой существующий вызов не сменил поведение молча.
+   */
+  const playFrom = useCallback((
+    surah: number, fromAyah: number, lastAyah: number, mode: PlaybackMode = 'ayah',
+  ) => {
+    playbackMode = mode;
     queueRef.current = { surah, first: fromAyah, last: lastAyah, current: fromAyah };
     playOne(surah, fromAyah);
   }, [playOne]);
@@ -636,6 +666,9 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     getRemainingSeconds,
     handlePlay,
     playFrom,
+    /** Режим текущей сессии — нужен возобновлению после паузы, чтобы оно
+     *  не сбрасывало непрерывное чтение суры обратно на поаятное. */
+    currentMode: () => playbackMode,
     next,
     prev,
     pause: pauseCurrent,
