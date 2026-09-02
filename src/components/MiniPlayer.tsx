@@ -29,7 +29,7 @@ import { GLASS_BLUR } from '../lib/glass';
 import { TAB_BAR_HEIGHT } from './TabBar';
 
 export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
-  const { currentSurah, audioState, reciter } = useAudioState();
+  const { currentSurah, currentAyah, audioState, reciter } = useAudioState();
   const audio = useAudioActions();
 
   if (!currentSurah || audioState === 'idle') return null;
@@ -97,7 +97,12 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
       <button
         onClick={() => {
           if (playing) audio.pause();
-          else if (meta) audio.playFrom(currentSurah, 1, meta.ayahs, audio.currentMode());
+          // Продолжаем с ТЕКУЩЕГО аята, а не с первого. Единица тут —
+          // аят, и `1` вместо него означала бы «начать суру заново»:
+          // человек ставил паузу на сороковом аяте, а получал первый.
+          else if (meta) {
+            audio.playFrom(currentSurah, currentAyah ?? 1, meta.ayahs, audio.currentMode());
+          }
         }}
         aria-label={playing ? 'Пауза' : 'Продолжить'}
         className="icon-btn"

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { ayahAudioUrl } from '../lib/quranUtils';
 import { ayahAudioRange } from '../lib/ayahAudioRange';
-import { cacheAyah } from '../lib/audioDownloads';
+import { cacheAyah, missingCount } from '../lib/audioDownloads';
 import {
   DEFAULT_RECITER, RECITERS_WITH_SEGMENTS, hasSurahAudio, requiresSurahAudioStream,
   surahAudioUrl, type ReciterId,
@@ -414,7 +414,13 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       // растёт от обычного чтения, без единого нажатия «скачать» —
       // включая случай «ткнул в середину Бакары».  No-op, если аят уже
       // лежит или платформа не нативная.
-      cacheAyah(r, surah, ayah);
+      //
+      // 🔴 Но НЕ в режиме непрерывного чтения суры. Там уже качается один
+      // сплошной файл, и докачка поаятных поверх него означала бы, что
+      // Аль-Бакара по сотовой сети тянет поток И ещё 286 отдельных mp3.
+      // Офлайн-библиотека наполняется обычным чтением по аятам и кнопкой
+      // «скачать» — этого достаточно.
+      if (playbackMode !== 'surah') cacheAyah(r, surah, ayah);
       // Pre-warm the next ayah so auto-advance is gap-free.  We only
       // prefetch ONE ahead — going further wastes mobile data on ayahs
       // the user might never reach (e.g. they tap a different ayah,
@@ -464,7 +470,18 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
   const playFrom = useCallback((
     surah: number, fromAyah: number, lastAyah: number, mode: PlaybackMode = 'ayah',
   ) => {
-    playbackMode = mode;
+    // 🔴 Скачанная сура играет С УСТРОЙСТВА, а не потоком.
+    //
+    // Непрерывный файл берётся из сети всегда, и в самолётном режиме запуск
+    // полностью скачанной суры падал бы: загрузка не удаётся, воспроизведение
+    // тихо останавливается. Человек при этом видел бы, что сура скачана.
+    //
+    // Поэтому при полном офлайн-покрытии переходим на поаятный режим: он
+    // читает локальные файлы. Плата — швы между аятами возвращаются, но
+    // «играет со швами» несравнимо лучше, чем «не играет вовсе».
+    const offlineComplete = mode === 'surah'
+      && missingCount(reciterRef.current, { kind: 'surah', surah }) === 0;
+    playbackMode = offlineComplete ? 'ayah' : mode;
     queueRef.current = { surah, first: fromAyah, last: lastAyah, current: fromAyah };
     playOne(surah, fromAyah);
   }, [playOne]);
@@ -473,6 +490,18 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
   // `timeupdate` event fires only 4–10×/s; rAF gives us per-frame smoothness
   // for the progress hairline AND drives the word-position cursor for the
   // karaoke highlight (single source of truth, no second rAF per ayah).
+  //
+  // 🔴 Та же работа подписана и на `timeupdate`, и это не дубль ради надёжности.
+  // Кадры не приходят при заблокированном экране и в свёрнутом приложении
+  // (`CLAUDE.md`, грабли §5) — а именно там и живёт фоновое прослушивание суры.
+  // Без `timeupdate` звук шёл бы дальше, а граница аята не наступала никогда:
+  // очередь и Now Playing застревали бы на первом аяте, и по возвращении
+  // приложение догоняло бы их по одному за кадр. `timeupdate` — событие
+  // медиаэлемента, оно приходит и в фоне.
+  //
+  // Поэтому работа отделена от планирования: `step` считает, `tick` только
+  // просит следующий кадр. Иначе вызов из `timeupdate` плодил бы параллельные
+  // циклы rAF.
   useEffect(() => {
     if (audioState !== 'playing' || !activeKey) return;
     const audio = activeAudioRef.current;
@@ -515,7 +544,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     let raf = 0;
     let positionUpdateTick = 0;
     let lastProgressWrite = -Infinity;
-    const tick = () => {
+    const step = () => {
       // The same HTMLAudioElement is reused between Luhaidan ayahs in one
       // surah. An old rAF must stop immediately when the logical ayah changes,
       // otherwise it can finish the newly selected ayah using the old range.
@@ -572,10 +601,14 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
         }
         setCurrentWordPos(prev => prev === found ? prev : found);
       }
-      raf = requestAnimationFrame(tick);
     };
+    const tick = () => { step(); raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    audio.addEventListener('timeupdate', step);
+    return () => {
+      cancelAnimationFrame(raf);
+      audio.removeEventListener('timeupdate', step);
+    };
   }, [audioState, activeKey]);
 
   const next = useCallback(() => {

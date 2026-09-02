@@ -149,8 +149,24 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     }
   }, [warmCurrentTajweed]);
 
+  /**
+   * Ведёт ли звук ЭТОТ экран.
+   *
+   * 🔴 Пока аудио принадлежало экрану, вопрос не стоял: раз звучит — значит
+   * отсюда. Теперь звук общий на приложение, и сура может играть, запущенная
+   * с главной. Без этого признака мусхаф вёл себя так: на входе прыгал на
+   * страницу звучащей суры, затирал сохранённую позицию чтения, а дальше
+   * любой свайп немедленно откатывался обратно — листать было нельзя вовсе.
+   *
+   * Ставится, когда звук запущен тапом по аяту ЗДЕСЬ; снимается, как только
+   * человек сам перелистнул страницу: явное действие человека важнее
+   * автоследования (те же грабли §7).
+   */
+  const followsAudio = useRef(false);
+
   const setPage = useCallback((n: number) => {
     const next = clampPage(n);
+    followsAudio.current = false;
     setPageS(next);
     setSelected(null);
     localStorage.setItem(PAGE_KEY, String(next));
@@ -468,6 +484,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   // за активным аятом: плеер, выделение и страница не остаются позади
   // после кнопок «предыдущий/следующий» или автоперехода.
   useEffect(() => {
+    if (!followsAudio.current) return;
     if (!audio.currentSurah || !audio.currentAyah || audio.audioState === 'idle') return;
     const verseKey = `${audio.currentSurah}:${audio.currentAyah}`;
     // Издание обязательно: у «Мадани 1405» своя разбивка страниц, и без
@@ -676,6 +693,8 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           currentAyah={selectedIsActive ? audio.currentAyah : Number(selected.split(':')[1])}
           onPlayPause={() => {
             const [s, a] = selected.split(':').map(Number);
+            // Звук запущен отсюда — значит странице можно следовать за ним.
+            followsAudio.current = true;
             audio.handlePlay(s, a, SURAH_BY_NUMBER[s]?.ayahs ?? a);
           }}
           onPrev={audio.prev}

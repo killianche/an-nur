@@ -672,19 +672,16 @@ export function SurahScreen({
     lastAutoAyahRef.current = null;
   }, [surahNumber]);
 
-  // ── Auto-stop playback when leaving the screen / switching surah ──────────
-  // The audio cache lives on the module level so the <audio> elements
-  // outlive SurahScreen — without this cleanup, tapping Back to the
-  // surah picker (or jumping to another surah) leaves the previous
-  // surah's recitation playing in the background, with no UI to pause
-  // it from.  Stash stopAll in a ref so the effect doesn't re-fire on
-  // every render (audio is a fresh object each time).
-  const stopAllRef = useRef(audio.stopAll);
-  stopAllRef.current = audio.stopAll;
-  useEffect(() => {
-    return () => stopAllRef.current();
-  }, [surahNumber]);
-
+  // Уход из ленты БОЛЬШЕ НЕ ГЛУШИТ звук.
+  //
+  // Здесь стоял `stopAll()` на размонтировании: пока аудио принадлежало
+  // экрану, «ушёл с суры — выключили» было единственным разумным поведением.
+  // Теперь звук общий на приложение, и это ровно тот сценарий, ради которого
+  // делался провайдер: включил суру, зашёл почитать, вернулся — чтение
+  // продолжается. Мусхаф звук при уходе не глушил, и поведение двух режимов
+  // разошлось бы.
+  //
+  // Остановка осталась явным действием: крестик в плеере (`stopAll`).
   // ── Jump to a specific ayah by number ──────────────────────────────────────
   // Instant scroll, not smooth: animating across hundreds of ayahs (e.g.
   // 286 → 1 in Al-Baqarah) takes several seconds and reads as "the jump
@@ -821,8 +818,17 @@ export function SurahScreen({
     } else if (audio.currentSurah && audio.currentAyah) {
       // Возобновление сохраняет режим: прервали непрерывное чтение суры —
       // продолжаем им же, иначе после паузы вернулись бы швы между аятами.
+      //
+      // 🔴 Длину очереди берём у ЗВУЧАЩЕЙ суры, а не у открытой. Звук теперь
+      // общий на приложение, и в ленте суры 1 может звучать сура 18. Прежний
+      // `meta?.ayahs` брал длину открытой суры: возобновление получало
+      // `last = 7`, очередь считала, что сура кончилась, и чтение обрывалось.
+      const soundingMeta = SURAH_BY_NUMBER[audio.currentSurah];
       audio.playFrom(
-        audio.currentSurah, audio.currentAyah, meta?.ayahs ?? 9999, audio.currentMode(),
+        audio.currentSurah,
+        audio.currentAyah,
+        soundingMeta?.ayahs ?? 9999,
+        audio.currentMode(),
       );
     } else {
       // Запуск с начала суры — это намерение слушать её целиком, значит
