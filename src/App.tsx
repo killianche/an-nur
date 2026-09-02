@@ -9,6 +9,7 @@ import type { DocumentId } from './screens/DocumentScreen';
 import { CosmicLayer } from './components/CosmicLayer';
 import { PaperLayer } from './components/PaperLayer';
 import { StatusBarScrim } from './components/StatusBarScrim';
+import { MiniPlayer } from './components/MiniPlayer';
 import {
   IosEdgeBackGesture,
   type IosBackPreview,
@@ -547,6 +548,9 @@ export default function App() {
         </ErrorBoundary>
       )}
       </Suspense>
+      {/* Полоска звучащей суры. Только на вкладках: в ленте и мусхафе свой
+          плеер, и две панели разом были бы лишними. */}
+      <MiniPlayer onOpen={n => navigate({ name: 'surah', number: n })} />
       <TabBar
         active={tab}
         onSelect={next => {

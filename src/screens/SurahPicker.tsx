@@ -42,10 +42,9 @@ import { SURAHS, SURAH_BY_NUMBER, type SurahMeta } from '../content/surahs';
 import { readRecents } from '../lib/recents';
 import { search, snippet, type AyahHit } from '../lib/search';
 import { useQuranSources } from '../content/quran-sources-lazy';
-import {
-  Appearance, Search, Close, Bookmark as BookmarkIcon, ICON_SIZE,
-} from '../components/icons';
+import { Appearance, Search, Close, Bookmark as BookmarkIcon, ICON_SIZE, Play, Pause } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
+import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
 import { HitArea } from '../components/HitArea';
@@ -364,9 +363,27 @@ function SectionHeading({ text }: { text: string }) {
   );
 }
 
+/**
+ * Строка суры со своей кнопкой «слушать».
+ *
+ * 🔴 Кнопка стоит РЯДОМ со строкой, а не внутри неё. Сама строка — это
+ * `<button>`, и вложить в неё вторую кнопку нельзя: разметка невалидна, а
+ * браузер повёл бы себя непредсказуемо — от «не срабатывает» до «срабатывают
+ * обе». Поэтому обе кнопки лежат в общей обёртке, и разделительная линия
+ * переехала на неё: иначе линия обрывалась бы под кнопкой.
+ */
 function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
   const [pressed, setPressed] = useState(false);
+  const audio = useAudioActions();
+  const { currentSurah, audioState } = useAudioState();
+  const soundingHere = currentSurah === meta.number && audioState === 'playing';
+
   return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
+    }}>
     <button
       onClick={onClick}
       onPointerDown={() => setPressed(true)}
@@ -375,10 +392,9 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
       onPointerCancel={() => setPressed(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
-        width: '100%', minHeight: '64px',
+        flex: 1, minWidth: 0, minHeight: '64px',
         padding: 'var(--space-snug) var(--space-hair)',
         border: 'none',
-        borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
         background: pressed
           ? 'color-mix(in srgb, var(--ink) 5%, transparent)'
           : 'transparent',
@@ -452,6 +468,29 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
         {meta.arabic}
       </span>
     </button>
+
+      {/* Слушать суру целиком. Отдельной кнопкой, потому что нажатие на
+          строку открывает чтение — это разные намерения, и сваливать их в
+          один тап значило бы угадывать за человека. */}
+      <button
+        onClick={() => {
+          if (soundingHere) audio.pause();
+          else audio.playSurah(meta.number, meta.ayahs);
+        }}
+        aria-label={soundingHere
+          ? `Остановить суру ${meta.transliteration}`
+          : `Слушать суру ${meta.transliteration} целиком`}
+        className="icon-btn"
+        style={{
+          flexShrink: 0,
+          width: 'var(--hit-min)', height: 'var(--hit-min)',
+          marginLeft: 'var(--space-hair)',
+          color: soundingHere ? 'var(--text-primary)' : 'var(--text-tertiary)',
+        }}
+      >
+        {soundingHere ? <Pause size={ICON_SIZE.md} /> : <Play size={ICON_SIZE.md} />}
+      </button>
+    </div>
   );
 }
 
