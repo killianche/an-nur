@@ -22,7 +22,7 @@
  * значило бы сделать третий, худший читатель.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { ReciterCard } from '../components/ReadingSettings';
 import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, ICON_SIZE } from '../components/icons';
@@ -35,10 +35,22 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
   const audio = useAudioActions();
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const surah = currentSurah ?? 1;
-  const meta = SURAH_BY_NUMBER[surah];
+  // 🔴 Последняя звучавшая сура, а не «первая по умолчанию».
+  //
+  // Когда сура доиграна до конца, очередь обнуляется и `currentSurah`
+  // становится null. Прежнее `?? 1` подставляло Аль-Фатиху: экран показывал
+  // суру, которая не звучала, «Аят 1 из 7», и кнопка запускала именно её.
+  // Дослушав Ан-Нас, человек получал бы Аль-Фатиху без всякой причины.
+  const lastSurah = useRef<number | null>(null);
+  useEffect(() => {
+    if (currentSurah) lastSurah.current = currentSurah;
+  }, [currentSurah]);
+
+  const surah = currentSurah ?? lastSurah.current;
+  const meta = surah ? SURAH_BY_NUMBER[surah] : undefined;
   const total = meta?.ayahs ?? 1;
   const ayah = currentAyah ?? 1;
+  const finished = !currentSurah && Boolean(surah);
   const playing = audioState === 'playing';
   const loading = audioState === 'loading';
 
@@ -68,6 +80,16 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
         margin: '0 auto',
         boxSizing: 'border-box',
       }}>
+        {!surah && (
+          <p style={{
+            margin: 'auto', textAlign: 'center',
+            fontSize: 'var(--font-caption1)', color: 'var(--text-tertiary)',
+          }}>
+            Ничего не звучит. Включите суру в списке — плеер откроется здесь.
+          </p>
+        )}
+
+        {surah && (<>
         {/* ── Что звучит ─────────────────────────────────────────────── */}
         <section style={{ textAlign: 'center' }}>
           <p
@@ -123,7 +145,7 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
             color: 'var(--text-tertiary)',
             fontVariantNumeric: 'tabular-nums',
           }}>
-            {loading ? 'Загрузка…' : `Аят ${ayah} из ${total}`}
+            {loading ? 'Загрузка…' : finished ? 'Сура дочитана' : `Аят ${ayah} из ${total}`}
           </p>
         </section>
 
@@ -144,6 +166,9 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
           <button
             onClick={() => {
               if (playing) audio.pause();
+              // Сура дочитана — начинаем её заново, а не продолжаем с
+              // последнего аята: продолжать там уже нечего.
+              else if (finished) audio.playSurah(surah, total);
               else audio.playFrom(surah, ayah, total, audio.currentMode());
             }}
             aria-label={playing ? 'Пауза' : 'Слушать'}
@@ -286,6 +311,7 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
             </div>
           )}
         </section>
+        </>)}
       </div>
     </div>
   );

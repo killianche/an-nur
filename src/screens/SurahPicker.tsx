@@ -114,7 +114,7 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
       minHeight: '100dvh',
       maxWidth: 'min(100%, 720px)',
       margin: '0 auto',
-      padding: `0 var(--space-margin) calc(${TAB_BAR_HEIGHT}px + var(--space-section) + env(safe-area-inset-bottom))`,
+      padding: `0 var(--space-margin) calc(${TAB_BAR_HEIGHT}px + var(--space-section) + var(--mini-player-space, 0px) + env(safe-area-inset-bottom))`,
       position: 'relative',
       zIndex: 1,
     }}>
@@ -478,7 +478,9 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
           else audio.playSurah(meta.number, meta.ayahs);
         }}
         aria-label={soundingHere
-          ? `Остановить суру ${meta.transliteration}`
+          // Действие — пауза, а не остановка: очередь и место сохраняются.
+          // Подпись обязана называть то, что произойдёт.
+          ? `Пауза: ${meta.transliteration}`
           : `Слушать суру ${meta.transliteration} целиком`}
         className="icon-btn"
         style={{

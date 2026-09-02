@@ -45,7 +45,7 @@ import {
 } from 'react';
 import { useQuranSources } from '../content/quran-sources-lazy';
 import { SURAH_BY_NUMBER } from '../content/surahs';
-import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
+import { useAudioActions, useAudioState, useAudioTick } from '../hooks/AudioProvider';
 import { useQcfAyahFeed, type QcfAyahEntry } from '../hooks/useQcfAyahFeed';
 import { useQcfFont, preloadQcfFonts } from '../hooks/useQcfFont';
 import { ensurePage } from '../hooks/useQcfPage';
@@ -138,6 +138,11 @@ export function SurahScreen({
   const reciter = audioState.reciter;
   const setReciter = audioActions.setReciter;
   const audio = { ...audioState, ...audioActions };
+  // Прогресс и позиция слова приходят отдельным контекстом: они меняются
+  // несколько раз в секунду, и подписан на них только тот, кому они правда
+  // нужны — караоке-подсветка и полоса плеера. Список сур на главном экране
+  // их не получает и на тиках не перерисовывается.
+  const tick = useAudioTick();
 
   // ── Typography prefs ───────────────────────────────────────────────────────
   const [arabicScale, setArabicScaleS] = useState<number>(() => readNumber('arabicScale', 1.0));
@@ -1018,7 +1023,7 @@ export function SurahScreen({
                   // Неактивной строке позиция слова и состояние плеера не
                   // нужны — иначе memo срабатывал бы вхолостую на каждом
                   // тике аудио у всех 286 аятов сразу.
-                  activeWordPos={isActiveAyah ? audio.currentWordPos : null}
+                  activeWordPos={isActiveAyah ? tick.currentWordPos : null}
                   audioState={isActiveAyah ? audio.audioState : 'idle'}
                   eager={entry.ayah >= eagerAnchor && entry.ayah < eagerAnchor + EAGER_AYAHS}
                   onPlay={handleAyahPlay}
@@ -1037,7 +1042,7 @@ export function SurahScreen({
         <BottomDock
           audioState={audio.audioState}
           currentAyah={audio.currentAyah}
-          progress={audio.progress}
+          progress={tick.progress}
           playbackRate={audio.playbackRate}
           onPlayPause={handlePlayPause}
           onPrev={audio.prev}

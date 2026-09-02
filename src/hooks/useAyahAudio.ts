@@ -51,8 +51,14 @@ function readStoredRate(): PlaybackRate {
  *  WebView начинает терять аудио-декодеры после ~40-50 элементов
  *  (HTMLAudioElement держит ссылку на raw audio buffer; iOS WebView
  *  имеет жёсткий лимит ~75 одновременных audio decoders).
- *  6 = текущий аят + prefetch вперёд + небольшой запас. */
+ *  6 = текущий аят + prefetch вперёд + небольшой запас.
+ *
+ *  🔴 Для непрерывных записей суры предел свой и меньше. Шесть коротких
+ *  файлов аята — это единицы мегабайт; шесть полных сур — это шесть
+ *  многоминутных потоков, которые WKWebView держит целиком. Больше двух
+ *  (текущая сура и соседняя) там не нужно ни для чего. */
 const AUDIO_CACHE_MAX = 6;
+const CONTINUOUS_CACHE_MAX = 2;
 const audioCache = new Map<string, HTMLAudioElement>();
 const logicalKeyForAudio = new WeakMap<HTMLAudioElement, string>();
 const completedRange = new WeakSet<HTMLAudioElement>();
@@ -63,6 +69,16 @@ function touchCache(key: string, audio: HTMLAudioElement) {
   if (audioCache.has(key)) audioCache.delete(key);
   audioCache.set(key, audio);
   // Эвикция самых старых записей если перебор по размеру.
+  // Непрерывные записи вытесняем отдельно и раньше: ключ у них кончается
+  // на `:surah` (см. mediaCacheKey).
+  const continuous = [...audioCache.keys()].filter(k => k.endsWith(':surah'));
+  while (continuous.length > CONTINUOUS_CACHE_MAX) {
+    const oldestContinuous = continuous.shift();
+    if (!oldestContinuous || oldestContinuous === key) break;
+    const el = audioCache.get(oldestContinuous);
+    if (el) { el.pause(); el.removeAttribute('src'); el.load(); }
+    audioCache.delete(oldestContinuous);
+  }
   while (audioCache.size > AUDIO_CACHE_MAX) {
     const oldestKey = audioCache.keys().next().value;
     if (!oldestKey) break;
@@ -316,7 +332,16 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // deliberately skips this branch — that's the natural play / pause
     // behaviour and stays as is.
     if (activeKey !== k && !seamlessSameMedia) {
-      seekAudio(audio, range?.startSeconds ?? 0);
+      // 🔴 Запуск суры с начала стартует с НУЛЯ, а не с границы первого аята.
+      //
+      // У Ясира Ад-Даусари и Ахмада Аль-Аджми запись суры начинается с
+      // истиазы и басмалы: в таблице границ первый аят у них начинается не в
+      // нуле (сура 18 — 7.21 с, сура 9 — 3.54 с; всего таких сур 77 и 91).
+      // Прыжок на границу первого аята срезал бы вступление, и человек,
+      // включивший суру целиком, не услышал бы её начала. У Аляфаси и
+      // Аш-Шатри граница равна нулю, поэтому там ничего не меняется.
+      const atSurahStart = playbackMode === 'surah' && ayah === 1;
+      seekAudio(audio, atSurahStart ? 0 : (range?.startSeconds ?? 0));
     }
 
     setActiveKey(k);
@@ -439,9 +464,6 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
 
   /** Tap on an ayah — play / pause that ayah, joining the queue. */
   const handlePlay = useCallback((surah: number, ayah: number, lastAyah?: number) => {
-    // Тап по отдельному аяту — это всегда поаятный режим: человек ждёт
-    // звук сразу, а не загрузку сплошного файла ради одного аята.
-    playbackMode = 'ayah';
     const k = cacheKey(reciterRef.current, surah, ayah);
 
     if (queueRef.current?.surah !== surah) {
@@ -451,11 +473,21 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       if (lastAyah && queueRef.current.last < lastAyah) queueRef.current.last = lastAyah;
     }
 
+    // 🔴 Режим меняем только когда РЕАЛЬНО начинаем играть.
+    //
+    // Раньше `playbackMode = 'ayah'` стояло в начале, безусловно. Тап по уже
+    // звучащему аяту ставит паузу и ничего не запускает — но режим при этом
+    // всё равно переключался, а элемент оставался непрерывным. Дальше
+    // возобновление с экрана блокировки играло сплошную запись, а границы
+    // аятов пропадали: подсветка и номер аята замирали, пока запись читала
+    // дальше. Показано было не то, что звучит.
+    const startAyahMode = () => { playbackMode = 'ayah'; playOne(surah, ayah); };
+
     if (activeKey === k) {
       if (audioState === 'playing') pauseCurrent();
-      else playOne(surah, ayah);
+      else startAyahMode();
     } else {
-      playOne(surah, ayah);
+      startAyahMode();
     }
   }, [activeKey, audioState, pauseCurrent, playOne]);
 
@@ -642,8 +674,19 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     ms.setActionHandler('play', () => {
       // Resume — если paused, продолжить.  Без queue'а pause-pусто.
       if (activeKey) {
-        activeAudioRef.current?.play().catch(() => {});
-        setAudioState('playing');
+        // Состояние ставим ТОЛЬКО после успешного старта. Раньше `playing`
+        // объявлялось сразу, а отказ проглатывался: на экране блокировки
+        // висело «играет», хотя звука не было (сеть отвалилась, декодер
+        // занят). Показанное состояние обязано отражать настоящее.
+        void activeAudioRef.current?.play()
+          .then(() => {
+            setAudioState('playing');
+            setMediaSessionPlaybackState('playing');
+          })
+          .catch(() => {
+            setAudioState('paused');
+            setMediaSessionPlaybackState('paused');
+          });
         setMediaSessionPlaybackState('playing');
       }
     });

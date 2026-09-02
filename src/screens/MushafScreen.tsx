@@ -40,7 +40,7 @@ import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { pageTurnDuration } from '../lib/mushafTurn';
 import { MushafReadingSettings, ThemeSettings } from '../components/ReadingSettings';
 import { SURAH_BY_NUMBER } from '../content/surahs';
-import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
+import { useAudioActions, useAudioState, useAudioTick } from '../hooks/AudioProvider';
 import { ensurePage, preloadPage, useQcfPage } from '../hooks/useQcfPage';
 import { preloadQcfFonts } from '../hooks/useQcfFont';
 import {
@@ -119,6 +119,11 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   const reciter = audioSt.reciter;
   const setReciter = audioActions.setReciter;
   const audio = { ...audioSt, ...audioActions };
+  // Прогресс и позиция слова приходят отдельным контекстом: они меняются
+  // несколько раз в секунду, и подписан на них только тот, кому они правда
+  // нужны — караоке-подсветка и полоса плеера. Список сур на главном экране
+  // их не получает и на тиках не перерисовывается.
+  const tick = useAudioTick();
   // Выбор шрифта определяет и издание: у «Мадани 1405» свои данные страниц
   // в /qcf1/pages.  Смешать издания нельзя — PUA-коды у них общие, а слова
   // за этими кодами разные.
@@ -670,7 +675,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
                 offset={page - preparedPage}
                 fitTo={area}
                 activeVerseKey={activeVerseKey}
-                activeWordPos={audio.currentWordPos}
+                activeWordPos={tick.currentWordPos}
                 wholeAyahAudioHighlight={usesWholeAyahHighlight(reciter)}
                 selectedVerseKey={selected}
                 landscapeWide={false}
@@ -688,7 +693,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
         <AyahSheet
           verseKey={selected}
           audioState={selectedAudioState}
-          progress={selectedIsActive ? audio.progress : 0}
+          progress={selectedIsActive ? tick.progress : 0}
           playbackRate={audio.playbackRate}
           currentAyah={selectedIsActive ? audio.currentAyah : Number(selected.split(':')[1])}
           onPlayPause={() => {

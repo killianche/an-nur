@@ -21,6 +21,7 @@
  * бы её поверх списка сур.
  */
 
+import { useEffect } from 'react';
 import { Pause, Play, ICON_SIZE } from './icons';
 import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
 import { SURAH_BY_NUMBER } from '../content/surahs';
@@ -28,13 +29,30 @@ import { reciterById } from '../lib/reciters';
 import { GLASS_BLUR } from '../lib/glass';
 import { TAB_BAR_HEIGHT } from './TabBar';
 
+/** Высота полоски и её зазор до панели вкладок. */
+const HEIGHT = 52;
+const GAP = 6;
+
 export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
   const { currentSurah, currentAyah, audioState, reciter } = useAudioState();
   const audio = useAudioActions();
 
-  if (!currentSurah || audioState === 'idle') return null;
+  // Полоска перекрывает низ экрана, а её высота известна только ей. Чтобы
+  // последняя строка списка не пряталась под ней, она объявляет занятое
+  // место переменной, а экраны вкладок добавляют его к своему отступу.
+  // Иначе во время чтения сура 114 наполовину уходила под панель.
+  const visible = Boolean(currentSurah) && audioState !== 'idle';
+  useEffect(() => {
+    const root = document.documentElement;
+    if (visible) root.style.setProperty('--mini-player-space', `${HEIGHT + GAP}px`);
+    else root.style.removeProperty('--mini-player-space');
+    return () => { root.style.removeProperty('--mini-player-space'); };
+  }, [visible]);
+
+  if (!visible || !currentSurah) return null;
   const meta = SURAH_BY_NUMBER[currentSurah];
   const playing = audioState === 'playing';
+  const loading = audioState === 'loading';
 
   return (
     <div
@@ -48,11 +66,11 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         right: '12px',
         // Ровно над капсулой вкладок, с тем же зазором: две плавающие
         // панели должны читаться одной стопкой, а не случайной парой.
-        bottom: `calc(env(safe-area-inset-bottom) + ${TAB_BAR_HEIGHT + 6}px)`,
+        bottom: `calc(env(safe-area-inset-bottom) + ${TAB_BAR_HEIGHT + GAP}px)`,
         zIndex: 39,
         maxWidth: '560px',
         margin: '0 auto',
-        height: '52px',
+        height: `${HEIGHT}px`,
         borderRadius: '20px',
         display: 'flex',
         alignItems: 'center',
@@ -95,7 +113,11 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
       </button>
 
       <button
+        disabled={loading}
         onClick={() => {
+          // Во время загрузки кнопка не работает: повторный тап запускал бы
+          // воспроизведение заново поверх ещё не начавшегося.
+          if (loading) return;
           if (playing) audio.pause();
           // Продолжаем с ТЕКУЩЕГО аята, а не с первого. Единица тут —
           // аят, и `1` вместо него означала бы «начать суру заново»:
@@ -104,12 +126,13 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
             audio.playFrom(currentSurah, currentAyah ?? 1, meta.ayahs, audio.currentMode());
           }
         }}
-        aria-label={playing ? 'Пауза' : 'Продолжить'}
+        aria-label={loading ? 'Загрузка' : playing ? 'Пауза' : 'Продолжить'}
         className="icon-btn"
         style={{
           flexShrink: 0,
           width: 'var(--hit-min)', height: 'var(--hit-min)',
           color: 'var(--text-primary)',
+          opacity: loading ? 0.45 : 1,
         }}
       >
         {playing ? <Pause size={ICON_SIZE.md} /> : <Play size={ICON_SIZE.md} />}

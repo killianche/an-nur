@@ -15,44 +15,53 @@
  * ленте и в мусхафе. Оба читали один ключ хранилища, но смена в одном месте
  * не доходила до другого до перемонтирования.
  *
- * ── 🔴 Два контекста, а не один ───────────────────────────────────────
+ * ── 🔴 Три контекста, а не один ───────────────────────────────────────
  *
- * Это не любовь к слоям. Состояние воспроизведения меняется постоянно:
- * позиция слова, прогресс, номер аята. Если раздавать его тем же контекстом,
- * что и действия, каждый тик перерисовывал бы КАЖДОГО потребителя — включая
- * список из 114 сур на главном экране.
+ * Это не любовь к слоям, а цена ошибки. Сначала контекстов было два:
+ * действия и «состояние». В состояние попали и прогресс, и позиция слова —
+ * а они меняются несколько раз в секунду. Из-за этого список из 114 сур на
+ * главном экране перерисовывался на каждом тике воспроизведения, хотя
+ * комментарий здесь утверждал обратное. Список не виртуализован, в каждой
+ * строке арабское имя суры — цена заметная.
  *
- * Поэтому:
+ * Поэтому частое отделено от редкого:
  *   • `AudioActionsContext` — объект действий, созданный один раз и больше
  *     никогда не меняющийся. Действия ходят через ref к свежему хуку, так
  *     что замыкание не устаревает, а ссылка остаётся прежней.
- *   • `AudioStateContext` — то, что меняется. Его берут только те, кому
- *     правда нужно: плеер, подсветка читаемого аята.
+ *   • `AudioSessionContext` — что звучит: сура, аят, состояние, скорость,
+ *     чтец. Меняется на границе аята, то есть раз в десятки секунд.
+ *   • `AudioTickContext` — прогресс и позиция слова. Меняется постоянно, и
+ *     подписываются на него только двое: полоса плеера и караоке-подсветка.
  *
- * Компонент, которому нужна только кнопка «включить», подписывается на
- * действия и не перерисовывается ни разу за всю суру.
+ * Компоненту, которому нужны кнопка «включить» и название суры, тик не
+ * приходит вовсе.
  */
 
 import {
-  createContext, useCallback, useContext, useMemo, useRef, useState,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from 'react';
 import { useAyahAudio, type PlaybackMode, type PlaybackRate } from './useAyahAudio';
 import { DEFAULT_RECITER, RECITERS, type ReciterId } from '../lib/reciters';
+import { SURAH_BY_NUMBER } from '../content/surahs';
 import { readPref } from '../lib/typography';
 
 const RECITER_IDS = RECITERS.map(r => r.id);
 
-/** Меняющаяся часть: перерисовывает подписчиков на каждом обновлении. */
-export type AudioState = {
+/** Что звучит. Меняется на границе аята — редко. */
+export type AudioSession = {
   activeKey: string | null;
   audioState: 'idle' | 'loading' | 'playing' | 'paused';
-  progress: number;
   playbackRate: PlaybackRate;
   currentSurah: number | null;
   currentAyah: number | null;
-  currentWordPos: number | null;
   reciter: ReciterId;
+};
+
+/** Как идёт текущий аят. Меняется несколько раз в секунду. */
+export type AudioTick = {
+  progress: number;
+  currentWordPos: number | null;
 };
 
 /** Неизменная часть: ссылка на этот объект живёт всё время работы. */
@@ -67,11 +76,12 @@ export type AudioActions = {
   stopAll: () => void;
   cyclePlaybackRate: () => void;
   currentMode: () => PlaybackMode;
-  getRemainingSeconds: () => number | null;
+  getRemainingSeconds: () => number;
   setReciter: (id: ReciterId) => void;
 };
 
-const AudioStateContext = createContext<AudioState | null>(null);
+const AudioSessionContext = createContext<AudioSession | null>(null);
+const AudioTickContext = createContext<AudioTick | null>(null);
 const AudioActionsContext = createContext<AudioActions | null>(null);
 
 export function AudioProvider({ children }: { children: ReactNode }) {
@@ -85,6 +95,28 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // действий перестал бы быть неизменным.
   const live = useRef(audio);
   live.current = audio;
+
+  /**
+   * Смена чтеца на ходу перезапускает текущий аят новым голосом.
+   *
+   * 🔴 Без этого подпись и голос расходились: в полоске и на экране плеера
+   * сразу появлялось новое имя, а звучал прежний чтец до конца аята. Человек
+   * видел одно, слышал другое — и это тот же класс ошибки, что «показано не
+   * то, что звучит».
+   *
+   * Перезапуск делается эффектом, а не прямо в `setReciter`: там состояние
+   * ещё не применилось, и хук взял бы прежнего чтеца.
+   */
+  const prevReciter = useRef(reciter);
+  useEffect(() => {
+    if (prevReciter.current === reciter) return;
+    prevReciter.current = reciter;
+    const a = live.current;
+    if (a.audioState !== 'playing' && a.audioState !== 'loading') return;
+    if (!a.currentSurah || !a.currentAyah) return;
+    const meta = SURAH_BY_NUMBER[a.currentSurah];
+    a.playFrom(a.currentSurah, a.currentAyah, meta?.ayahs ?? 9999, a.currentMode());
+  }, [reciter]);
 
   const setReciter = useCallback((id: ReciterId) => {
     setReciterState(id);
@@ -105,25 +137,30 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     setReciter,
   }), [setReciter]);
 
-  const state = useMemo<AudioState>(() => ({
+  const session = useMemo<AudioSession>(() => ({
     activeKey: audio.activeKey,
     audioState: audio.audioState,
-    progress: audio.progress,
     playbackRate: audio.playbackRate,
     currentSurah: audio.currentSurah,
     currentAyah: audio.currentAyah,
-    currentWordPos: audio.currentWordPos,
     reciter,
   }), [
-    audio.activeKey, audio.audioState, audio.progress, audio.playbackRate,
-    audio.currentSurah, audio.currentAyah, audio.currentWordPos, reciter,
+    audio.activeKey, audio.audioState, audio.playbackRate,
+    audio.currentSurah, audio.currentAyah, reciter,
   ]);
+
+  const tick = useMemo<AudioTick>(() => ({
+    progress: audio.progress,
+    currentWordPos: audio.currentWordPos,
+  }), [audio.progress, audio.currentWordPos]);
 
   return (
     <AudioActionsContext.Provider value={actions}>
-      <AudioStateContext.Provider value={state}>
-        {children}
-      </AudioStateContext.Provider>
+      <AudioSessionContext.Provider value={session}>
+        <AudioTickContext.Provider value={tick}>
+          {children}
+        </AudioTickContext.Provider>
+      </AudioSessionContext.Provider>
     </AudioActionsContext.Provider>
   );
 }
@@ -135,9 +172,27 @@ export function useAudioActions(): AudioActions {
   return v;
 }
 
-/** Состояние воспроизведения. Перерисовывает на каждом обновлении. */
-export function useAudioState(): AudioState {
-  const v = useContext(AudioStateContext);
+/**
+ * Что звучит: сура, аят, состояние, скорость, чтец.
+ *
+ * Перерисовывает подписчика на границе аята, а не на каждом тике. Это то,
+ * что нужно почти всем — спискам, полоске, экрану плеера.
+ */
+export function useAudioState(): AudioSession {
+  const v = useContext(AudioSessionContext);
   if (!v) throw new Error('useAudioState вызван вне AudioProvider');
+  return v;
+}
+
+/**
+ * Прогресс и позиция слова.
+ *
+ * 🔴 Подписываться только там, где это правда нужно: полоса плеера и
+ * караоке-подсветка. Значения меняются несколько раз в секунду, и лишний
+ * подписчик означает перерисовку своего поддерева с той же частотой.
+ */
+export function useAudioTick(): AudioTick {
+  const v = useContext(AudioTickContext);
+  if (!v) throw new Error('useAudioTick вызван вне AudioProvider');
   return v;
 }
