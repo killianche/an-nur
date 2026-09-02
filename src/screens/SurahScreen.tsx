@@ -45,7 +45,7 @@ import {
 } from 'react';
 import { useQuranSources } from '../content/quran-sources-lazy';
 import { SURAH_BY_NUMBER } from '../content/surahs';
-import { useAyahAudio } from '../hooks/useAyahAudio';
+import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
 import { useQcfAyahFeed, type QcfAyahEntry } from '../hooks/useQcfAyahFeed';
 import { useQcfFont, preloadQcfFonts } from '../hooks/useQcfFont';
 import { ensurePage } from '../hooks/useQcfPage';
@@ -79,9 +79,7 @@ import {
   arabicFontConfig,
   type LatinFontId, type ArabicFontId,
 } from '../lib/typography';
-import {
-  RECITERS, DEFAULT_RECITER, usesWholeAyahHighlight, type ReciterId,
-} from '../lib/reciters';
+import { usesWholeAyahHighlight } from '../lib/reciters';
 import { fontFamilyForPage } from '../content/quran-tajweed-meta';
 
 type Props = {
@@ -114,7 +112,6 @@ const LATIN_IDS:   LatinFontId[]  = ['inter-semibold', 'inter-regular', 'garamon
 const ARABIC_IDS:  ArabicFontId[] = ARABIC_FONT_IDS;
 // Белый список для readPref: сохранённый id чтеца, которого больше нет
 // в каталоге (QuranIng знал восемь), молча падает на DEFAULT_RECITER.
-const RECITER_IDS: ReciterId[]    = RECITERS.map(r => r.id);
 
 function migrateLegacyScale() {
   // Режим «Только арабский» снят владельцем. Старый ключ больше ни на
@@ -133,8 +130,14 @@ export function SurahScreen({
   migrateLegacyScale();
 
   // ── Audio ──────────────────────────────────────────────────────────────────
-  const [reciter, setReciterS] = useState<ReciterId>(() => readPref('reciter', DEFAULT_RECITER, RECITER_IDS));
-  const audio = useAyahAudio(reciter);
+  // Звук общий на всё приложение (`AudioProvider`), а не свой у экрана:
+  // иначе уход из ленты обрывал бы чтение суры. Собираем привычный объект
+  // `audio` из двух контекстов, чтобы места вызова ниже не менялись.
+  const audioActions = useAudioActions();
+  const audioState = useAudioState();
+  const reciter = audioState.reciter;
+  const setReciter = audioActions.setReciter;
+  const audio = { ...audioState, ...audioActions };
 
   // ── Typography prefs ───────────────────────────────────────────────────────
   const [arabicScale, setArabicScaleS] = useState<number>(() => readNumber('arabicScale', 1.0));
@@ -154,7 +157,6 @@ export function SurahScreen({
   const persist = <T extends string | number | boolean>(key: string) => (v: T) => {
     localStorage.setItem(key, typeof v === 'boolean' ? (v ? '1' : '0') : String(v));
   };
-  const setReciter     = (v: ReciterId)    => { setReciterS(v);     persist<string>('reciter')(v); };
   const setArabicScale = (v: number)       => { setArabicScaleS(v); persist<number>('arabicScale')(v); };
   const setRuScale     = (v: number)       => { setRuScaleS(v);     persist<number>('ruScale')(v); };
   const setRuFont      = (v: LatinFontId)  => { setRuFontS(v);      persist<string>('ruFont')(v); };

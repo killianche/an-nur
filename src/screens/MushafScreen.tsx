@@ -40,7 +40,7 @@ import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { pageTurnDuration } from '../lib/mushafTurn';
 import { MushafReadingSettings, ThemeSettings } from '../components/ReadingSettings';
 import { SURAH_BY_NUMBER } from '../content/surahs';
-import { useAyahAudio } from '../hooks/useAyahAudio';
+import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
 import { ensurePage, preloadPage, useQcfPage } from '../hooks/useQcfPage';
 import { preloadQcfFonts } from '../hooks/useQcfFont';
 import {
@@ -58,12 +58,8 @@ import {
   surahAyahOfPage,
 } from '../lib/mushafPages';
 import {
-  RECITERS,
-  DEFAULT_RECITER,
   usesWholeAyahHighlight,
-  type ReciterId,
 } from '../lib/reciters';
-import { readPref } from '../lib/typography';
 import { fontFamilyForPage } from '../content/quran-tajweed-meta';
 import {
   readMushafFont,
@@ -115,19 +111,14 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   const [mushafFont, setMushafFontState] = useState<MushafFontId>(readMushafFont);
   const themeBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Чтец — тот же, что выбран в ленте: настройка одна на приложение,
-  // и переключаться между режимами ради него было бы странно. Раньше он
-  // здесь только читался и поменять его из полноэкранного режима было
-  // нельзя — приходилось выходить в ленту. Теперь это состояние, и его
-  // меняет поповер «Чтение» под кнопкой «Аа».
-  const [reciter, setReciterState] = useState<ReciterId>(() => readPref<ReciterId>(
-    'reciter', DEFAULT_RECITER, RECITERS.map(r => r.id),
-  ));
-  const setReciter = (id: ReciterId) => {
-    setReciterState(id);
-    localStorage.setItem('reciter', id);
-  };
-  const audio = useAyahAudio(reciter);
+  // Звук общий на всё приложение (`AudioProvider`): чтение суры переживает
+  // уход с экрана, а чтец один на ленту и мусхаф. Раньше он жил двумя
+  // независимыми `useState`, и смена в одном месте не доходила до другого.
+  const audioActions = useAudioActions();
+  const audioSt = useAudioState();
+  const reciter = audioSt.reciter;
+  const setReciter = audioActions.setReciter;
+  const audio = { ...audioSt, ...audioActions };
   // Выбор шрифта определяет и издание: у «Мадани 1405» свои данные страниц
   // в /qcf1/pages.  Смешать издания нельзя — PUA-коды у них общие, а слова
   // за этими кодами разные.

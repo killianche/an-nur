@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
+import { AudioProvider } from './hooks/AudioProvider';
 import { initSentry } from './lib/sentry';
 import { initGlobalErrorHandlers } from './lib/globalErrors';
 import { initAudioStore } from './lib/audioStore';
@@ -41,8 +42,13 @@ initGlobalErrorHandlers();
 // иначе она не увидит уже скачанное и полезла бы качать заново.
 void initAudioStore().then(() => armAutoDownload());
 
+// AudioProvider стоит НАД App, а не внутри: у App несколько точек возврата
+// по типу экрана, и провайдер внутри пересоздавался бы при смене экрана —
+// то есть ровно тогда, когда звук обязан продолжаться.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <AudioProvider>
+      <App />
+    </AudioProvider>
   </StrictMode>,
 );
