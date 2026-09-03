@@ -115,6 +115,16 @@ function cacheKey(reciter: ReciterId, surah: number, ayah: number) {
 export type PlaybackMode = 'ayah' | 'surah';
 let playbackMode: PlaybackMode = 'ayah';
 
+/**
+ * Включили суру ЦЕЛИКОМ (кнопкой «слушать суру»), а не ткнули в первый аят.
+ *
+ * Отдельно от `playbackMode`, потому что после перевода ленты на сплошную
+ * запись режим стал одинаковым в обоих случаях, а поведение — разное.
+ * Запуск суры начинается с нуля записи, чтобы не срезать истиазу и басмалу;
+ * тап по первому аяту обязан дать именно первый аят, без вступления.
+ */
+let startedWholeSurah = false;
+
 function usesContinuousAudio(reciter: ReciterId) {
   if (playbackMode === 'surah' && hasSurahAudio(reciter)) return true;
   return requiresSurahAudioStream(reciter);
@@ -340,7 +350,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       // Прыжок на границу первого аята срезал бы вступление, и человек,
       // включивший суру целиком, не услышал бы её начала. У Аляфаси и
       // Аш-Шатри граница равна нулю, поэтому там ничего не меняется.
-      const atSurahStart = playbackMode === 'surah' && ayah === 1;
+      const atSurahStart = startedWholeSurah && playbackMode === 'surah' && ayah === 1;
       seekAudio(audio, atSurahStart ? 0 : (range?.startSeconds ?? 0));
     }
 
@@ -481,13 +491,39 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // возобновление с экрана блокировки играло сплошную запись, а границы
     // аятов пропадали: подсветка и номер аята замирали, пока запись читала
     // дальше. Показано было не то, что звучит.
-    const startAyahMode = () => { playbackMode = 'ayah'; playOne(surah, ayah); };
+    // 🔴 Тап по аяту тоже читает СПЛОШНУЮ запись, а не короткий файл аята.
+    //
+    // Раньше здесь всегда стоял поаятный режим: тап должен звучать сразу, а
+    // не ждать большой файл. Но у тапа есть продолжение — очередь идёт до
+    // конца суры, и на каждой границе приходилось подменять аудиоэлемент.
+    // Именно это владелец слышит как микропаузу между аятами. Подгонкой
+    // таймингов её не убрать: пауза не в записи, а в запуске нового
+    // элемента. Известная проблема — схема «дождаться `ended` и вызвать
+    // `play()`» негодна в принципе, потому что и событие приходит поздно, и
+    // воспроизведение стартует не мгновенно.
+    //
+    // В сплошной записи подмены нет вовсе: на границе аята меняется только
+    // логический номер, а поток читается дальше тем же декодером — шва нет
+    // по построению. Сплошная запись есть у всех пяти чтецов, тайминги
+    // аятов — тоже, а хосты отвечают на частичные запросы (206), поэтому
+    // старт с середины суры не тянет файл целиком.
+    //
+    // Исключение — полностью скачанная сура: там играем локальные файлы,
+    // иначе офлайн вообще останется без звука. Шов в этом случае
+    // сохраняется, и это честная плата за работу без сети.
+    const startPlayback = () => {
+      const r = reciterRef.current;
+      const offlineComplete = missingCount(r, { kind: 'surah', surah }) === 0;
+      playbackMode = (!offlineComplete && hasSurahAudio(r)) ? 'surah' : 'ayah';
+      startedWholeSurah = false;
+      playOne(surah, ayah);
+    };
 
     if (activeKey === k) {
       if (audioState === 'playing') pauseCurrent();
-      else startAyahMode();
+      else startPlayback();
     } else {
-      startAyahMode();
+      startPlayback();
     }
   }, [activeKey, audioState, pauseCurrent, playOne]);
 
@@ -514,6 +550,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     const offlineComplete = mode === 'surah'
       && missingCount(reciterRef.current, { kind: 'surah', surah }) === 0;
     playbackMode = offlineComplete ? 'ayah' : mode;
+    startedWholeSurah = mode === 'surah';
     queueRef.current = { surah, first: fromAyah, last: lastAyah, current: fromAyah };
     playOne(surah, fromAyah);
   }, [playOne]);
