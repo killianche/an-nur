@@ -82,7 +82,7 @@ export function AyahSearchSheet({
         display: 'flex', alignItems: 'center', gap: '10px',
         height: '46px', padding: '0 13px',
         borderRadius: '13px',
-        background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.05)',
         border: '1px solid var(--hairline)',
         marginBottom: '12px',
       }}>
@@ -123,7 +123,7 @@ export function AyahSearchSheet({
           display: 'grid', gridTemplateColumns: '1fr 1fr',
           gap: '4px', padding: '3px',
           borderRadius: '11px',
-          background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+          background: 'rgb(var(--ink-rgb) / 0.05)',
           border: '1px solid var(--hairline)',
           marginBottom: '14px',
         }}
@@ -193,7 +193,7 @@ export function AyahSearchSheet({
                 marginTop: '10px', padding: '9px 14px',
                 borderRadius: '10px',
                 border: '1px solid var(--hairline)',
-                background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+                background: 'rgb(var(--ink-rgb) / 0.05)',
                 color: 'var(--text-primary)',
                 cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--font-footnote)', fontWeight: 'var(--weight-regular)',
               }}
@@ -250,7 +250,7 @@ function HitRow({ hit, sameSurah, onClick }: {
         padding: '11px 6px',
         border: 'none',
         borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
-        background: pressed ? 'color-mix(in srgb, var(--ink) 5%, transparent)' : 'transparent',
+        background: pressed ? 'rgb(var(--ink-rgb) / 0.05)' : 'transparent',
         cursor: 'pointer', fontFamily: 'inherit', color: 'inherit',
         transition: 'background 120ms ease',
       }}
@@ -273,7 +273,7 @@ function HitRow({ hit, sameSurah, onClick }: {
       }}>
         {s.before}
         <mark style={{
-          background: 'color-mix(in srgb, var(--ink) 14%, transparent)',
+          background: 'rgb(var(--ink-rgb) / 0.14)',
           color: 'var(--text-primary)',
           borderRadius: '3px', padding: '0 2px', fontWeight: 'var(--weight-semibold)',
         }}>

@@ -130,7 +130,7 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
             width: '42px', height: '42px', flexShrink: 0,
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.04)',
             color: themeOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
@@ -149,7 +149,7 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
             width: '52px', height: '52px', borderRadius: 'var(--radius-pill)',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.05)',
             color: 'var(--text-secondary)',
           }}>
             <Person size={ICON_SIZE.lg} />
@@ -373,7 +373,7 @@ function Card({ children }: { children: React.ReactNode }) {
       border: '1px solid var(--hairline)',
       background: `
         radial-gradient(120% 130% at 100% 0%,
-          color-mix(in srgb, var(--ink) 4%, transparent) 0%,
+          rgb(var(--ink-rgb) / 0.04) 0%,
           transparent 58%),
         var(--surface)
       `,
@@ -390,7 +390,7 @@ function Divider() {
       aria-hidden
       style={{
         height: '1px', marginLeft: 'var(--space-margin)',
-        background: 'color-mix(in srgb, var(--ink) 8%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.08)',
       }}
     />
   );

@@ -115,7 +115,7 @@ export function AzkarTypographySettings(p: AzkarTypographyProps) {
                 padding: 'var(--space-snug) 0', borderRadius: 'var(--radius-chip)',
                 border: 'none',
                 background: tab === t.id
-                  ? 'color-mix(in srgb, var(--ink) 8%, var(--surface))'
+                  ? 'linear-gradient(rgb(var(--ink-rgb) / 0.08), rgb(var(--ink-rgb) / 0.08)), var(--surface)'
                   : 'transparent',
                 color: tab === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                 cursor: 'pointer',
@@ -125,7 +125,7 @@ export function AzkarTypographySettings(p: AzkarTypographyProps) {
                   ? 'var(--weight-semibold)'
                   : 'var(--weight-regular)',
                 boxShadow: tab === t.id
-                  ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent)'
+                  ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px rgb(var(--ink-rgb) / 0.1)'
                   : 'none',
                 transition: 'box-shadow 140ms ease, background 140ms ease',
               }}

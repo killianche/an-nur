@@ -63,7 +63,7 @@ export function DocumentScreen({ doc, onBack }: {
             width: '42px', height: '42px', flexShrink: 0,
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.04)',
             color: 'var(--text-secondary)', cursor: 'pointer',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}

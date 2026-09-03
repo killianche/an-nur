@@ -107,7 +107,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   padding: '10px 18px',
                   borderRadius: '10px',
                   border: '1px solid var(--hairline)',
-                  background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
+                  background: 'rgb(var(--ink-rgb) / 0.06)',
                   color: 'var(--text-primary)',
                   cursor: 'pointer',
                   fontFamily: 'inherit',

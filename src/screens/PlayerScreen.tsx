@@ -129,7 +129,7 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
           <div style={{
             height: '4px',
             borderRadius: '2px',
-            background: 'color-mix(in srgb, var(--ink) 10%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.1)',
             overflow: 'hidden',
           }}>
             <div style={{
@@ -218,7 +218,7 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
               minWidth: '76px', height: '38px',
               borderRadius: 'var(--radius-pill)',
               border: '1px solid var(--hairline)',
-              background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+              background: 'rgb(var(--ink-rgb) / 0.04)',
               color: 'var(--text-primary)',
               fontFamily: 'inherit',
               fontSize: 'var(--font-caption1)',
@@ -284,7 +284,7 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
                     border: 'none',
                     borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
                     background: s.number === surah
-                      ? 'color-mix(in srgb, var(--ink) 6%, transparent)'
+                      ? 'rgb(var(--ink-rgb) / 0.06)'
                       : 'transparent',
                     color: 'var(--text-primary)',
                     fontFamily: 'inherit',

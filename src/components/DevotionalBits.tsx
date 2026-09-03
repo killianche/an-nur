@@ -46,17 +46,17 @@ export function TasbihPill({
         // Теперь: bg 6%, border 28%, без хало (только лёгкое drop-shadow),
         // без scale-overshoot.  Чекмарк остаётся как явный сигнал.
         border: done
-          ? '1px solid color-mix(in srgb, var(--text-primary) 28%, transparent)'
+          ? '1px solid rgb(var(--text-primary-rgb) / 0.28)'
           : '1px solid var(--hairline)',
         background: done
-          ? 'color-mix(in srgb, var(--text-primary) 6%, transparent)'
-          : 'color-mix(in srgb, var(--ink) 4%, transparent)',
+          ? 'rgb(var(--text-primary-rgb) / 0.06)'
+          : 'rgb(var(--ink-rgb) / 0.04)',
         color: 'var(--text-primary)',
         fontFamily: 'inherit',
         cursor: 'pointer',
         transform: 'scale(1)',
         boxShadow: done
-          ? '0 1px 4px color-mix(in srgb, var(--text-primary) 8%, transparent)'
+          ? '0 1px 4px rgb(var(--text-primary-rgb) / 0.08)'
           : 'none',
         transition: 'background 240ms ease, box-shadow 240ms ease, border-color 240ms ease',
       }}
@@ -112,7 +112,7 @@ export function TasbihPill({
           width: '52px',
           height: '3px',
           borderRadius: '999px',
-          background: 'color-mix(in srgb, var(--text-primary) 10%, transparent)',
+          background: 'rgb(var(--text-primary-rgb) / 0.1)',
           overflow: 'hidden',
           display: 'block',
         }}
@@ -171,7 +171,7 @@ export function SourceDisclosure({
         margin: '0 0 6px',
         border: '1px solid var(--hairline)',
         borderRadius: '12px',
-        background: 'color-mix(in srgb, var(--ink) 3%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.03)',
         overflow: 'hidden',
       }}
     >
@@ -259,7 +259,7 @@ export function SourceDisclosure({
                     display: 'inline-block',
                     padding: '3px 9px',
                     borderRadius: '999px',
-                    background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
+                    background: 'rgb(var(--ink-rgb) / 0.06)',
                     border: '1px solid var(--hairline)',
                     fontSize: '11px',
                     color: 'var(--text-tertiary)',

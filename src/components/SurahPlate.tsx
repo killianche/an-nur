@@ -72,7 +72,7 @@ export function SurahPlate({
             'inset 0 3px 0 -2px var(--gold-soft), inset 0 -3px 0 -2px var(--gold-soft)',
           // Подложка теплее страницы: в печати внутри рамки бумага чуть
           // темнее от золотой краски по контуру.
-          background: 'color-mix(in srgb, var(--gold) 7%, transparent)',
+          background: 'rgb(var(--gold-rgb) / 0.07)',
           overflow: 'hidden',
         }}
       >

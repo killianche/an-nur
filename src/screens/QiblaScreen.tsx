@@ -168,7 +168,7 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
             width: 'var(--hit-min)', height: 'var(--hit-min)', flexShrink: 0,
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.04)',
             color: 'var(--text-secondary)', cursor: 'pointer',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
@@ -195,7 +195,7 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
             width: 'var(--hit-min)', height: 'var(--hit-min)', flexShrink: 0,
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.04)',
             color: themeOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
@@ -216,7 +216,7 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
           aspectRatio: '1',
           borderRadius: 'var(--radius-pill)',
           border: '1px solid var(--hairline)',
-          background: 'color-mix(in srgb, var(--ink) 3%, transparent)',
+          background: 'rgb(var(--ink-rgb) / 0.03)',
           display: 'grid', placeItems: 'center',
         }}>
           {/* Отметки сторон света */}
@@ -337,7 +337,7 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
         <p style={{
           margin: '0 0 var(--space-cozy)', padding: 'var(--space-cozy)',
           borderRadius: 'var(--radius-control)',
-          background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+          background: 'rgb(var(--ink-rgb) / 0.05)',
           border: '1px solid var(--hairline)',
           fontSize: 'var(--font-caption1)', lineHeight: 'var(--leading-caption1)',
           color: 'var(--text-secondary)',
@@ -388,7 +388,7 @@ export function QiblaScreen({ theme, setTheme, onBack }: Props) {
                 border: 'none',
                 borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
                 background: place.name === c.name
-                  ? 'color-mix(in srgb, var(--ink) 6%, transparent)'
+                  ? 'rgb(var(--ink-rgb) / 0.06)'
                   : 'transparent',
                 color: 'var(--text-primary)',
                 fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
@@ -429,10 +429,10 @@ function ActionButton({
         borderRadius: 'var(--radius-control)',
         border: `1px solid ${primary || active ? 'var(--text-primary)' : 'var(--hairline)'}`,
         background: primary
-          ? 'color-mix(in srgb, var(--ink) 10%, transparent)'
+          ? 'rgb(var(--ink-rgb) / 0.1)'
           : active
-          ? 'color-mix(in srgb, var(--ink) 7%, transparent)'
-          : 'color-mix(in srgb, var(--ink) 3%, transparent)',
+          ? 'rgb(var(--ink-rgb) / 0.07)'
+          : 'rgb(var(--ink-rgb) / 0.03)',
         color: disabled ? 'var(--text-tertiary)' : 'var(--text-primary)',
         cursor: disabled ? 'default' : 'pointer',
         fontFamily: 'inherit', fontSize: 'var(--font-subhead)',

@@ -213,11 +213,14 @@
 [data-theme="light"] {
   --canvas:        #ffffff;
   --canvas-soft:   #fafafa;
-  --surface:       #ffffff;   /* совпадает с канвой — разделение через hairline */
+  --surface:       #ffffff;
+  --surface-rgb:       255 255 255;   /* совпадает с канвой — разделение через hairline */
   --surface-strong:#f4f4f5;
 
   --ink:           #000000;
+  --ink-rgb:           0 0 0;
   --ink-soft:      #1f1f1f;
+  --ink-soft-rgb:      31 31 31;
   --body:          #3a3a3a;
   --muted:         #6b6b6b;
   --muted-soft:    #9c9c9c;
@@ -242,10 +245,13 @@
   --canvas:        #000000;
   --canvas-soft:   #050505;
   --surface:       #0a0a0a;
+  --surface-rgb:       10 10 10;
   --surface-strong:#141414;
 
   --ink:           #ececec;
+  --ink-rgb:           236 236 236;
   --ink-soft:      #d4d4d4;
+  --ink-soft-rgb:      212 212 212;
   --body:          #b5b5b5;
   --muted:         #828287;
   --muted-soft:    #5e5e62;
@@ -268,10 +274,13 @@
   --canvas:        #000000;
   --canvas-soft:   #08080b;
   --surface:       #131318;
+  --surface-rgb:       19 19 24;
   --surface-strong:#1c1c22;
 
   --ink:           #f4f4f5;
+  --ink-rgb:           244 244 245;
   --ink-soft:      #e4e4e7;
+  --ink-soft-rgb:      228 228 231;
   --body:          #c0c0c8;
   --muted:         #8a8a93;
   --muted-soft:    #5a5a63;
@@ -292,10 +301,13 @@
   --canvas:        #f7f4ec;
   --canvas-soft:   #f2eee4;
   --surface:       #f7f4ec;
+  --surface-rgb:       247 244 236;
   --surface-strong:#ebe5d8;
 
   --ink:           #1f1b17;
+  --ink-rgb:           31 27 23;
   --ink-soft:      #332d27;
+  --ink-soft-rgb:      51 45 39;
   --body:          #4d463d;
   --muted:         #756d62;
   --muted-soft:    #a39b90;
@@ -327,10 +339,13 @@
   --canvas:        #ffffff;
   --canvas-soft:   #fbfbfa;
   --surface:       #ffffff;
+  --surface-rgb:       255 255 255;
   --surface-strong:#f2f2f0;
 
   --ink:           #000000;
+  --ink-rgb:           0 0 0;
   --ink-soft:      #1f1f1f;
+  --ink-soft-rgb:      31 31 31;
   --body:          #3a3a3a;
   --muted:         #6b6b6b;
   --muted-soft:    #9c9c9c;
@@ -348,11 +363,13 @@
   --bg-card:        var(--surface);
   --border:         var(--hairline);
   --text-primary:   var(--ink);
+  --text-primary-rgb: var(--ink-rgb);
   --text-secondary: var(--body);
   --text-tertiary:  var(--muted);
   --text-muted:     var(--muted);
   --arabic:         var(--ink);
   --accent:         var(--ink-soft);
+  --accent-rgb:     var(--ink-soft-rgb);
   --accent-dim:     color-mix(in srgb, var(--ink) 16%, transparent);
 
   /* Подложка целого аята для чтецов без пословных таймингов. Цвет
@@ -379,6 +396,7 @@
      Тон приглушённый (не «жёлтый»): на чёрном фоне яркое золото звенит и
      перетягивает взгляд с текста. */
   --gold:      #c9a227;
+  --gold-rgb:      201 162 39;
   --gold-soft: #8d7220;
 }
 
@@ -490,6 +508,7 @@
 [data-theme="aurora"],
 [data-theme="mushaf"] {
   --gold:      #a4841c;
+  --gold-rgb:      164 132 28;
   --gold-soft: #6f5a13;
 }
 

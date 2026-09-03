@@ -493,8 +493,8 @@ function SheetCloseButton({ onClose }: { onClose: () => void }) {
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           borderRadius: '9999px',
           background: pressed
-            ? 'color-mix(in srgb, var(--ink) 16%, transparent)'
-            : 'color-mix(in srgb, var(--ink) 8%, transparent)',
+            ? 'rgb(var(--ink-rgb) / 0.16)'
+            : 'rgb(var(--ink-rgb) / 0.08)',
           color: pressed ? 'var(--text-primary)' : 'var(--text-secondary)',
           transform: pressed ? 'scale(0.92)' : 'scale(1)',
           transition: 'background 140ms ease, transform 140ms ease, color 140ms ease',
@@ -581,8 +581,8 @@ export function ReciterCard({ reciter, onPick }: {
                 borderRadius: '10px',
                 border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline)'}`,
                 background: active
-                  ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
-                  : 'color-mix(in srgb, var(--ink) 3%, transparent)',
+                  ? 'rgb(var(--ink-rgb) / 0.08)'
+                  : 'rgb(var(--ink-rgb) / 0.03)',
                 boxShadow: active ? 'inset 0 0 0 1px var(--text-primary)' : 'none',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
@@ -670,7 +670,7 @@ function MushafFontCard({ font, onPick }: {
                 borderRadius: '10px',
                 border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline-strong)'}`,
                 background: active
-                  ? 'color-mix(in srgb, var(--ink) 10%, transparent)'
+                  ? 'rgb(var(--ink-rgb) / 0.1)'
                   : 'transparent',
                 color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
                 fontFamily: 'inherit',
@@ -851,7 +851,7 @@ function ThemePicker({ theme, setTheme }: {
                   // не темы превью — иначе на белой карточке в тёмном
                   // интерфейсе обводка исчезает.
                   boxShadow: active
-                    ? 'inset 0 0 0 2px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 12%, transparent)'
+                    ? 'inset 0 0 0 2px var(--text-primary), 0 0 0 3px rgb(var(--ink-rgb) / 0.12)'
                     : 'inset 0 0 0 1px var(--hairline-strong)',
                   transition: 'box-shadow 140ms ease',
                 }}
@@ -994,7 +994,7 @@ export function TypographySettings(p: TypographyProps) {
                 padding: '9px 0', borderRadius: '7px',
                 border: 'none',
                 background: tab === t.id
-                  ? 'color-mix(in srgb, var(--ink) 8%, var(--surface))'
+                  ? 'linear-gradient(rgb(var(--ink-rgb) / 0.08), rgb(var(--ink-rgb) / 0.08)), var(--surface)'
                   : 'transparent',
                 color: tab === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                 cursor: 'pointer',
@@ -1002,7 +1002,7 @@ export function TypographySettings(p: TypographyProps) {
                 fontSize: 'var(--font-footnote)',
                 fontWeight: tab === t.id ? 600 : 500,
                 boxShadow: tab === t.id
-                  ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent)'
+                  ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px rgb(var(--ink-rgb) / 0.1)'
                   : 'none',
                 transition: 'box-shadow 140ms ease, background 140ms ease',
               }}
@@ -1237,7 +1237,7 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
                     padding: '7px 0', borderRadius: '7px',
                     border: 'none',
                     background: style === t.id
-                      ? 'color-mix(in srgb, var(--ink) 8%, var(--surface))'
+                      ? 'linear-gradient(rgb(var(--ink-rgb) / 0.08), rgb(var(--ink-rgb) / 0.08)), var(--surface)'
                       : 'transparent',
                     color: style === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                     cursor: 'pointer',
@@ -1245,7 +1245,7 @@ function HighlightCard({ reciter }: { reciter: ReciterId }) {
                     fontSize: 'var(--font-caption1)',
                     fontWeight: style === t.id ? 600 : 500,
                     boxShadow: style === t.id
-                      ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent)'
+                      ? 'inset 0 0 0 1.5px var(--text-primary), 0 0 0 3px rgb(var(--ink-rgb) / 0.1)'
                       : 'none',
                     transition: 'box-shadow 140ms ease, background 140ms ease',
                   }}
@@ -1385,7 +1385,7 @@ function AutoScrollToggleRow() {
 export const settingCard: CSSProperties = {
   border: '1px solid var(--hairline)',
   borderRadius: '14px',
-  background: 'color-mix(in srgb, var(--ink) 3%, transparent)',
+  background: 'rgb(var(--ink-rgb) / 0.03)',
   padding: '14px',
 };
 
@@ -1434,8 +1434,8 @@ export function ScalePicker({ value, onChange }: { value: number; onChange: (v: 
               borderRadius: '12px',
               border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline)'}`,
               background: active
-                ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
-                : 'color-mix(in srgb, var(--ink) 3%, transparent)',
+                ? 'rgb(var(--ink-rgb) / 0.08)'
+                : 'rgb(var(--ink-rgb) / 0.03)',
               boxShadow: active ? 'inset 0 0 0 1px var(--text-primary)' : 'none',
               color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
               cursor: 'pointer',
@@ -1489,8 +1489,8 @@ export function FontChips<T extends string>({
               borderRadius: '12px',
               border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline)'}`,
               background: active
-                ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
-                : 'color-mix(in srgb, var(--ink) 3%, transparent)',
+                ? 'rgb(var(--ink-rgb) / 0.08)'
+                : 'rgb(var(--ink-rgb) / 0.03)',
               boxShadow: active ? 'inset 0 0 0 1px var(--text-primary)' : 'none',
               cursor: 'pointer',
               fontFamily: 'inherit',

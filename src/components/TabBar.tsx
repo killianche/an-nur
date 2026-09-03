@@ -160,7 +160,7 @@ export function TabBar({ active, onSelect }: {
                   justifyContent: 'center',
                   borderRadius: 'var(--radius-pill)',
                   background: selected
-                    ? 'color-mix(in srgb, var(--text-primary) 9%, transparent)'
+                    ? 'rgb(var(--text-primary-rgb) / 0.09)'
                     : 'transparent',
                   transform: selected ? 'scale(1)' : 'scale(0.96)',
                   transition:

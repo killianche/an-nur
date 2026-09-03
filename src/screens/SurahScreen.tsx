@@ -1098,7 +1098,7 @@ function TajweedLoadNotice({
         padding: '11px 13px',
         borderRadius: 'var(--radius-control)',
         border: '1px solid var(--hairline-strong)',
-        background: 'color-mix(in srgb, var(--gold) 8%, var(--surface))',
+        background: 'linear-gradient(rgb(var(--gold-rgb) / 0.08), rgb(var(--gold-rgb) / 0.08)), var(--surface)',
         boxShadow: '0 6px 18px rgba(0, 0, 0, 0.10)',
         color: 'var(--text-secondary)',
         fontSize: 'var(--font-footnote)',
@@ -1536,7 +1536,7 @@ const JumpPopover = memo(function JumpPopover({
         onClick={e => e.stopPropagation()}
         style={{
           position: 'fixed', top: '60px', right: '12px', zIndex: 40,
-          background: 'color-mix(in srgb, var(--surface) 92%, transparent)',
+          background: 'rgb(var(--surface-rgb) / 0.92)',
           backdropFilter: 'saturate(180%) blur(20px)',
           WebkitBackdropFilter: 'saturate(180%) blur(20px)',
           border: '1px solid var(--hairline)', borderRadius: '16px',

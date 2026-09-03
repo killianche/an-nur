@@ -71,7 +71,7 @@ export function ComingSoonScreen({
       <section style={{
         border: '1px solid var(--hairline)',
         borderRadius: 'var(--radius-card)',
-        background: 'color-mix(in srgb, var(--ink) 3%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.03)',
         padding: 'var(--space-section)',
         display: 'grid',
         gap: 'var(--space-margin)',

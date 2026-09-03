@@ -775,7 +775,7 @@ function InlinePlay({
     height: '32px',
     borderRadius: 'var(--radius-chip)',
     border: '1px solid var(--hairline)',
-    background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+    background: 'rgb(var(--ink-rgb) / 0.04)',
     color: 'var(--text-primary)',
     cursor: 'pointer',
     display: 'inline-flex',

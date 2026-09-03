@@ -482,7 +482,7 @@ function TajweedWordSpan({
         // цветного слоя и даёт «двойной» контур. Поэтому аудио и выбор
         // аята отмечаются фоном, не меняя цвета самого таджвида.
         background: isActive
-          ? 'color-mix(in srgb, var(--accent) 14%, transparent)'
+          ? 'rgb(var(--accent-rgb) / 0.14)'
           : 'transparent',
         borderRadius: isActive ? '3px' : undefined,
         whiteSpace: 'nowrap',

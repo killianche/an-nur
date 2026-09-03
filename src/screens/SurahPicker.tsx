@@ -173,7 +173,7 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
         height: 'calc(var(--hit-min) + var(--space-tight))',
         padding: '0 var(--space-cozy)',
         borderRadius: 'var(--radius-control)',
-        background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.05)',
         border: '1px solid var(--hairline)',
         marginBottom: 'var(--space-margin)',
       }}>
@@ -255,7 +255,7 @@ function IconAction({ label, onClick, children, active, btnRef }: {
         width: '42px', height: '42px', flexShrink: 0,
         borderRadius: 'var(--radius-control)',
         border: '1px solid var(--hairline)',
-        background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.04)',
         color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
       }}
     >
@@ -396,7 +396,7 @@ function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
         padding: 'var(--space-snug) var(--space-hair)',
         border: 'none',
         background: pressed
-          ? 'color-mix(in srgb, var(--ink) 5%, transparent)'
+          ? 'rgb(var(--ink-rgb) / 0.05)'
           : 'transparent',
         cursor: 'pointer', textAlign: 'left',
         fontFamily: 'inherit', color: 'inherit',
@@ -588,7 +588,7 @@ function AyahHitRow({ hit, onClick }: { hit: AyahHit; onClick: () => void }) {
         border: 'none',
         borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
         background: pressed
-          ? 'color-mix(in srgb, var(--ink) 5%, transparent)'
+          ? 'rgb(var(--ink-rgb) / 0.05)'
           : 'transparent',
         cursor: 'pointer', fontFamily: 'inherit', color: 'inherit',
         transition: 'background var(--dur-fast) var(--ease-standard)',
@@ -624,7 +624,7 @@ function AyahHitRow({ hit, onClick }: { hit: AyahHit; onClick: () => void }) {
             слова внутри строки — на восьми пикселях она превращается в
             капсулу и рвёт строку на куски. */}
         <mark style={{
-          background: 'color-mix(in srgb, var(--ink) 14%, transparent)',
+          background: 'rgb(var(--ink-rgb) / 0.14)',
           color: 'var(--text-primary)',
           borderRadius: '3px',
           padding: '0 var(--space-hair)',

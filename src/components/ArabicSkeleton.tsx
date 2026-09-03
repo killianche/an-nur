@@ -134,7 +134,7 @@ export function ArabicSkeleton({ lines = 2, fontSize, align = 'right' }: Props) 
               borderRadius: `${Math.round(barHeight / 2)}px`,
               // Тон от чернил темы, а не фиксированный серый: на бумаге
               // мусхафа и в тёмной теме нужны разные полоски.
-              background: 'color-mix(in srgb, var(--ink) 9%, transparent)',
+              background: 'rgb(var(--ink-rgb) / 0.09)',
               // Задержка волной — читается как «строки едут одна за другой».
               animationDelay: `${i * 90}ms`,
             }}

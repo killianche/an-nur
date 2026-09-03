@@ -231,7 +231,7 @@ export function DuaScreen({ theme, setTheme }: Props) {
               borderRadius: 'var(--radius-pill)',
               border: `1px solid ${editing ? 'var(--text-primary)' : 'var(--hairline)'}`,
               background: editing
-                ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
+                ? 'rgb(var(--ink-rgb) / 0.08)'
                 : 'transparent',
               color: 'var(--text-primary)', cursor: 'pointer',
               fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
@@ -252,7 +252,7 @@ export function DuaScreen({ theme, setTheme }: Props) {
             width: '42px', height: '42px', flexShrink: 0,
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.04)',
             color: typographyOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
@@ -268,7 +268,7 @@ export function DuaScreen({ theme, setTheme }: Props) {
             width: '42px', height: '42px', flexShrink: 0,
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.04)',
             color: themeOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
@@ -382,7 +382,7 @@ function ModeSwitch({ mode, onChange, mineCount, allCount }: {
         display: 'flex',
         padding: 'var(--space-tight)',
         borderRadius: 'var(--radius-shell)',
-        background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.05)',
         border: '1px solid var(--hairline)',
         marginBottom: 'var(--space-margin)',
       }}
@@ -475,7 +475,7 @@ function CategoryChips({ data, value, onChange }: {
               borderRadius: 'var(--radius-pill)',
               border: `1px solid ${on ? 'var(--text-primary)' : 'var(--hairline)'}`,
               background: on
-                ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
+                ? 'rgb(var(--ink-rgb) / 0.08)'
                 : 'transparent',
               color: on ? 'var(--text-primary)' : 'var(--text-secondary)',
               fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
@@ -539,7 +539,7 @@ function DuaCard({
         border: '1px solid var(--hairline)',
         background: `
           radial-gradient(120% 130% at 100% 0%,
-            color-mix(in srgb, var(--ink) 4%, transparent) 0%,
+            rgb(var(--ink-rgb) / 0.04) 0%,
             transparent 58%),
           var(--surface)
         `,
@@ -597,8 +597,8 @@ function DuaCard({
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               border: `1px solid ${inList ? 'transparent' : 'var(--hairline-strong)'}`,
               background: inList
-                ? 'color-mix(in srgb, var(--ink) 7%, transparent)'
-                : 'color-mix(in srgb, var(--ink) 5%, transparent)',
+                ? 'rgb(var(--ink-rgb) / 0.07)'
+                : 'rgb(var(--ink-rgb) / 0.05)',
               color: inList ? 'var(--text-tertiary)' : 'var(--text-primary)',
               cursor: inList ? 'default' : 'pointer',
               marginTop: '-3px', marginRight: '-2px',
@@ -714,7 +714,7 @@ function Rule() {
       aria-hidden
       style={{
         height: '1px',
-        background: 'color-mix(in srgb, var(--ink) 8%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.08)',
       }}
     />
   );
@@ -868,7 +868,7 @@ function EditList({ items, onRemove }: {
               flexShrink: 0,
               width: '22px', height: '22px', borderRadius: 'var(--radius-pill)',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              background: 'color-mix(in srgb, var(--ink) 7%, transparent)',
+              background: 'rgb(var(--ink-rgb) / 0.07)',
               fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-semibold)',
               color: 'var(--text-secondary)',
               fontVariantNumeric: 'tabular-nums',
@@ -957,7 +957,7 @@ function UndoBar({ title, onUndo, onDismiss }: {
         padding: 'var(--space-cozy) var(--space-cozy) var(--space-cozy) var(--space-margin)',
         borderRadius: 'var(--radius-card)',
         border: '1px solid var(--hairline)',
-        background: 'color-mix(in srgb, var(--surface) 94%, transparent)',
+        background: 'rgb(var(--surface-rgb) / 0.94)',
         backdropFilter: 'saturate(150%) blur(14px)',
         WebkitBackdropFilter: 'saturate(150%) blur(14px)',
         boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
@@ -978,7 +978,7 @@ function UndoBar({ title, onUndo, onDismiss }: {
           flexShrink: 0, minHeight: '32px', padding: '0 var(--space-cozy)',
           borderRadius: 'var(--radius-pill)',
           border: '1px solid var(--hairline)',
-          background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
+          background: 'rgb(var(--ink-rgb) / 0.06)',
           color: 'var(--text-primary)', cursor: 'pointer',
           fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
           fontWeight: 'var(--weight-semibold)',
@@ -1105,7 +1105,7 @@ function EmptyShell({ title, text, action }: {
             marginTop: 'var(--space-section)', minHeight: 'var(--hit-min)',
             padding: '0 var(--space-margin)',
             borderRadius: 'var(--radius-control)', border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.05)',
             color: 'var(--text-primary)', cursor: 'pointer',
             fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
             fontWeight: 'var(--weight-regular)',

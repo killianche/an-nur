@@ -60,7 +60,7 @@ export function FontErrorBanner({ source = 'qcf', edition }: Props) {
         padding: '12px 14px',
         borderRadius: '14px',
         border: '1px solid var(--hairline-strong)',
-        background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.05)',
       }}
     >
       <span style={{

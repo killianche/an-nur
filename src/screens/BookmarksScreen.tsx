@@ -94,7 +94,7 @@ export function BookmarksScreen({ onBack, onOpen }: Props) {
           padding: 'calc(var(--space-section) * 2) var(--space-margin)',
           border: '1px dashed var(--hairline-strong)',
           borderRadius: 'var(--radius-shell)',
-          background: 'color-mix(in srgb, var(--surface) 68%, transparent)',
+          background: 'rgb(var(--surface-rgb) / 0.68)',
         }}>
           <div style={{
             width: 48, height: 48,
@@ -195,7 +195,7 @@ function BookmarkRow({
       position: 'relative',
       border: '1px solid var(--hairline)',
       borderRadius: 'var(--radius-card)',
-      background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+      background: 'rgb(var(--ink-rgb) / 0.04)',
       overflow: 'hidden',
     }}>
       <button

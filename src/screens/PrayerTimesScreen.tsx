@@ -211,7 +211,7 @@ export function PrayerTimesScreen({ theme, setTheme, onOpenQibla }: Props) {
             width: 'var(--hit-min)', height: 'var(--hit-min)', flexShrink: 0,
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.04)',
             color: 'var(--text-secondary)',
           }}
         >
@@ -227,7 +227,7 @@ export function PrayerTimesScreen({ theme, setTheme, onOpenQibla }: Props) {
             width: 'var(--hit-min)', height: 'var(--hit-min)', flexShrink: 0,
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
-            background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.04)',
             color: themeOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
@@ -259,7 +259,7 @@ export function PrayerTimesScreen({ theme, setTheme, onOpenQibla }: Props) {
             padding: 'var(--space-snug) var(--space-cozy)',
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline-strong)',
-            background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
+            background: 'rgb(var(--ink-rgb) / 0.06)',
             color: 'var(--text-secondary)',
             fontSize: 'var(--font-caption1)', lineHeight: 'var(--leading-caption1)',
           }}>
@@ -371,7 +371,7 @@ function CalculationCityButton({ city, onClick }: { city: PrayerCity; onClick: (
           padding: '0 var(--space-cozy) 0 var(--space-margin)',
           display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
           borderRadius: 'var(--radius-control)', border: '1px solid var(--hairline)',
-          background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+          background: 'rgb(var(--ink-rgb) / 0.04)',
           color: 'var(--text-primary)', fontFamily: 'inherit', cursor: 'pointer',
         }}
       >
@@ -415,7 +415,7 @@ function SourcePicker({ value, primary, onChange, onMakePrimary }: {
         display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-tight)',
         padding: 'var(--space-tight)', borderRadius: 'var(--radius-card)',
         border: '1px solid var(--hairline)',
-        background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.04)',
       }}>
         {SOURCE_OPTIONS.map(option => {
           const on = value === option.id;
@@ -532,7 +532,7 @@ function NextPrayerCard({ next, now, progress }: {
       border: '1px solid var(--hairline)',
       background: `
         radial-gradient(120% 140% at 100% 0%,
-          color-mix(in srgb, var(--ink) 5%, transparent) 0%,
+          rgb(var(--ink-rgb) / 0.05) 0%,
           transparent 62%),
         var(--surface)
       `,
@@ -580,12 +580,12 @@ function NextPrayerCard({ next, now, progress }: {
         style={{
           position: 'absolute', left: 0, right: 0, bottom: 0,
           height: '3px',
-          background: 'color-mix(in srgb, var(--ink) 7%, transparent)',
+          background: 'rgb(var(--ink-rgb) / 0.07)',
         }}
       >
         <div style={{
           width: `${(progress * 100).toFixed(1)}%`, height: '100%',
-          background: 'color-mix(in srgb, var(--ink) 34%, transparent)',
+          background: 'rgb(var(--ink-rgb) / 0.34)',
           transition: 'width 0.6s ease',
         }} />
       </div>
@@ -615,7 +615,7 @@ function TimeRow({
       minHeight: '50px', padding: 'var(--space-snug) var(--space-cozy)',
       borderRadius: 'var(--radius-control)',
       marginBottom: 'var(--space-hair)',
-      background: strong ? 'color-mix(in srgb, var(--ink) 6%, transparent)' : 'transparent',
+      background: strong ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent',
       border: `1px solid ${isNext ? 'var(--hairline-strong)' : 'transparent'}`,
       opacity: past && !isCurrent ? 0.62 : 1,
       transition:
@@ -674,7 +674,7 @@ function TimeRow({
             borderRadius: 'var(--radius-pill)',
             border: `1px solid ${alarmEnabled ? 'var(--hairline-strong)' : 'transparent'}`,
             background: alarmEnabled
-              ? 'color-mix(in srgb, var(--ink) 8%, transparent)'
+              ? 'rgb(var(--ink-rgb) / 0.08)'
               : 'transparent',
             color: alarmEnabled ? 'var(--text-primary)' : 'var(--text-tertiary)',
             cursor: alarmBusy ? 'wait' : 'pointer',
@@ -899,7 +899,7 @@ function CitiesSheet({ cities, activeId, now, onPick, onClose }: {
                   width: '100%', minHeight: '48px',
                   borderRadius: 'var(--radius-control)',
                   border: '1px solid var(--hairline)',
-                  background: 'color-mix(in srgb, var(--ink) 5%, transparent)',
+                  background: 'rgb(var(--ink-rgb) / 0.05)',
                   color: 'var(--text-primary)', cursor: locating ? 'default' : 'pointer',
                   fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
                   fontWeight: 'var(--weight-regular)',
@@ -1004,7 +1004,7 @@ function CityRow({
       <div style={{
         display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
         padding: 'var(--space-snug) var(--space-cozy) var(--space-snug) var(--space-margin)',
-        background: active ? 'color-mix(in srgb, var(--ink) 5%, transparent)' : 'transparent',
+        background: active ? 'rgb(var(--ink-rgb) / 0.05)' : 'transparent',
       }}>
         {editing && (
           <span style={{
@@ -1056,7 +1056,7 @@ function CityRow({
                 minHeight: 'var(--hit-min)', padding: '0 var(--space-cozy)',
                 borderRadius: 'var(--radius-pill)',
                 border: `1px solid ${tuning ? 'var(--text-primary)' : 'var(--hairline)'}`,
-                background: tuning ? 'color-mix(in srgb, var(--ink) 8%, transparent)' : 'transparent',
+                background: tuning ? 'rgb(var(--ink-rgb) / 0.08)' : 'transparent',
                 color: 'var(--text-primary)', cursor: 'pointer',
                 fontFamily: 'inherit', fontSize: 'var(--font-footnote)', flexShrink: 0,
               }}
@@ -1092,7 +1092,7 @@ function CitySettings({ city }: { city: PrayerCity }) {
     <div style={{
       padding: 'var(--space-tight) var(--space-margin) var(--space-margin)',
       display: 'grid', gap: 'var(--space-margin)',
-      background: 'color-mix(in srgb, var(--ink) 3%, transparent)',
+      background: 'rgb(var(--ink-rgb) / 0.03)',
     }}>
       {city.settings.source === 'calculated' ? (
         <>
@@ -1111,7 +1111,7 @@ function CitySettings({ city }: { city: PrayerCity }) {
                   padding: 'var(--space-snug) var(--space-cozy)',
                   borderRadius: 'var(--radius-control)',
                   border: `1px solid ${on ? 'var(--text-primary)' : 'var(--hairline)'}`,
-                  background: on ? 'color-mix(in srgb, var(--ink) 7%, transparent)' : 'transparent',
+                  background: on ? 'rgb(var(--ink-rgb) / 0.07)' : 'transparent',
                   color: 'var(--text-primary)', cursor: 'pointer',
                   fontFamily: 'inherit', fontSize: 'var(--font-footnote)', textAlign: 'left',
                 }}
@@ -1147,7 +1147,7 @@ function CitySettings({ city }: { city: PrayerCity }) {
                 style={{
                   minHeight: 'var(--hit-min)', borderRadius: 'var(--radius-control)',
                   border: `1px solid ${on ? 'var(--text-primary)' : 'var(--hairline)'}`,
-                  background: on ? 'color-mix(in srgb, var(--ink) 7%, transparent)' : 'transparent',
+                  background: on ? 'rgb(var(--ink-rgb) / 0.07)' : 'transparent',
                   color: 'var(--text-primary)', cursor: 'pointer',
                   fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
                 }}
@@ -1279,7 +1279,7 @@ function StepButton({ children, onClick, label }: {
         width: '34px', height: '34px',
         borderRadius: 'var(--radius-control)',
         border: '1px solid var(--hairline)',
-        background: 'color-mix(in srgb, var(--ink) 4%, transparent)',
+        background: 'rgb(var(--ink-rgb) / 0.04)',
         color: 'var(--text-primary)', cursor: 'pointer',
         fontFamily: 'inherit', fontSize: 'var(--font-callout)', lineHeight: 1,
       }}
