@@ -88,6 +88,32 @@ export function IosEdgeBackGesture({
     if (!armed || !viewport || !captured) return;
     viewport.appendChild(captured.node);
     viewport.scrollTop = captured.scrollY;
+    // Fixed-элементы (меню, мини-плеер, шапка) внутри transform+scroll
+    // viewport перестают быть «относительно экрана» и якорятся к низу
+    // всего прокрученного клона — меню уезжает за кадр или в середину.
+    // Поднимаем их на shell: он равен экрану и не скроллится, параллакс
+    // остаётся общим.
+    //
+    // 🔴 Панели именно ОДАЛЖИВАЕМ, а не забираем: клон переиспользуется.
+    // `App` держит копию списка сур в `quranHomePreviewRef` и показывает её
+    // при каждом входе в суру и мусхаф. Если в очистке просто удалить
+    // поднятые узлы, они пропадут из клона навсегда — и уже второй жест
+    // (например, после отменённого свайпа, самый частый исход) покажет
+    // предпросмотр вообще без нижнего меню. Поэтому запоминаем, откуда узел
+    // взят, и в очистке возвращаем его на то же место.
+    const lifted: { el: HTMLElement; parent: Node; next: Node | null }[] = [];
+    if (shell) {
+      captured.node
+        .querySelectorAll<HTMLElement>(
+          'nav[aria-label="Разделы"], [aria-label="Звучит сейчас"], .screen-header',
+        )
+        .forEach(el => {
+          const parent = el.parentNode;
+          if (!parent) return;
+          lifted.push({ el, parent, next: el.nextSibling });
+          shell.appendChild(el);
+        });
+    }
     // Первый кадр параллакса ставим здесь, а не в теле рендера: ширину знает
     // только активный жест, и читать её при рендере было бы нечисто.
     if (shell) {
@@ -95,6 +121,8 @@ export function IosEdgeBackGesture({
       shell.style.transform = `translate3d(${-PARALLAX * width}px, 0, 0)`;
     }
     return () => {
+      // Возвращаем на прежнее место, а не удаляем: клон живёт дольше жеста.
+      lifted.forEach(({ el, parent, next }) => { parent.insertBefore(el, next); });
       if (captured.node.parentNode === viewport) viewport.removeChild(captured.node);
     };
   }, [armed, preview]);
@@ -347,6 +375,9 @@ export function IosEdgeBackGesture({
             style={{
               position: 'absolute',
               inset: 0,
+              // Выше поднятых панелей (у меню z-index 40, у мини-плеера 39):
+              // без этого копия меню светилась ярче собственного экрана.
+              zIndex: 50,
               background: 'rgba(0,0,0,0.12)',
             }}
           />
