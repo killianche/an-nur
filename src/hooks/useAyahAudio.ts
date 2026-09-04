@@ -59,6 +59,15 @@ function readStoredRate(): PlaybackRate {
  *  (текущая сура и соседняя) там не нужно ни для чего. */
 const AUDIO_CACHE_MAX = 6;
 const CONTINUOUS_CACHE_MAX = 2;
+/**
+ * За сколько до конца файла аята начинать переход к следующему.
+ *
+ * Меньше — разрыв заметнее; больше — дольше звучат оба файла разом. 50 мс
+ * подобраны по замеру: типичный разрыв был 15–56 мс, и этого хватает, чтобы
+ * его закрыть, оставаясь в пределах затухающего хвоста записи.
+ */
+const EARLY_ADVANCE_SECONDS = 0.05;
+
 const audioCache = new Map<string, HTMLAudioElement>();
 const logicalKeyForAudio = new WeakMap<HTMLAudioElement, string>();
 const completedRange = new WeakSet<HTMLAudioElement>();
@@ -654,6 +663,31 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       // surah. An old rAF must stop immediately when the logical ayah changes,
       // otherwise it can finish the newly selected ayah using the old range.
       if (logicalKeyForAudio.get(audio) !== activeKey) return;
+
+      // 🔴 Поаятный режим: переходим на следующий аят чуть РАНЬШЕ конца.
+      //
+      // В этом режиме каждый аят — отдельный файл, и переход ждал события
+      // `ended`. Оно приходит с задержкой, и запуск следующего элемента тоже
+      // не мгновенный: замерили разрыв между `ended` одного файла и `playing`
+      // следующего — 21, 27, 15, 56, 35 мс, в среднем 31.
+      //
+      // Приём известный: не ждать события, а начать переход, когда до конца
+      // осталась малость. Здесь важно, ЧТО ИМЕННО мы делаем: следующий аят
+      // запускается, пока текущий ещё доигрывает свой хвост, и текущий никто
+      // не останавливает досрочно. Чтение не обрезается — оно доходит до
+      // конца само. Пятьдесят миллисекунд наложения на затухающем хвосте
+      // неразличимы на слух, а разрыв на их величину уменьшается.
+      //
+      // Непрерывной записи это не касается: там ветка `range` выше и швов
+      // нет вовсе.
+      if (!range && !completedRange.has(audio)
+        && Number.isFinite(audio.duration) && audio.duration > 0
+        && audio.duration - audio.currentTime <= EARLY_ADVANCE_SECONDS) {
+        completedRange.add(audio);
+        setProgress(1);
+        audio.onended?.(new Event('ended'));
+        return;
+      }
 
       if (range && audio.currentTime >= range.endSeconds) {
         if (!completedRange.has(audio)) {
