@@ -208,6 +208,9 @@ function getOrCreateAudio(
   // Полная сура может быть большой. `metadata` разрешает браузеру начать
   // поток с нужного byte-range, а последовательное чтение затем идёт тем же
   // декодером. Поаятные офлайн-файлы по-прежнему прогружаем целиком заранее.
+  // `metadata` только на создание: так первый seek в середину суры не ждёт
+  // лишних байт. Дальше, когда звук уже пошёл, оценка меняется на
+  // противоположную — см. `подтянутьВперёд` ниже.
   a.preload = continuous ? 'metadata' : 'auto';
   a.src = continuous
     ? (surahAudioUrl(reciter, surah) ?? ayahAudioUrl(surah, ayah, reciter))
@@ -371,18 +374,41 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     setProgress(0);                                          // reset for the new ayah
     setCurrentWordPos(null);                                 // clear stale word from previous ayah
 
-    // Lock Screen / Control Center Now Playing card — заполняем сразу
-    // на старте.  artwork — иконка приложения (звёздное небо).
-    const surahMeta = SURAH_BY_NUMBER[surah];
-    setMediaSessionMetadata({
-      title:      surahMeta?.transliteration ?? `Surah ${surah}`,
-      album:      `Аят ${ayah}`,
-      artist:     reciterRef.current,
-      // PNG надёжнее SVG на Android — некоторые WebView версии
-      // не рендерят SVG в Lock Screen artwork.
-      artworkUrl: '/icons/icon-512.png',
-    });
+    // Lock Screen / Control Center Now Playing card.
+    //
+    // 🔴 НЕ переписываем её на каждом аяте. `MediaMetadata` заменяется
+    // целиком, вместе с картинкой, и на границе аята это заставляло систему
+    // заново разбирать карточку «сейчас играет» — несколько раз в минуту,
+    // прямо в момент перехода. Владелец слышал на этом месте заминку.
+    // На бесшовной границе одного и того же потока карточка и так верна:
+    // сура, чтец и обложка не изменились.
+    if (!seamlessSameMedia) {
+      const surahMeta = SURAH_BY_NUMBER[surah];
+      setMediaSessionMetadata({
+        title:      surahMeta?.transliteration ?? `Surah ${surah}`,
+        album:      `Аят ${ayah}`,
+        artist:     reciterRef.current,
+        // PNG надёжнее SVG на Android — некоторые WebView версии
+        // не рендерят SVG в Lock Screen artwork.
+        artworkUrl: '/icons/icon-512.png',
+      });
+    }
     setMediaSessionPlaybackState('playing');
+
+    // 🔴 Читаем ЗАПАС ВПЕРЁД, а не впритык.
+    //
+    // Сплошная запись суры создаётся с `preload='metadata'`: так первый
+    // переход в середину Аль-Бакары не ждёт лишних байт. Но дальше эта же
+    // бережливость выходила боком — браузер держал крошечный буфер и
+    // дочитывал файл по ходу чтения. Владелец слышал заминку на границах
+    // аятов и видел подгрузку, хотя сура вообще не была скачана.
+    //
+    // Как только звук пошёл, оценка меняется на противоположную: пусть
+    // читает далеко вперёд. Файл раздаётся по частям (сервер отвечает 206),
+    // поэтому это не «скачать 110 МБ разом», а обычный поток с запасом.
+    // Повышаем один раз за элемент: повторное присваивание того же значения
+    // Safari игнорирует, а лишний `load()` сбросил бы позицию.
+    if (audio.preload !== 'auto') audio.preload = 'auto';
 
     // Only a REAL end of the recording may advance the queue.  Treating a
     // network/media error as `ended` is dangerous: while offline every MP3
