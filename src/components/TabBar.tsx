@@ -40,15 +40,18 @@ const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }
   { id: 'account', label: 'Аккаунт', icon: selected => <Person size={TAB_ICON} isFilled={selected} /> },
 ];
 
-/** Высота самой капсулы. */
-const CAPSULE_HEIGHT = 64;
-/** Зазор между капсулой и нижним краем безопасной области. */
-const CAPSULE_INSET = 10;
-/** Зазор от боковых краёв экрана. */
-const CAPSULE_SIDE = 12;
+/**
+ * Высота содержимого панели — без безопасной зоны внизу.
+ *
+ * 49 — системная высота панели вкладок в iOS: значок 25, зазор, подпись
+ * caption 2. Безопасную зону прибавляют потребители этой константы сами
+ * (`calc(TAB_BAR_HEIGHT + … + env(safe-area-inset-bottom))`), поэтому
+ * включать её сюда нельзя — отступ удвоится.
+ */
+const BAR_HEIGHT = 49;
 
 /** Сколько места панель занимает снизу — см. предупреждение в шапке. */
-export const TAB_BAR_HEIGHT = CAPSULE_HEIGHT + CAPSULE_INSET;
+export const TAB_BAR_HEIGHT = BAR_HEIGHT;
 
 /** Максимальная пауза между двумя тапами по активной вкладке. */
 const DOUBLE_TAP_MS = 420;
@@ -65,20 +68,22 @@ export function TabBar({ active, onSelect }: {
       className="liquid-glass"
       style={{
         ...GLASS_BLUR,
+        // Системная панель вкладок iOS: во всю ширину, прижата к нижнему
+        // краю, полупрозрачная, отделена волосяной линией. Плавающая
+        // капсула «жидкого стекла» здесь была раньше — владелец выбрал
+        // системный вид 04.09.2026.
         position: 'fixed',
-        left: `${CAPSULE_SIDE}px`,
-        right: `${CAPSULE_SIDE}px`,
-        bottom: `calc(env(safe-area-inset-bottom) + ${CAPSULE_INSET}px)`,
+        left: 0,
+        right: 0,
+        bottom: 0,
         zIndex: 40,
-        height: `${CAPSULE_HEIGHT}px`,
-        boxSizing: 'border-box',
-        // Радиус чуть меньше половины высоты: полная капсула на пять
-        // подписей выглядит аптечной пилюлей, а не панелью.
-        borderRadius: '26px',
-        // На планшете панель не растягивается во всю ширину: ряд из пяти
-        // вкладок шириной в лист выглядит потерянным.
-        maxWidth: '560px',
-        margin: '0 auto',
+        height: `${BAR_HEIGHT}px`,
+        // Безопасная зона добавляется отступом, а не высотой: содержимое
+        // остаётся ровно 49 px, а стекло дотягивается до самого края экрана.
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        boxSizing: 'content-box',
+        borderRadius: 0,
+        borderTop: '1px solid var(--hairline)',
         overflow: 'hidden',
       }}
     >
@@ -127,7 +132,7 @@ export function TabBar({ active, onSelect }: {
               style={{
                 minWidth: 0,
                 height: '100%',
-                padding: 'var(--space-tight) var(--space-hair)',
+                padding: '0 var(--space-hair)',
                 border: 'none',
                 borderRadius: 0,
                 background: 'transparent',
@@ -154,15 +159,16 @@ export function TabBar({ active, onSelect }: {
                   // залитый глиф выбранной вкладки читался в нём пятном.
                   // Вытянутая капсула возвращает иконке форму.
                   width: '52px',
-                  height: '32px',
+                  height: '28px',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderRadius: 'var(--radius-pill)',
-                  background: selected
-                    ? 'rgb(var(--text-primary-rgb) / 0.09)'
-                    : 'transparent',
-                  transform: selected ? 'scale(1)' : 'scale(0.96)',
+                  // Подложки под выбранной вкладкой нет: в iOS выбранное
+                  // отличается цветом и залитым глифом, а капсула под
+                  // значком — приём Material, не системы Apple.
+                  background: 'transparent',
+                  transform: 'none',
                   transition:
                     'background var(--dur-base) var(--ease-standard),'
                     + ' transform var(--dur-slow) var(--ease-panel)',
