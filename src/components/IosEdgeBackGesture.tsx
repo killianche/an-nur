@@ -67,6 +67,8 @@ export function IosEdgeBackGesture({
   const previewShellRef = useRef<HTMLDivElement>(null);
   const previewViewportRef = useRef<HTMLDivElement>(null);
   const previewDimRef = useRef<HTMLDivElement>(null);
+  /** Фон экрана до жеста: на время движения он подменяется непрозрачным. */
+  const previousBackgroundRef = useRef('');
   const onBackRef = useRef(onBack);
   const previewRef = useRef(preview);
   const gestureRef = useRef<Gesture | null>(null);
@@ -109,22 +111,37 @@ export function IosEdgeBackGesture({
     // аврора) и крышка под системной строкой страдали от того же дефекта, и
     // на этих темах предпросмотр терял фон, показывая плоскую заливку.
     // `.screen-header` добавлен отдельно: он закреплён классом, не стилем.
-    const lifted: { el: HTMLElement; parent: Node; next: Node | null }[] = [];
+    const lifted: HTMLElement[] = [];
     if (shell) {
       captured.node
         .querySelectorAll<HTMLElement>(
           '[style*="position: fixed"], [style*="position:fixed"], .screen-header',
         )
         .forEach(el => {
-          const parent = el.parentNode;
-          if (!parent) return;
-          lifted.push({ el, parent, next: el.nextSibling });
-          // Собственный z-index элемента сохраняется: слои темы лежат на 0 и
-          // 900, панели на 30–40. Порядок между ними задают уровни слоёв
-          // предпросмотра ниже, а не порядок вставки.
-          shell.appendChild(el);
+          // 🔴 КОПИРУЕМ, а не переносим.
+          //
+          // Раньше узел переносился в `shell`, а в очистке возвращался на
+          // место через `parent.insertBefore(el, next)`. На телефоне владельца
+          // это уронило приложение: `NotFoundError: The object can not be
+          // found here` — так `insertBefore` отвечает, когда запомненный сосед
+          // больше не лежит в том же родителе. Сценарий: включить суру,
+          // открыть плеер, выйти — по дороге меняется и клон, и набор панелей
+          // (мини-плеер появляется вместе со звуком).
+          //
+          // Копия убирает саму возможность такой ошибки: возвращать нечего,
+          // оригинал из клона никуда не девается, и клон остаётся пригодным
+          // для следующих жестов. Снять копию нельзя «не туда» — `remove()`
+          // не бросает исключение, даже если узел уже отцеплен.
+          //
+          // Оригинал при этом остаётся внутри прокручиваемого слоя и лежит
+          // далеко ниже видимой области, под `overflow: hidden`, — его не
+          // видно.
+          const копия = el.cloneNode(true) as HTMLElement;
+          shell.appendChild(копия);
+          lifted.push(копия);
         });
     }
+
     // Первый кадр параллакса ставим здесь, а не в теле рендера: ширину знает
     // только активный жест, и читать её при рендере было бы нечисто.
     if (shell) {
@@ -132,8 +149,8 @@ export function IosEdgeBackGesture({
       shell.style.transform = `translate3d(${-PARALLAX * width}px, 0, 0)`;
     }
     return () => {
-      // Возвращаем на прежнее место, а не удаляем: клон живёт дольше жеста.
-      lifted.forEach(({ el, parent, next }) => { parent.insertBefore(el, next); });
+      // Снимаем именно копии — оригиналы в клоне мы не трогали.
+      lifted.forEach(копия => { копия.remove(); });
       if (captured.node.parentNode === viewport) viewport.removeChild(captured.node);
     };
   }, [armed, preview]);
@@ -171,10 +188,23 @@ export function IosEdgeBackGesture({
 
     /** Слой создаём один раз за жест, а не на каждом кадре. */
     const openLayer = () => {
-      const screen = currentScreenRef.current;
+        const screen = currentScreenRef.current;
       if (!screen) return;
       screen.style.willChange = 'transform';
       screen.style.boxShadow = '-10px 0 28px rgba(0,0,0,0.16)';
+      // 🔴 На время жеста экран обязан быть НЕПРОЗРАЧНЫМ.
+      //
+      // На темах со своим фоновым слоем (бумага, аврора) у экрана
+      // `background: transparent` — фон рисует отдельный слой, а сквозь сам
+      // экран видно страницу под ним. Стоя на месте это незаметно, но когда
+      // экран уезжает вправо, через него просвечивает список сур: владелец
+      // так и описал — «страница суры становится прозрачной».
+      //
+      // На iOS уходящий экран не просвечивает: он едет как непрозрачный лист,
+      // а из-под него выходит предыдущий. Подкладываем цвет канвы — фоновый
+      // слой темы рисуется поверх и вид не меняется.
+      previousBackgroundRef.current = screen.style.background;
+      screen.style.background = 'var(--canvas)';
     };
 
     const closeLayer = () => {
@@ -184,6 +214,9 @@ export function IosEdgeBackGesture({
       screen.style.transition = '';
       screen.style.willChange = '';
       screen.style.boxShadow = '';
+      // Возвращаем ровно то, что было: на прозрачных темах — прозрачность.
+      screen.style.background = previousBackgroundRef.current;
+      previousBackgroundRef.current = '';
     };
 
     const cancelFrame = () => {

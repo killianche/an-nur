@@ -14,6 +14,18 @@
  * из 114 строк. Полоска появляется, когда звук пошёл, и исчезает, когда
  * его нет: она сама себе объяснение.
  *
+ * ── Управление прямо в полоске ────────────────────────────────────────
+ *
+ * Владелец попросил не гонять его в полный плеер ради паузы и соседнего
+ * аята. Поэтому здесь есть переход по аятам, пауза и скорость — всё, что
+ * нужно на ходу, в один тап.
+ *
+ * Смена чтеца сюда НЕ вынесена намеренно. Полоска высотой 52 px уже несёт
+ * четыре органа управления и название; пятый превратил бы её в панель
+ * кнопок, где промахиваешься мимо нужной. Чтец меняется тапом по названию —
+ * это открывает полный плеер, где он и живёт, — и ещё кнопкой «Аа» в
+ * полноэкранном мусхафе.
+ *
  * ── Что здесь НЕ делается ─────────────────────────────────────────────
  *
  * Полоска не подписывается на прогресс и позицию слова. Ей нужны только
@@ -22,7 +34,7 @@
  */
 
 import { useEffect } from 'react';
-import { Pause, Play, ICON_SIZE } from './icons';
+import { Pause, Play, SkipBack, SkipForward, ICON_SIZE } from './icons';
 import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { reciterById } from '../lib/reciters';
@@ -34,7 +46,7 @@ const HEIGHT = 52;
 const GAP = 6;
 
 export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
-  const { currentSurah, currentAyah, audioState, reciter } = useAudioState();
+  const { currentSurah, currentAyah, audioState, reciter, playbackRate } = useAudioState();
   const audio = useAudioActions();
 
   // Полоска перекрывает низ экрана, а её высота известна только ей. Чтобы
@@ -74,7 +86,7 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         borderRadius: '20px',
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--space-tight)',
+        gap: '2px',
         padding: '0 var(--space-tight) 0 var(--space-snug)',
         boxSizing: 'border-box',
       }}
@@ -113,6 +125,15 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
       </button>
 
       <button
+        onClick={() => audio.prev()}
+        aria-label="Предыдущий аят"
+        className="icon-btn"
+        style={{ flexShrink: 0, width: '40px', height: '40px', color: 'var(--text-secondary)' }}
+      >
+        <SkipBack size={ICON_SIZE.sm} />
+      </button>
+
+      <button
         disabled={loading}
         onClick={() => {
           // Во время загрузки кнопка не работает: повторный тап запускал бы
@@ -130,13 +151,43 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         className="icon-btn"
         style={{
           flexShrink: 0,
-          width: 'var(--hit-min)', height: 'var(--hit-min)',
+          width: '44px', height: '44px',
           color: 'var(--text-primary)',
           opacity: loading ? 0.45 : 1,
         }}
       >
         {playing ? <Pause size={ICON_SIZE.md} /> : <Play size={ICON_SIZE.md} />}
       </button>
+
+      <button
+        onClick={() => audio.next()}
+        aria-label="Следующий аят"
+        className="icon-btn"
+        style={{ flexShrink: 0, width: '40px', height: '40px', color: 'var(--text-secondary)' }}
+      >
+        <SkipForward size={ICON_SIZE.sm} />
+      </button>
+
+      <button
+        onClick={() => audio.cyclePlaybackRate()}
+        aria-label={`Скорость ${playbackRate}×, изменить`}
+        style={{
+          flexShrink: 0,
+          minWidth: '46px', height: '30px',
+          borderRadius: 'var(--radius-pill)',
+          border: '1px solid var(--hairline)',
+          background: 'rgb(var(--ink-rgb) / 0.04)',
+          color: 'var(--text-primary)',
+          fontFamily: 'inherit',
+          fontSize: 'var(--font-caption2)',
+          fontVariantNumeric: 'tabular-nums',
+          cursor: 'pointer',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        {playbackRate}×
+      </button>
+
     </div>
   );
 }
