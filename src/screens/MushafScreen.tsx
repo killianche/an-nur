@@ -286,7 +286,12 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     if (dragFrame.current != null) return;
     dragFrame.current = requestAnimationFrame(() => {
       dragFrame.current = null;
-      pageTrackRef.current?.style.setProperty('--mushaf-drag-x', `${pendingDrag.current}px`);
+      const track = pageTrackRef.current;
+      if (!track) return;
+      // Пока лист движется — показываем корешок между страницами (см. CSS
+      // `.mushaf-page-track[data-turning]`). В покое он не нужен: лист один.
+      track.dataset.turning = '';
+      track.style.setProperty('--mushaf-drag-x', `${pendingDrag.current}px`);
     });
   }, []);
 
@@ -301,6 +306,8 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     if (!track) return;
     track.style.setProperty('--mushaf-turn-duration', '0ms');
     track.style.setProperty('--mushaf-drag-x', '0px');
+    // И здесь тоже: иначе после отменённого жеста корешок остался бы висеть.
+    delete track.dataset.turning;
   }, []);
 
   useEffect(() => () => {
@@ -343,6 +350,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       // переход не отменяет.
       track.style.setProperty('--mushaf-turn-duration', '0ms');
       track.style.setProperty('--mushaf-drag-x', '0px');
+      delete track.dataset.turning;
       // flushSync не оставляет промежуточного кадра между новым номером
       // страницы и возвратом трека в нулевую координату.
       if (nextPage != null) flushSync(() => setPage(nextPage));

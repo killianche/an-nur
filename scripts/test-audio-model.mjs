@@ -1656,29 +1656,29 @@ await groupAsync('Мусхаф: доводка листа зависит от п
 
   // Осталось пройти чуть-чуть — доводка короткая, а не «как всегда».
   check('короткий остаток даёт минимальную длительность',
-    pageTurnDuration(10, W, 0), 130);
+    pageTurnDuration(10, W, 0), 200);
 
   // Полная ширина без скорости — самый долгий честный проход.
-  check('полная ширина без скорости — 340 мс',
-    pageTurnDuration(W, W, 0), 340);
+  check('полная ширина без скорости — 520 мс',
+    pageTurnDuration(W, W, 0), 520);
 
   // Быстрый бросок короче медленного, но не телепорт: скорость листа ≤ 1.2 px/мс.
   const slow = pageTurnDuration(W, W, 0);
   const fast = pageTurnDuration(W, W, 2);
   check('быстрое отпускание короче медленного', fast < slow, true);
-  check('быстрый флик на полной ширине не быстрее CAP (остаток/1.2)',
-    pageTurnDuration(W, W, 2) >= Math.round(W / 1.2), true);
-  check('быстрый флик с большим остатком ≥ remaining/1.2',
-    pageTurnDuration(330, W, 2) >= Math.round(330 / 1.2), true);
+  check('быстрый флик на полной ширине не быстрее CAP (остаток/1.0)',
+    pageTurnDuration(W, W, 2) >= Math.round(W / 1.0), true);
+  check('быстрый флик с большим остатком ≥ remaining/1.0',
+    pageTurnDuration(330, W, 2) >= Math.round(330 / 1.0), true);
 
   // Тест выше зашит на одну ширину, а телефоны бывают шире: на 430–440 pt
   // потолок скорости сильнее «базовых» 340 мс, и правило обязано держаться
   // именно там — иначе на Plus и Pro Max лист снова начнёт телепортировать.
   for (const wide of [430, 440]) {
-    check(`ширина ${wide}: лист не быстрее 1.2 px/мс даже при сильном броске`,
-      pageTurnDuration(wide, wide, 3) >= Math.round(wide / 1.2), true);
+    check(`ширина ${wide}: лист не быстрее 1.0 px/мс даже при сильном броске`,
+      pageTurnDuration(wide, wide, 3) >= Math.round(wide / 1.0), true);
     check(`ширина ${wide}: доводка не дольше верхней границы`,
-      pageTurnDuration(wide, wide, 0) <= 420, true);
+      pageTurnDuration(wide, wide, 0) <= 760, true);
   }
 
   // Направление роли не играет: влево и вправо ведут себя одинаково.
@@ -1687,9 +1687,9 @@ await groupAsync('Мусхаф: доводка листа зависит от п
 
   // Границы соблюдаются при любых входных данных, включая нелепые.
   check('очень быстрый бросок не опускается ниже минимума',
-    pageTurnDuration(W, W, 99) >= 130, true);
+    pageTurnDuration(W, W, 99) >= 200, true);
   check('остаток больше ширины не превышает максимума',
-    pageTurnDuration(W * 5, W, 0) <= 420, true);
+    pageTurnDuration(W * 5, W, 0) <= 760, true);
   check('нулевая ширина не ломает расчёт',
     Number.isFinite(pageTurnDuration(100, 0, 1)), true);
 

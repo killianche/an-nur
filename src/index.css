@@ -571,6 +571,39 @@
   box-shadow: 0 0 22px color-mix(in srgb, var(--ink) 11%, transparent);
 }
 
+/* ─── Стык двух страниц ───────────────────────────────────────────────
+   Владелец попросил, чтобы при листании было видно, что страницы две, а не
+   одна съезжающая картинка. Рисуем корешок: тонкая линия по краю листа и
+   мягкая тень от неё внутрь. Соседние слои стыкуются вплотную, поэтому на
+   границе линии двух страниц сходятся в один корешок.
+
+   Только на время жеста и доводки (`[data-turning]` ставит MushafScreen):
+   в покое лист один, и полосы по краям экрана были бы рамкой ни к чему.
+
+   Рисуем ВНУТРИ слоя: у него `contain: layout paint style`, и всё, что
+   вынесено наружу, обрезается. */
+.mushaf-page-track[data-turning] .mushaf-page-layer::before,
+.mushaf-page-track[data-turning] .mushaf-page-layer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  pointer-events: none;
+}
+
+.mushaf-page-track[data-turning] .mushaf-page-layer::before {
+  left: 0;
+  border-left: 1px solid rgb(var(--ink-rgb) / 0.16);
+  background: linear-gradient(to right, rgb(var(--ink-rgb) / 0.10), transparent);
+}
+
+.mushaf-page-track[data-turning] .mushaf-page-layer::after {
+  right: 0;
+  border-right: 1px solid rgb(var(--ink-rgb) / 0.16);
+  background: linear-gradient(to left, rgb(var(--ink-rgb) / 0.10), transparent);
+}
+
 .mushaf-page [data-mushaf-selected] {
   border-radius: 0.2em;
   background: color-mix(in srgb, var(--gold) 15%, transparent) !important;
