@@ -15,10 +15,10 @@
  * молча, потому что стекло полупрозрачное и текст под ним «вроде виден».
  */
 
-import { useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
-import { BookOpen, Sparkle, Clock, Flower, Person } from './icons';
+import { TabQuran, TabAzkar, TabPrayer, Flower, Person } from './icons';
 import { GLASS_BLUR } from '../lib/glass';
 
 export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer' | 'account';
@@ -33,10 +33,10 @@ export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer' | 'account';
 const TAB_ICON = 25;
 
 const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }[] = [
-  { id: 'quran', label: 'Коран', icon: selected => <BookOpen size={TAB_ICON} isFilled={selected} /> },
-  { id: 'azkar', label: 'Азкары', icon: selected => <Sparkle size={TAB_ICON} isFilled={selected} /> },
+  { id: 'quran', label: 'Коран', icon: selected => <TabQuran size={TAB_ICON} isFilled={selected} /> },
+  { id: 'azkar', label: 'Азкары', icon: selected => <TabAzkar size={TAB_ICON} isFilled={selected} /> },
   { id: 'dua', label: 'Дуа', icon: selected => <Flower size={TAB_ICON} isFilled={selected} /> },
-  { id: 'prayer', label: 'Намаз', icon: selected => <Clock size={TAB_ICON} isFilled={selected} /> },
+  { id: 'prayer', label: 'Намаз', icon: selected => <TabPrayer size={TAB_ICON} isFilled={selected} /> },
   { id: 'account', label: 'Аккаунт', icon: selected => <Person size={TAB_ICON} isFilled={selected} /> },
 ];
 
@@ -48,10 +48,15 @@ const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }
  * (`calc(TAB_BAR_HEIGHT + … + env(safe-area-inset-bottom))`), поэтому
  * включать её сюда нельзя — отступ удвоится.
  */
-const BAR_HEIGHT = 49;
+const BAR_HEIGHT = 62;
+/** Насколько панель сжимается при прокрутке вниз. */
+const BAR_HEIGHT_MIN = 44;
+/** Зазор до нижнего края безопасной области и до боковых краёв. */
+const BAR_INSET = 10;
+const BAR_SIDE = 14;
 
 /** Сколько места панель занимает снизу — см. предупреждение в шапке. */
-export const TAB_BAR_HEIGHT = BAR_HEIGHT;
+export const TAB_BAR_HEIGHT = BAR_HEIGHT + BAR_INSET;
 
 /** Максимальная пауза между двумя тапами по активной вкладке. */
 const DOUBLE_TAP_MS = 420;
@@ -62,29 +67,78 @@ export function TabBar({ active, onSelect }: {
 }) {
   const lastActiveTapRef = useRef<{ id: TabId; at: number } | null>(null);
 
+  /**
+   * Сжатие при прокрутке — главная черта нижнего меню iOS 26.
+   *
+   * Вниз — панель ужимается и прячет подписи, освобождая экран под текст.
+   * Вверх или у самого верха — разворачивается обратно. Порог в 4 px гасит
+   * дрожание пальца, иначе панель мигала бы на каждом кадре.
+   *
+   * При включённом «уменьшении движения» не сжимаемся вовсе: для человека,
+   * который просил меньше анимаций, скачущая панель — раздражитель, а не
+   * украшение.
+   */
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let last = window.scrollY;
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const y = window.scrollY;
+        const dy = y - last;
+        last = y;
+        if (y < 48) { setCollapsed(false); return; }
+        if (dy > 4) setCollapsed(true);
+        else if (dy < -4) setCollapsed(false);
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
+
   return (
     <nav
       aria-label="Разделы"
       className="liquid-glass"
       style={{
         ...GLASS_BLUR,
-        // Системная панель вкладок iOS: во всю ширину, прижата к нижнему
-        // краю, полупрозрачная, отделена волосяной линией. Плавающая
-        // капсула «жидкого стекла» здесь была раньше — владелец выбрал
-        // системный вид 04.09.2026.
+        // Плавающая капсула «жидкого стекла» — как нижнее меню в iOS 26.
+        //
+        // Решения владельца по этой панели менялись: 04.09.2026 он выбрал
+        // системную панель во всю ширину, 05.09 — вернуться к плавающей, но
+        // «как в последней iOS». Поэтому здесь именно черты iOS 26: панель
+        // висит НАД содержимым с отступами от краёв, полностью скруглена и
+        // СЖИМАЕТСЯ при прокрутке вниз, разворачиваясь при прокрутке вверх
+        // (`.tabBarMinimizeBehavior(.onScrollDown)` у Apple).
+        //
+        // Точных величин Apple не публикует — высоты и радиус подобраны на
+        // глаз по отрисовке, а не взяты из документации.
         position: 'fixed',
-        left: 0,
-        right: 0,
-        bottom: 0,
+        left: `${BAR_SIDE}px`,
+        right: `${BAR_SIDE}px`,
+        bottom: `calc(env(safe-area-inset-bottom) + ${BAR_INSET}px)`,
         zIndex: 40,
-        height: `${BAR_HEIGHT}px`,
-        // Безопасная зона добавляется отступом, а не высотой: содержимое
-        // остаётся ровно 49 px, а стекло дотягивается до самого края экрана.
-        paddingBottom: 'env(safe-area-inset-bottom)',
-        boxSizing: 'content-box',
-        borderRadius: 0,
-        borderTop: '1px solid var(--hairline)',
+        height: `${collapsed ? BAR_HEIGHT_MIN : BAR_HEIGHT}px`,
+        boxSizing: 'border-box',
+        borderRadius: `${(collapsed ? BAR_HEIGHT_MIN : BAR_HEIGHT) / 2}px`,
+        // Кромка стекла: светлая линия сверху ловит свет, общая рамка держит
+        // форму на любом фоне.
+        border: '1px solid rgb(var(--surface-rgb) / 0.55)',
+        boxShadow:
+          '0 8px 30px rgb(var(--ink-rgb) / 0.16),'
+          + ' inset 0 1px 0 rgb(var(--surface-rgb) / 0.65)',
+        maxWidth: '520px',
+        margin: '0 auto',
         overflow: 'hidden',
+        transition:
+          'height var(--dur-slow) var(--ease-panel),'
+          + ' border-radius var(--dur-slow) var(--ease-panel)',
       }}
     >
       <div
@@ -182,6 +236,14 @@ export function TabBar({ active, onSelect }: {
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
+                  // В сжатом виде подписи уходят — как в iOS 26. Высота при
+                  // этом схлопывается вместе с ними, поэтому текст не
+                  // «выпрыгивает» из капсулы во время перехода.
+                  height: collapsed ? 0 : undefined,
+                  opacity: collapsed ? 0 : 1,
+                  transition:
+                    'opacity var(--dur-base) var(--ease-standard),'
+                    + ' height var(--dur-slow) var(--ease-panel)',
                   // Caption 2 (11/13) — нижняя ступень iOS и одновременно
                   // минимальный кегль, который Apple разрешает в
                   // интерфейсе.  Начертания только те два, что реально

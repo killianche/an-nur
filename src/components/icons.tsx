@@ -376,6 +376,66 @@ export const Flower = ({ size = ICON_SIZE.md, isFilled = false, className, style
   );
 };
 
+
+/* ── Значки нижнего меню ────────────────────────────────────────────
+   Отдельный набор, используемый ТОЛЬКО панелью вкладок.
+
+   Владелец 05.09.2026 попросил «совсем другие, минималистичные, креативный
+   подход». Направление взято из разбора трендов 2026: гипер-минимальная
+   линия — одна узнаваемая форма на значок, строгая геометрия, ничего
+   лишнего. Метафоры выбраны предметные, а не общие: чётки вместо искр,
+   михраб вместо часов, книга сведена к корешку и обложке.
+
+   Почему отдельным набором, а не заменой прежних: те же `BookOpen`, `Clock`
+   и `Sparkle` стоят на других экранах, и менять их заодно значило бы
+   трогать то, о чём не просили. */
+
+/** Книга — раздел «Коран». Обложка и корешок, больше ничего. */
+export const TabQuran = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => {
+  const cut = useCutId();
+  return (
+    <svg {...stroke(size, className, style)}>
+      {isFilled && (
+        <mask id={cut} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+          <rect x="0" y="0" width="24" height="24" fill="white" />
+          <path d="M9.2 4.6v14.8" stroke="black" strokeWidth={STROKE} strokeLinecap="round" />
+        </mask>
+      )}
+      <g mask={isFilled ? `url(#${cut})` : undefined}>
+        <rect x="5" y="4" width="14" height="16" rx="2.4"
+          fill={isFilled ? 'currentColor' : 'none'} />
+        {!isFilled && <path d="M9.2 4.6v14.8" />}
+      </g>
+    </svg>
+  );
+};
+
+/**
+ * Чётки — раздел «Азкары»: поминание считают на них.
+ *
+ * Первая попытка рисовала дугу с тремя бусинами под ней и на кегле панели
+ * читалась как усы. Замкнутое кольцо из восьми бусин узнаётся сразу и
+ * заодно попадает в «строгую геометрию» — форма собрана по окружности,
+ * а не нарисована на глаз.
+ */
+export const TabAzkar = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
+  <svg {...stroke(size, className, style)}>
+    {([[12.00, 5.50], [16.60, 7.40], [18.50, 12.00], [16.60, 16.60], [12.00, 18.50], [7.40, 16.60], [5.50, 12.00], [7.40, 7.40]] as const).map(([cx, cy]) => (
+      <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.5"
+        fill={isFilled ? 'currentColor' : 'none'} />
+    ))}
+  </svg>
+);
+
+/** Михраб — раздел «Намаз»: молитвенная ниша, а не часы. */
+export const TabPrayer = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
+  <svg {...stroke(size, className, style)}>
+    <path d="M5.6 20.2v-7.9a6.4 6.4 0 0 1 12.8 0v7.9"
+      fill={isFilled ? 'currentColor' : 'none'} />
+    <path d="M4.2 20.2h15.6" fill="none" />
+  </svg>
+);
+
 /** Человек — раздел «Аккаунт». */
 export const Person = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
   <svg {...stroke(size, className, style)} fill={isFilled ? 'currentColor' : 'none'}>
