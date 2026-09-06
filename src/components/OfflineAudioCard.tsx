@@ -23,11 +23,12 @@ import {
 } from '../lib/audioStore';
 import {
   getDownloadState, startDownload, pauseDownload, resetDownloadState,
-  subscribeDownloads, estimateBytes, formatBytes, missingCount,
+  subscribeDownloads, estimateBytes, formatBytes,
   type DownloadScope,
 } from '../lib/audioDownloads';
 import { optOutOfAutoDownload } from '../lib/audioAutoDownload';
 import { ayahsInSurah } from '../lib/ayahNumbering';
+import { hasSurahFile, surahFileCount } from '../lib/audioStore';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { settingCard, cardTitle } from './ReadingSettings';
 import { Download, Trash, CheckCircle, Pause, ICON_SIZE } from './icons';
@@ -114,7 +115,13 @@ function SurahRow({ reciter, surah }: { reciter: ReciterId; surah: number }) {
   const meta = SURAH_BY_NUMBER[surah];
   const total = ayahsInSurah(surah);
   const have = downloadedInSurah(reciter, surah);
-  const complete = isSurahComplete(reciter, surah);
+  // 🔴 Сура считается скачанной и тогда, когда лежит СПЛОШНОЙ записью.
+  //
+  // Прежняя проверка смотрела только на поаятные файлы. После перехода на
+  // сплошную запись их не появляется вовсе, и успешно скачанная сура
+  // показывалась бы пустой — человек скачал бы её второй раз.
+  const asSurahFile = hasSurahFile(reciter, surah);
+  const complete = asSurahFile || isSurahComplete(reciter, surah);
   const st = getDownloadState(reciter);
   const running = st.status === 'running';
   const busyOnThis = running && st.scope?.kind === 'surah' && st.scope.surah === surah;
@@ -169,10 +176,12 @@ function SurahRow({ reciter, surah }: { reciter: ReciterId; surah: number }) {
         )}
       </div>
 
-      <Meter value={have} max={total} />
+      <Meter value={asSurahFile ? total : have} max={total} />
 
       <span style={meta_}>
-        {complete
+        {asSurahFile
+          ? 'Эта сура есть офлайн одной записью — читается без стыков'
+          : complete
           ? 'Эта сура есть офлайн'
           : running && !busyOnThis
           ? 'Для этого чтеца уже идёт другая загрузка. Управление — в разделе «Аккаунт».'
@@ -190,11 +199,11 @@ function ReciterRow({ id, label }: {
   const have = downloadedCount(id);
   const suras = completeSurahCount(id);
   const complete = have >= TOTAL_AYAHS;
+  const сплошных = surahFileCount(id);
   const st = getDownloadState(id);
   const running = st.status === 'running';
 
   const ALL: DownloadScope = { kind: 'all' };
-  const left = missingCount(id, ALL);
 
   return (
     <div style={{ display: 'grid', gap: '6px' }}>
@@ -254,8 +263,10 @@ function ReciterRow({ id, label }: {
           ? `Весь Коран офлайн · ${TOTAL_SURAHS} сур`
           : running
           ? `Качаю: ${st.done} из ${st.total} · ${formatBytes(st.bytes)}`
-          : have > 0
-          ? `${suras} из ${TOTAL_SURAHS} сур целиком · ${have} аятов · ≈ ${formatBytes(estimateBytes(id, left))} осталось`
+          : have > 0 || сплошных > 0
+          // Сплошные записи считаем отдельным слагаемым: в поаятной карте их
+          // нет, и без этого сводка занижала бы скачанное.
+          ? `${suras + сплошных} из ${TOTAL_SURAHS} сур целиком${have > 0 ? ` · ${have} аятов` : ''}`
           : 'Не скачано — играет стримом'}
       </span>
     </div>

@@ -85,11 +85,17 @@ export type DownloadState = {
   total: number;
   /** Байт записано за текущее задание. */
   bytes: number;
+  /**
+   * Сколько байт всего в задании — известно только для сплошной записи суры.
+   * Для поаятных заданий 0: там ход показывается числом аятов, а полный
+   * размер заранее неизвестен.
+   */
+  bytesTotal: number;
   error: string | null;
 };
 
 const IDLE: DownloadState = {
-  status: 'idle', scope: null, done: 0, total: 0, bytes: 0, error: null,
+  status: 'idle', scope: null, done: 0, total: 0, bytes: 0, bytesTotal: 0, error: null,
 };
 
 const state = new Map<ReciterId, DownloadState>();
@@ -467,7 +473,9 @@ export async function startDownload(reciter: ReciterId, scope: DownloadScope): P
     patch(reciter, { status: 'running', scope, done: 0, total: 1, bytes: 0, error: null });
     try {
       const готово = await downloadSurahFile(reciter, scope.surah, (сделано, всего) => {
-        patch(reciter, { done: сделано >= всего ? 1 : 0, total: 1, bytes: сделано });
+        // Ход показываем БАЙТАМИ: сура качается одним файлом, и «0 из 1»
+        // означало бы прыжок с нуля сразу в конец на сотне мегабайт.
+        patch(reciter, { done: сделано >= всего ? 1 : 0, total: 1, bytes: сделано, bytesTotal: всего });
       });
       if (готово) {
         patch(reciter, { ...IDLE, scope, done: 1, total: 1 });
