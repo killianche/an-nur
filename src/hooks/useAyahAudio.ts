@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { ayahAudioUrl } from '../lib/quranUtils';
 import { ayahAudioRange } from '../lib/ayahAudioRange';
+import { hasSurahFile, localSurahSrc } from '../lib/audioStore';
 import { cacheAyah, missingCount } from '../lib/audioDownloads';
 import {
   DEFAULT_RECITER, RECITERS_WITH_SEGMENTS, hasSurahAudio, requiresSurahAudioStream,
@@ -221,8 +222,14 @@ function getOrCreateAudio(
   // лишних байт. Дальше, когда звук уже пошёл, оценка меняется на
   // противоположную — см. `подтянутьВперёд` ниже.
   a.preload = continuous ? 'metadata' : 'auto';
+  // Порядок важен: сперва СПЛОШНАЯ ЗАПИСЬ НА ДИСКЕ. Это тот же файл, что
+  // играет из сети, поэтому офлайн идёт тем же путём и с теми же таймингами —
+  // швов на границах аятов нет по построению. Только если её нет, берём
+  // сетевую сплошную, и лишь в последнюю очередь — файл отдельного аята.
   a.src = continuous
-    ? (surahAudioUrl(reciter, surah) ?? ayahAudioUrl(surah, ayah, reciter))
+    ? (localSurahSrc(surah, reciter)
+      ?? surahAudioUrl(reciter, surah)
+      ?? ayahAudioUrl(surah, ayah, reciter))
     : ayahAudioUrl(surah, ayah, reciter);
   // Safari/WebView не всегда начинает preload сразу после присваивания src.
   a.load();
@@ -559,7 +566,11 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     const startPlayback = () => {
       const r = reciterRef.current;
       const offlineComplete = missingCount(r, { kind: 'surah', surah }) === 0;
-      playbackMode = (!offlineComplete && hasSurahAudio(r)) ? 'surah' : 'ayah';
+      // Сплошная запись на диске бьёт всё остальное: она и работает без сети,
+      // и не даёт швов. Поаятный режим остаётся только там, где её нет, а
+      // отдельные файлы аятов скачаны.
+      playbackMode = (hasSurahFile(r, surah) || (!offlineComplete && hasSurahAudio(r)))
+        ? 'surah' : 'ayah';
       startedWholeSurah = false;
       playOne(surah, ayah);
     };
@@ -594,7 +605,8 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // «играет со швами» несравнимо лучше, чем «не играет вовсе».
     const offlineComplete = mode === 'surah'
       && missingCount(reciterRef.current, { kind: 'surah', surah }) === 0;
-    playbackMode = offlineComplete ? 'ayah' : mode;
+    playbackMode = (offlineComplete && !hasSurahFile(reciterRef.current, surah))
+      ? 'ayah' : mode;
     startedWholeSurah = mode === 'surah';
     queueRef.current = { surah, first: fromAyah, last: lastAyah, current: fromAyah };
     playOne(surah, fromAyah);

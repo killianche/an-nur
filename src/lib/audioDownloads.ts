@@ -53,7 +53,7 @@
  */
 
 import type { ReciterId } from './reciters';
-import { reciterById, supportsAyahOffline } from './reciters';
+import { reciterById, supportsAyahOffline, surahAudioUrl } from './reciters';
 import {
   globalAyahNumber, ayahsInSurah, firstGlobalOfSurah, juzRange,
   TOTAL_AYAHS, TOTAL_SURAHS,
@@ -61,6 +61,7 @@ import {
 import {
   hasAyah, markDownloaded, ayahFilePath, isOfflineSupported, persistNow,
   downloadedCount, downloadedInSurah,
+  surahFilePath, hasSurahFile, markSurahFile, unmarkSurahFile,
 } from './audioStore';
 import { remoteAyahAudioUrl } from './quranUtils';
 
@@ -295,6 +296,134 @@ export function cacheAyah(reciter: ReciterId, surah: number, ayah: number): void
   void fetchAndStore(reciter, surah, ayah).catch(() => { /* не мешаем чтению */ });
 }
 
+
+// ─── Сплошная запись суры ───────────────────────────────────────────────
+
+/**
+ * Размер куска при загрузке сплошной записи.
+ *
+ * Файл суры бывает большим — у Аль-Бакары 110 МБ. Целиком его тянуть нельзя:
+ * `CapacitorHttp` возвращает тело в base64, и такая строка заняла бы около
+ * 147 МБ в памяти. Поэтому качаем кусками и дописываем в файл: в памяти
+ * одновременно живёт один кусок.
+ *
+ * 4 МБ — компромисс: меньше кусков (меньше обращений через мост Capacitor),
+ * но пик памяти около 5.5 МБ в base64, что телефон переносит спокойно.
+ */
+const SURAH_CHUNK_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Скачать суру ОДНИМ файлом — той же сплошной записью, что играет из сети.
+ *
+ * ── Зачем это вообще ──────────────────────────────────────────────────
+ *
+ * Поаятные файлы удобны для докачки, но играть суру подряд из них можно
+ * только подменяя аудиоэлемент на каждой границе — и это слышно. Замеряли:
+ * 31 мс до правки, 10 мс после. Владелец попросил, чтобы швов не было вовсе.
+ *
+ * Со сплошной записью швов нет ПО ПОСТРОЕНИЮ: это тот же файл, что играет из
+ * сети, поэтому офлайн идёт ровно тем же путём и с теми же таймингами аятов.
+ * Переключать нечего.
+ *
+ * ── Почему кусками, а не целиком ──────────────────────────────────────
+ *
+ * `Filesystem.downloadFile` объявлен устаревшим, отдельный плагин брать не
+ * стали (см. шапку модуля), а `CapacitorHttp` отдаёт тело base64-строкой —
+ * для 110 МБ это неприемлемо. Куски по 4 МБ решают и то, и другое: хосты
+ * отвечают на частичные запросы (проверено, код 206), а `appendFile`
+ * дописывает каждый кусок к файлу.
+ *
+ * ── Докачка ───────────────────────────────────────────────────────────
+ *
+ * Если файл уже частично лежит, продолжаем с его длины. Прерванная загрузка
+ * не начинается заново — это важно на телефоне, где сеть пропадает.
+ */
+export async function downloadSurahFile(
+  reciter: ReciterId,
+  surah: number,
+  onProgress?: (готово: number, всего: number) => void,
+): Promise<boolean> {
+  if (!isOfflineSupported()) return false;
+  if (hasSurahFile(reciter, surah)) return true;
+
+  const url = surahAudioUrl(reciter, surah);
+  if (!url) return false;
+
+  const [{ CapacitorHttp }, { Filesystem, Directory }] = await Promise.all([
+    import('@capacitor/core'),
+    import('@capacitor/filesystem'),
+  ]);
+  const path = surahFilePath(reciter, surah);
+
+  // Сколько уже лежит: продолжаем с этого места.
+  let готово = 0;
+  try {
+    const stat = await Filesystem.stat({ directory: Directory.LibraryNoCloud, path });
+    готово = typeof stat.size === 'number' ? stat.size : 0;
+  } catch {
+    готово = 0;                                   // файла ещё нет — начинаем с нуля
+  }
+
+  // Общий размер узнаём из заголовка ответа на первый частичный запрос:
+  // `Content-Range: bytes 0-0/12345678`. Отдельный HEAD не делаем — лишний
+  // обход сети, а некоторые хосты на HEAD отвечают иначе, чем на GET.
+  const проба = await CapacitorHttp.request({
+    url, method: 'GET', responseType: 'blob',
+    headers: { Range: 'bytes=0-0' },
+  });
+  const contentRange = String(
+    проба.headers?.['Content-Range'] ?? проба.headers?.['content-range'] ?? '');
+  const всего = Number(contentRange.split('/')[1]);
+  if (!Number.isFinite(всего) || всего <= 0) {
+    // Хост не поддерживает частичные запросы — честно отступаем, а не тянем
+    // 110 МБ в память.
+    return false;
+  }
+
+  while (готово < всего) {
+    const до = Math.min(готово + SURAH_CHUNK_BYTES, всего) - 1;
+    const res = await CapacitorHttp.request({
+      url, method: 'GET', responseType: 'blob',
+      headers: { Range: `bytes=${готово}-${до}` },
+    });
+    if (res.status !== 206 && res.status !== 200) {
+      throw new Error(`сура ${surah}: HTTP ${res.status}`);
+    }
+    const data = res.data;
+    if (typeof data !== 'string' || data.length === 0) {
+      throw new Error(`сура ${surah}: пустой кусок`);
+    }
+    if (готово === 0) {
+      await Filesystem.writeFile({
+        directory: Directory.LibraryNoCloud, path, data, recursive: true,
+      });
+    } else {
+      await Filesystem.appendFile({
+        directory: Directory.LibraryNoCloud, path, data,
+      });
+    }
+    готово += base64ByteLength(data);
+    onProgress?.(готово, всего);
+  }
+
+  markSurahFile(reciter, surah);
+  await persistNow();
+  return true;
+}
+
+/** Снять отметку и удалить недокачанное — если загрузка сорвалась. */
+export async function discardSurahFile(reciter: ReciterId, surah: number): Promise<void> {
+  unmarkSurahFile(reciter, surah);
+  try {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    await Filesystem.deleteFile({
+      directory: Directory.LibraryNoCloud, path: surahFilePath(reciter, surah),
+    });
+  } catch {
+    // Файла могло не быть — не ошибка.
+  }
+}
+
 // ─── Задания ────────────────────────────────────────────────────────────
 
 /**
@@ -322,6 +451,39 @@ export async function startDownload(reciter: ReciterId, scope: DownloadScope): P
   if (getDownloadState(reciter).status === 'running') return;
 
   cancelFlags.delete(reciter);
+
+  // 🔴 Одну суру качаем ОДНИМ файлом, а не сотней кусочков.
+  //
+  // Поаятные файлы играются подряд только подменой аудиоэлемента на каждой
+  // границе, и это слышно: замеряли 31 мс до правки, 10 мс после. Владелец
+  // попросил, чтобы швов не было вовсе. Сплошная запись — тот же файл, что
+  // играет из сети, поэтому офлайн идёт тем же путём и с теми же таймингами:
+  // переключать нечего, шва нет по построению.
+  //
+  // Если хост не отдаёт файл частями или чтец без сплошной записи —
+  // `downloadSurahFile` честно возвращает false, и мы спокойно уходим на
+  // прежний поаятный путь, а не остаёмся без звука.
+  if (scope.kind === 'surah') {
+    patch(reciter, { status: 'running', scope, done: 0, total: 1, bytes: 0, error: null });
+    try {
+      const готово = await downloadSurahFile(reciter, scope.surah, (сделано, всего) => {
+        patch(reciter, { done: сделано >= всего ? 1 : 0, total: 1, bytes: сделано });
+      });
+      if (готово) {
+        patch(reciter, { ...IDLE, scope, done: 1, total: 1 });
+        return;
+      }
+    } catch (error) {
+      // Недокачанный файл не оставляем: он бесполезен и вводит в заблуждение
+      // счётчик занятого места.
+      await discardSurahFile(reciter, scope.surah);
+      patch(reciter, {
+        status: 'error', scope,
+        error: `Не удалось скачать суру целиком: ${String(error).slice(0, 80)}`,
+      });
+      return;
+    }
+  }
 
   const targets = expandScope(scope)
     .filter(([s, a]) => !hasAyah(reciter, globalAyahNumber(s, a)));

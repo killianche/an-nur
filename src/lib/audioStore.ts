@@ -67,9 +67,22 @@ const PREFS_KEY = 'audio.downloads.v2';
 /** Корневая папка внутри LibraryNoCloud. */
 const AUDIO_DIR = 'audio';
 
+/**
+ * Ключ для СПЛОШНЫХ записей сур — отдельный от карты аятов.
+ *
+ * Зачем вообще второе хранилище. Поаятные файлы дают гибкость (любой кусок,
+ * докачка), но играть суру подряд из них можно только подменяя аудиоэлемент
+ * на каждой границе, а это шов. Сплошная запись суры — тот же файл, что
+ * играет из сети, поэтому офлайн идёт ровно тем же путём: одна дорожка, одни
+ * и те же тайминги аятов, переключать нечего.
+ */
+const SURAH_PREFS_KEY = 'audio.surahFiles.v1';
+
 type Bitmaps = Partial<Record<ReciterId, Uint8Array>>;
 
 const maps: Bitmaps = {};
+/** Скачанные целиком записи сур: чтец → набор номеров сур. */
+const surahFiles: Partial<Record<ReciterId, Set<number>>> = {};
 /** `file:///.../Library/audio` — корень аудио на устройстве. */
 let baseUri: string | null = null;
 let native = false;
@@ -184,6 +197,47 @@ export function ayahFilePath(reciter: ReciterId, surah: number, ayah: number): s
  * Локальный src для аята — или null, если его нет либо платформа не
  * нативная.  Синхронно.
  */
+/** Путь к сплошной записи суры внутри LibraryNoCloud. */
+export function surahFilePath(reciter: ReciterId, surah: number): string {
+  return `${AUDIO_DIR}/${reciter}/surah-${surah}.mp3`;
+}
+
+/** Лежит ли на устройстве сплошная запись этой суры. */
+export function hasSurahFile(reciter: ReciterId, surah: number): boolean {
+  return surahFiles[reciter]?.has(surah) ?? false;
+}
+
+/** Сколько сур скачано сплошными записями — для подписи в интерфейсе. */
+export function surahFileCount(reciter: ReciterId): number {
+  return surahFiles[reciter]?.size ?? 0;
+}
+
+/** Отметить, что сплошная запись суры легла на диск. */
+export function markSurahFile(reciter: ReciterId, surah: number): void {
+  (surahFiles[reciter] ??= new Set()).add(surah);
+  schedulePersist();
+  emit();
+}
+
+/** Снять отметку — файл удалён или загрузка не довелась до конца. */
+export function unmarkSurahFile(reciter: ReciterId, surah: number): void {
+  surahFiles[reciter]?.delete(surah);
+  schedulePersist();
+  emit();
+}
+
+/**
+ * Локальный адрес сплошной записи суры.
+ *
+ * Синхронный, как и `localAyahSrc`: воспроизведение спрашивает его в момент
+ * создания элемента и ждать промиса не может.
+ */
+export function localSurahSrc(surah: number, reciter: ReciterId): string | null {
+  if (!native || !baseUri) return null;
+  if (!hasSurahFile(reciter, surah)) return null;
+  return convertFileSrc(`${baseUri}/${reciter}/surah-${surah}.mp3`);
+}
+
 export function localAyahSrc(
   surah: number,
   ayah: number,
@@ -246,6 +300,22 @@ export async function initAudioStore(): Promise<void> {
   }
 }
 
+/** Набор сплошных записей — простой список номеров на чтеца. */
+async function loadSurahFiles(): Promise<void> {
+  try {
+    const { Preferences } = await import('@capacitor/preferences');
+    const { value } = await Preferences.get({ key: SURAH_PREFS_KEY });
+    if (!value) return;
+    const parsed = JSON.parse(value) as Record<string, number[]>;
+    for (const [k, list] of Object.entries(parsed)) {
+      if (Array.isArray(list)) surahFiles[k as ReciterId] = new Set(list);
+    }
+  } catch {
+    // Потеря списка не страшна: файлы на диске останутся, а признак
+    // восстановится при следующей загрузке суры.
+  }
+}
+
 async function loadBitmaps(): Promise<boolean> {
   try {
     const { Preferences } = await import('@capacitor/preferences');
@@ -260,6 +330,7 @@ async function loadBitmaps(): Promise<boolean> {
         any = true;
       }
     }
+    await loadSurahFiles();
     return any;
   } catch {
     return false;
@@ -294,6 +365,12 @@ export async function persistNow(): Promise<void> {
       if (m) out[k] = toBase64(m);
     }
     await Preferences.set({ key: PREFS_KEY, value: JSON.stringify(out) });
+
+    const сплошные: Record<string, number[]> = {};
+    for (const [k, set] of Object.entries(surahFiles)) {
+      if (set && set.size) сплошные[k] = [...set];
+    }
+    await Preferences.set({ key: SURAH_PREFS_KEY, value: JSON.stringify(сплошные) });
   } catch {
     // Потеря индекса не критична — пересоберётся сканом.
   }
@@ -321,6 +398,7 @@ export async function clearReciter(reciter: ReciterId): Promise<void> {
       path: `${AUDIO_DIR}/${reciter}`,
       recursive: true,
     });
+    surahFiles[reciter]?.clear();
   } catch {
     // Папки могло не быть — не ошибка.
   }
@@ -330,6 +408,7 @@ export async function clearReciter(reciter: ReciterId): Promise<void> {
 export async function clearSurah(reciter: ReciterId, surah: number): Promise<void> {
   const first = firstGlobalOfSurah(surah);
   for (let k = 0; k < ayahsInSurah(surah); k++) setBit(reciter, first + k, false);
+  surahFiles[reciter]?.delete(surah);
   emit();
   await persistNow();
   if (!native) return;
@@ -340,6 +419,11 @@ export async function clearSurah(reciter: ReciterId, surah: number): Promise<voi
       path: `${AUDIO_DIR}/${reciter}/${surah}`,
       recursive: true,
     });
+    // И сплошную запись этой суры — она лежит рядом, а не в папке суры.
+    await Filesystem.deleteFile({
+      directory: Directory.LibraryNoCloud,
+      path: surahFilePath(reciter, surah),
+    }).catch(() => { /* файла могло не быть */ });
   } catch {
     /* нет папки — нечего удалять */
   }
