@@ -90,6 +90,27 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
         )}
 
         {surah && (<>
+        {/*
+          ── Карточка плеера ───────────────────────────────────────────
+
+          Владелец: «верхнее меню сильно выделено, а сам плеер не выделен,
+          странно выглядит». Так и было: шапка — плотная карточка во всю
+          ширину, блок чтеца и кнопка выбора суры — тоже на карточках, а
+          главное (название, полоса, кнопки, скорость) висело в воздухе.
+          Единственная часть без опоры оказывалась самой важной.
+
+          Собираем её в одну плоскость с тем же скруглением и той же
+          волосяной рамкой, что у карточки чтеца, — экран читается стопкой
+          панелей, и вес распределён по смыслу, а не случайно.
+        */}
+        <div style={{
+          display: 'grid',
+          gap: 'var(--space-margin)',
+          padding: 'var(--space-margin) var(--space-cozy) var(--space-cozy)',
+          borderRadius: 'var(--radius-card)',
+          background: 'rgb(var(--ink-rgb) / 0.03)',
+          border: '1px solid var(--hairline)',
+        }}>
         {/* ── Что звучит ─────────────────────────────────────────────── */}
         <section style={{ textAlign: 'center' }}>
           <p
@@ -242,6 +263,8 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
             <ChevronRight size={ICON_SIZE.md} />
           </button>
         </section>
+
+        </div>
 
         {/* ── Чтец ───────────────────────────────────────────────────── */}
         <ReciterCard reciter={reciter} onPick={audio.setReciter} />
