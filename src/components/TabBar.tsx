@@ -91,11 +91,20 @@ export function TabBar({ active, onSelect }: {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     let last = window.scrollY;
     let frame = 0;
-    const onScroll = () => {
+    // Читаем позицию у ТОГО, кто прокрутился: у окна или у внутреннего
+    // контейнера. Прежняя версия смотрела только `window.scrollY`, и на экране
+    // со своей прокруткой панель не сжималась бы вовсе — поведение зависело бы
+    // от вёрстки конкретного раздела, чего человек понять не может.
+    const позиция = (target: EventTarget | null): number => {
+      if (!target || target === document || target === window) return window.scrollY;
+      const el = target as HTMLElement;
+      return typeof el.scrollTop === 'number' ? el.scrollTop : window.scrollY;
+    };
+    const onScroll = (event: Event) => {
       if (frame) return;
+      const y = позиция(event.target);
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const y = window.scrollY;
         const dy = y - last;
         last = y;
         if (y < 48) { setCollapsed(false); return; }
@@ -103,9 +112,11 @@ export function TabBar({ active, onSelect }: {
         else if (dy < -4) setCollapsed(false);
       });
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
+    // Событие прокрутки не всплывает, но проходит фазу перехвата — так один
+    // слушатель ловит и окно, и любой внутренний контейнер.
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
     return () => {
-      window.removeEventListener('scroll', onScroll);
+      document.removeEventListener('scroll', onScroll, { capture: true });
       if (frame) cancelAnimationFrame(frame);
     };
   }, []);
