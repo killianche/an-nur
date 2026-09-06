@@ -31,7 +31,7 @@ for i in $(seq 1 30); do
   sleep 60
 done
 
-node scripts/appstore/attach-testflight.mjs || echo "не удалось положить в TestFlight"
+node scripts/appstore/attach-testflight.mjs "$нужная" || echo "не удалось положить в TestFlight"
 
 состояние() {
   node --input-type=module -e "
