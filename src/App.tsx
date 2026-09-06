@@ -66,6 +66,7 @@ type Screen =
   | { name: 'tabs'; tab: TabId }
   | { name: 'azkar-category'; category: AzkarCategoryId }
   | { name: 'bookmarks' }
+  | { name: 'account' }
   | { name: 'surah'; number: number; initialAyah?: number }
   // Режим мусхафа — отдельный экран, а не вариант чтения: у него своя
   // единица навигации (страница, не аят) и своя история.
@@ -482,6 +483,25 @@ export default function App() {
     );
   }
 
+  // Аккаунт — обычный экран-пуш, а не вкладка: с ним работают редко, и место
+  // в нижней панели ему не по чину. Открывается кнопкой в шапке главной.
+  if (screen.name === 'account') {
+    return (
+      <Shell key="account" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
+        <Suspense fallback={<ScreenFallback />}>
+        <ErrorBoundary name="AccountScreen" onReset={goBack}>
+          <AccountScreen
+            theme={theme}
+            setTheme={setTheme}
+            onBack={goBack}
+            onOpenDocument={doc => navigate({ name: 'document', doc })}
+          />
+        </ErrorBoundary>
+        </Suspense>
+      </Shell>
+    );
+  }
+
   if (screen.name === 'bookmarks') {
     return (
       <Shell key="bookmarks" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
@@ -528,6 +548,7 @@ export default function App() {
           <SurahPicker
             onSelectSurah={(n, ayah) => navigate({ name: 'surah', number: n, initialAyah: ayah })}
             onBookmarks={() => navigate({ name: 'bookmarks' })}
+            onAccount={() => navigate({ name: 'account' })}
             theme={theme}
             setTheme={setTheme}
           />
@@ -545,15 +566,6 @@ export default function App() {
       {tab === 'dua' && (
         <ErrorBoundary name="DuaScreen">
           <DuaScreen theme={theme} setTheme={setTheme} />
-        </ErrorBoundary>
-      )}
-      {tab === 'account' && (
-        <ErrorBoundary name="AccountScreen">
-          <AccountScreen
-            theme={theme}
-            setTheme={setTheme}
-            onOpenDocument={doc => navigate({ name: 'document', doc })}
-          />
         </ErrorBoundary>
       )}
       {tab === 'prayer' && (

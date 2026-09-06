@@ -18,10 +18,18 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
-import { TabQuran, TabAzkar, TabPrayer, Flower, Person } from './icons';
+import { TabQuran, TabAzkar, TabPrayer, Flower } from './icons';
 import { GLASS_BLUR } from '../lib/glass';
 
-export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer' | 'account';
+/**
+ * Разделы нижнего меню.
+ *
+ * «Аккаунт» отсюда убран 05.09.2026 по решению владельца: настройки профиля
+ * открывают редко, а место в панели — самое дорогое на экране. Кнопка
+ * переехала в шапку главной, рядом с оформлением, а экран стал обычным
+ * пушем с кнопкой «назад».
+ */
+export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer';
 
 /** Размер глифа вкладки — ступень `--icon-tab` из общей шкалы.  В JSX
  *  он приходит числом (иконки принимают `size`), поэтому значение здесь
@@ -37,7 +45,6 @@ const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }
   { id: 'azkar', label: 'Азкары', icon: selected => <TabAzkar size={TAB_ICON} isFilled={selected} /> },
   { id: 'dua', label: 'Дуа', icon: selected => <Flower size={TAB_ICON} isFilled={selected} /> },
   { id: 'prayer', label: 'Намаз', icon: selected => <TabPrayer size={TAB_ICON} isFilled={selected} /> },
-  { id: 'account', label: 'Аккаунт', icon: selected => <Person size={TAB_ICON} isFilled={selected} /> },
 ];
 
 /**

@@ -39,7 +39,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  Appearance, ChevronRight, Document, ICON_SIZE, Person, Trash,
+  Appearance, ChevronLeft, ChevronRight, Document, ICON_SIZE, Person, Trash,
 } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { FullQuranAudioManager } from '../components/OfflineAudioCard';
@@ -75,9 +75,11 @@ type Props = {
   theme: Theme;
   setTheme: (t: Theme) => void;
   onOpenDocument: (doc: DocumentId) => void;
+  /** Экран открывается пушем из шапки главной, поэтому нужен возврат. */
+  onBack?: () => void;
 };
 
-export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
+export function AccountScreen({ theme, setTheme, onBack, onOpenDocument }: Props) {
   const [name, setName] = useState(readUserName);
   const [themeOpen, setThemeOpen] = useState(false);
   const [wipeArmed, setWipeArmed] = useState(false);
@@ -114,6 +116,25 @@ export function AccountScreen({ theme, setTheme, onOpenDocument }: Props) {
         paddingTop: 'calc(env(safe-area-inset-top) + var(--space-margin))',
         paddingBottom: 'var(--space-margin)',
       }}>
+        {/* Аккаунт перестал быть вкладкой и открывается пушем, поэтому здесь
+            нужен возврат. Крупный заголовок при этом сохранён: экран остаётся
+            «своим», а не превращается в подраздел с узкой шапкой. */}
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Назад"
+            className="icon-btn"
+            style={{
+              flexShrink: 0,
+              width: 'var(--hit-min)', height: 'var(--hit-min)',
+              marginLeft: 'calc(var(--space-snug) * -1)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <ChevronLeft size={ICON_SIZE.md} />
+          </button>
+        )}
         <h1 className="display-serif" style={{
           margin: 0, flex: 1, minWidth: 0,
           fontSize: 'clamp(30px, 8vw, 40px)', fontWeight: 'var(--weight-regular)',

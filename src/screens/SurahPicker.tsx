@@ -42,7 +42,7 @@ import { SURAHS, SURAH_BY_NUMBER, type SurahMeta } from '../content/surahs';
 import { readRecents } from '../lib/recents';
 import { search, snippet, type AyahHit } from '../lib/search';
 import { useQuranSources } from '../content/quran-sources-lazy';
-import { Appearance, Search, Close, Bookmark as BookmarkIcon, ICON_SIZE, Play, Pause } from '../components/icons';
+import { Appearance, Search, Close, Bookmark as BookmarkIcon, Person, ICON_SIZE, Play, Pause } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
@@ -70,6 +70,8 @@ type Props = {
   onBookmarks?: () => void;
   theme: Theme;
   setTheme: (t: Theme) => void;
+  /** Аккаунт переехал из нижнего меню сюда, в шапку. */
+  onAccount?: () => void;
 };
 
 /** Склонение слова «аят». */
@@ -81,7 +83,7 @@ function ayahWord(n: number): string {
   return 'аятов';
 }
 
-export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Props) {
+export function SurahPicker({ onSelectSurah, onBookmarks, onAccount, theme, setTheme }: Props) {
   const [query, setQuery] = useState('');
   const [themeOpen, setThemeOpen] = useState(false);
   const themeBtnRef = useRef<HTMLButtonElement>(null);
@@ -165,6 +167,13 @@ export function SurahPicker({ onSelectSurah, onBookmarks, theme, setTheme }: Pro
         >
           <Appearance size={ICON_SIZE.md} />
         </IconAction>
+        {/* Аккаунт переехал сюда из нижнего меню: там он занимал пятую часть
+            самой дорогой полосы экрана, а открывают его редко. */}
+        {onAccount && (
+          <IconAction label="Аккаунт" onClick={onAccount}>
+            <Person size={ICON_SIZE.md} />
+          </IconAction>
+        )}
       </header>
 
       {/* ── Поиск ─────────────────────────────────────────────────────── */}
