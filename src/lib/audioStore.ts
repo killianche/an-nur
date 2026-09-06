@@ -289,6 +289,11 @@ export async function initAudioStore(): Promise<void> {
     });
     baseUri = uri;
 
+    // Список сплошных записей читаем ОТДЕЛЬНО: он не зависит от поаятной
+    // карты, а прежде читался только при её успешном разборе — и при потере
+    // ключа поаятной карты отметки терялись, заставляя качать сотню мегабайт
+    // заново.
+    await loadSurahFiles();
     const restored = await loadBitmaps();
     emit();
     // Карты нет — первый запуск после смены модели либо потеря
@@ -330,7 +335,6 @@ async function loadBitmaps(): Promise<boolean> {
         any = true;
       }
     }
-    await loadSurahFiles();
     return any;
   } catch {
     return false;
@@ -391,6 +395,10 @@ export async function clearReciter(reciter: ReciterId): Promise<void> {
   emit();
   await persistNow();
   if (!native) return;
+  // Отметку снимаем ДО обращения к диску: если `rmdir` бросит, приложение не
+  // должно считать записи существующими — иначе воспроизведение полезет к
+  // файлу, которого уже нет, и оборвётся вместо ухода в сеть.
+  surahFiles[reciter]?.clear();
   try {
     const { Filesystem, Directory } = await import('@capacitor/filesystem');
     await Filesystem.rmdir({
@@ -398,7 +406,6 @@ export async function clearReciter(reciter: ReciterId): Promise<void> {
       path: `${AUDIO_DIR}/${reciter}`,
       recursive: true,
     });
-    surahFiles[reciter]?.clear();
   } catch {
     // Папки могло не быть — не ошибка.
   }

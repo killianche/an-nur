@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { ayahAudioUrl } from '../lib/quranUtils';
 import { ayahAudioRange } from '../lib/ayahAudioRange';
-import { hasSurahFile, localSurahSrc } from '../lib/audioStore';
+import { hasSurahFile, localSurahSrc, unmarkSurahFile } from '../lib/audioStore';
 import { cacheAyah, missingCount } from '../lib/audioDownloads';
 import {
   DEFAULT_RECITER, RECITERS_WITH_SEGMENTS, hasSurahAudio, requiresSurahAudioStream,
@@ -72,6 +72,16 @@ const EARLY_ADVANCE_SECONDS = 0.05;
 const audioCache = new Map<string, HTMLAudioElement>();
 const logicalKeyForAudio = new WeakMap<HTMLAudioElement, string>();
 const completedRange = new WeakSet<HTMLAudioElement>();
+/**
+ * Элементы, которым РАЗРЕШЕНО доиграть хвост.
+ *
+ * При раннем переходе следующий аят запускается за 50 мс до конца текущего.
+ * Без этой пометки общий цикл в `playOne` остановил бы уходящий элемент и
+ * перемотал его в ноль — то есть срезал последние 50 мс чтения. Ревью
+ * поймало это в диффе; замер поймать не мог: разрыв он показывал коротким
+ * именно потому, что хвост обрубался.
+ */
+const finishingTail = new WeakSet<HTMLAudioElement>();
 
 function touchCache(key: string, audio: HTMLAudioElement) {
   // LRU touch: удалить старую запись чтобы переместить в end (Map
@@ -226,11 +236,25 @@ function getOrCreateAudio(
   // играет из сети, поэтому офлайн идёт тем же путём и с теми же таймингами —
   // швов на границах аятов нет по построению. Только если её нет, берём
   // сетевую сплошную, и лишь в последнюю очередь — файл отдельного аята.
+  const местная = continuous ? localSurahSrc(surah, reciter) : null;
   a.src = continuous
-    ? (localSurahSrc(surah, reciter)
-      ?? surahAudioUrl(reciter, surah)
-      ?? ayahAudioUrl(surah, ayah, reciter))
+    ? (местная ?? surahAudioUrl(reciter, surah) ?? ayahAudioUrl(surah, ayah, reciter))
     : ayahAudioUrl(surah, ayah, reciter);
+
+  // Отметка о скачанном файле может пережить сам файл: место кончилось,
+  // система почистила кэш, запись оборвалась. Тогда элемент падает с ошибкой,
+  // и без этого чтение просто останавливалось бы при живом интернете. Снимаем
+  // отметку и один раз пересаживаемся на сетевой адрес.
+  if (местная) {
+    a.addEventListener('error', () => {
+      const сетевой = surahAudioUrl(reciter, surah);
+      if (!сетевой || a.src === сетевой) return;
+      unmarkSurahFile(reciter, surah);
+      a.src = сетевой;
+      a.load();
+      void a.play().catch(() => { /* решение примет обычная обработка ошибки */ });
+    }, { once: true });
+  }
   // Safari/WebView не всегда начинает preload сразу после присваивания src.
   a.load();
   touchCache(key, a);  // вставить + эвикция самых старых при превышении.
@@ -352,6 +376,9 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
         // нельзя даже на мгновение вызвать pause(): звук продолжает идти,
         // меняются только логический аят, прогресс и подсветка.
         if (seamlessSameMedia && otherKey === mediaK) return;
+        // Доигрывающему хвост не мешаем: он сам остановится по `ended`,
+        // и чтение аята дойдёт до конца.
+        if (finishingTail.has(a)) return;
         a.pause();
         if (otherKey !== mediaK) a.currentTime = 0;
       });
@@ -692,11 +719,16 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       //
       // Непрерывной записи это не касается: там ветка `range` выше и швов
       // нет вовсе.
-      if (!range && !completedRange.has(audio)
+      if (!range && !completedRange.has(audio) && !audio.paused
         && Number.isFinite(audio.duration) && audio.duration > 0
         && audio.duration - audio.currentTime <= EARLY_ADVANCE_SECONDS) {
         completedRange.add(audio);
         setProgress(1);
+        // Даём хвосту доиграть: без пометки следующий `playOne` остановил бы
+        // этот элемент и обрезал конец аята. Снимаем пометку по настоящему
+        // `ended` — дальше элемент обычный и его можно перематывать.
+        finishingTail.add(audio);
+        audio.addEventListener('ended', () => finishingTail.delete(audio), { once: true });
         audio.onended?.(new Event('ended'));
         return;
       }

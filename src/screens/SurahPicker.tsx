@@ -39,6 +39,7 @@
 
 import { useState, useMemo, useRef, useDeferredValue } from 'react';
 import { SURAHS, SURAH_BY_NUMBER, type SurahMeta } from '../content/surahs';
+import { juzOfSurah } from '../lib/ayahNumbering';
 import { readRecents } from '../lib/recents';
 import { search, snippet, type AyahHit } from '../lib/search';
 import { useQuranSources } from '../content/quran-sources-lazy';
@@ -341,14 +342,67 @@ function ContinueCard({ title, ayah, total, onClick }: {
 
 // ─── Список сур ──────────────────────────────────────────────────────────
 
-function SurahList({ surahs, onSelect }: {
+function SurahList({ surahs, onSelect, grouped = true }: {
   surahs: SurahMeta[];
   onSelect: (n: number) => void;
+  /** Группировать по джузам. В результатах поиска выключено: заголовки
+   *  джузов над разрозненными находками только мешают. */
+  grouped?: boolean;
 }) {
+  // Группируем по джузу, в котором сура НАЧИНАЕТСЯ. Границы джузов не совпадают
+  // с границами сур, поэтому это приближение — и оно названо честно в
+  // `juzOfSurah`. Для заголовков в списке его достаточно.
+  const секции = useMemo(() => {
+    if (!grouped) return [{ juz: 0, items: surahs }];
+    const out: { juz: number; items: SurahMeta[] }[] = [];
+    for (const m of surahs) {
+      const juz = juzOfSurah(m.number);
+      const последняя = out[out.length - 1];
+      if (последняя && последняя.juz === juz) последняя.items.push(m);
+      else out.push({ juz, items: [m] });
+    }
+    return out;
+  }, [surahs, grouped]);
+
+  // 🔴 Подписка на звук — ОДНА на весь список, а не в каждой карточке.
+  //
+  // Раньше `useAudioState()` вызывался внутри карточки, и на каждой границе
+  // аята перерисовывались все 114 карточек с арабской типографикой. Теперь
+  // список знает, что звучит, и передаёт карточке готовый ответ; React
+  // перерисует только ту, у которой он изменился.
+  const { currentSurah, audioState } = useAudioState();
+  const звучит = audioState === 'playing' ? currentSurah : null;
+
   return (
-    <div>
-      {surahs.map(s => (
-        <SurahRow key={s.number} meta={s} onClick={() => onSelect(s.number)} />
+    <div style={{ display: 'grid', gap: 'var(--space-margin)' }}>
+      {секции.map(({ juz, items }) => (
+        <section key={juz || 'all'} style={{ display: 'grid', gap: 'var(--space-snug)' }}>
+          {juz > 0 && <JuzHeading juz={juz} />}
+          <div style={{
+            display: 'grid',
+            // Два столбца — просьба владельца: список из 114 строк в один
+            // столбец на телефоне читается как бесконечная лента. На узком
+            // экране (320 px) карточка ужимается, но не ломается.
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: 'var(--space-snug)',
+          }}>
+            {items.map(m => (
+              <SurahCard
+                key={m.number}
+                meta={m}
+                onClick={() => onSelect(m.number)}
+                // Одинокая сура в джузе занимает обе колонки.
+                //
+                // В начале Корана суры длинные, и в джуз попадает ровно одна:
+                // при жёсткой сетке получался столбец полупустых рядов, то
+                // есть два столбца ради ничего. Широкая карточка читается как
+                // намеренная, а длинной суре крупный вид и к лицу.
+                wide={items.length === 1}
+                sounding={звучит === m.number}
+              />
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );
@@ -372,134 +426,163 @@ function SectionHeading({ text }: { text: string }) {
   );
 }
 
-/**
- * Строка суры со своей кнопкой «слушать».
- *
- * 🔴 Кнопка стоит РЯДОМ со строкой, а не внутри неё. Сама строка — это
- * `<button>`, и вложить в неё вторую кнопку нельзя: разметка невалидна, а
- * браузер повёл бы себя непредсказуемо — от «не срабатывает» до «срабатывают
- * обе». Поэтому обе кнопки лежат в общей обёртке, и разделительная линия
- * переехала на неё: иначе линия обрывалась бы под кнопкой.
- */
-function SurahRow({ meta, onClick }: { meta: SurahMeta; onClick: () => void }) {
-  const [pressed, setPressed] = useState(false);
-  const audio = useAudioActions();
-  const { currentSurah, audioState } = useAudioState();
-  const soundingHere = currentSurah === meta.number && audioState === 'playing';
-
+/** Заголовок джуза: тонкая линия и подпись капителью — как разделы в мусхафе. */
+function JuzHeading({ juz }: { juz: number }) {
   return (
     <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      borderBottom: '1px solid var(--hairline-soft, var(--hairline))',
+      display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+      paddingTop: 'var(--space-tight)',
     }}>
-    <button
-      onClick={onClick}
-      onPointerDown={() => setPressed(true)}
-      onPointerUp={() => setPressed(false)}
-      onPointerLeave={() => setPressed(false)}
-      onPointerCancel={() => setPressed(false)}
+      <span style={{
+        fontSize: 'var(--font-caption2)',
+        lineHeight: 'var(--leading-caption2)',
+        fontWeight: 'var(--weight-semibold)',
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        color: 'var(--text-tertiary)',
+        whiteSpace: 'nowrap',
+      }}>
+        Джуз {juz}
+      </span>
+      <span aria-hidden style={{ flex: 1, height: '1px', background: 'var(--hairline)' }} />
+    </div>
+  );
+}
+
+/**
+ * Карточка суры.
+ *
+ * Пришла на смену строке во всю ширину: в два столбца строка не помещается,
+ * и содержимое пересобрано под вертикальный порядок — знак и воспроизведение
+ * сверху, арабское название крупно, ниже название и перевод.
+ *
+ * Оформление — то же «жидкое стекло», что у нижней панели: полупрозрачная
+ * поверхность, волосяная рамка и светлая кромка сверху. Цвета взяты токенами,
+ * поэтому карточка одинаково работает на всех пяти темах, включая тёмные и
+ * фотографическую «бумагу».
+ */
+function SurahCard({ meta, onClick, wide = false, sounding = false }: {
+  meta: SurahMeta;
+  onClick: () => void;
+  wide?: boolean;
+  /** Звучит ли именно эта сура. Приходит сверху: подписка на звук одна на
+   *  весь список, иначе перерисовывались бы все 114 карточек. */
+  sounding?: boolean;
+}) {
+  const [pressed, setPressed] = useState(false);
+  const audio = useAudioActions();
+  const soundingHere = sounding;
+
+  return (
+    <div
       style={{
-        display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
-        flex: 1, minWidth: 0, minHeight: '64px',
-        padding: 'var(--space-snug) var(--space-hair)',
-        border: 'none',
+        position: 'relative',
+        gridColumn: wide ? '1 / -1' : undefined,
+        borderRadius: '18px',
         background: pressed
-          ? 'rgb(var(--ink-rgb) / 0.05)'
-          : 'transparent',
-        cursor: 'pointer', textAlign: 'left',
-        fontFamily: 'inherit', color: 'inherit',
-        transition: 'background var(--dur-fast) var(--ease-standard)',
+          ? 'rgb(var(--ink-rgb) / 0.07)'
+          : 'rgb(var(--ink-rgb) / 0.035)',
+        border: '1px solid var(--hairline)',
+        boxShadow: 'inset 0 1px 0 rgb(var(--surface-rgb) / 0.5)',
+        transform: pressed ? 'scale(0.985)' : 'none',
+        transition:
+          'background var(--dur-fast) var(--ease-standard),'
+          + ' transform var(--dur-fast) var(--ease-standard)',
       }}
     >
-      {/* Номер в ромбе — форма из мусхафа, где номер аята стоит в
-          розетке.  Читается как «порядковый знак», а не как счётчик. */}
-      <span
-        aria-hidden
+      <button
+        onClick={onClick}
+        onPointerDown={() => setPressed(true)}
+        onPointerUp={() => setPressed(false)}
+        onPointerLeave={() => setPressed(false)}
+        onPointerCancel={() => setPressed(false)}
         style={{
-          flexShrink: 0,
-          width: '34px', height: '34px',
+          display: 'grid', gap: 'var(--space-hair)',
+          width: '100%', minWidth: 0,
+          padding: 'var(--space-snug)',
+          paddingBottom: 'var(--space-tight)',
+          border: 'none', background: 'transparent',
+          cursor: 'pointer', textAlign: 'left',
+          fontFamily: 'inherit', color: 'inherit',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        {/* Номер в ромбе — форма из мусхафа, где номер аята стоит в розетке. */}
+        <span aria-hidden style={{
+          width: '30px', height: '30px',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           transform: 'rotate(45deg)',
           border: '1px solid var(--hairline-strong)',
           borderRadius: 'var(--radius-chip)',
-        }}
-      >
-        <span style={{
-          transform: 'rotate(-45deg)',
-          fontSize: 'var(--font-caption1)',
-          lineHeight: 'var(--leading-caption1)',
-          fontWeight: 'var(--weight-semibold)',
-          color: 'var(--text-secondary)',
-          fontVariantNumeric: 'tabular-nums',
         }}>
-          {meta.number}
+          <span style={{
+            transform: 'rotate(-45deg)',
+            fontSize: 'var(--font-caption2)',
+            fontWeight: 'var(--weight-semibold)',
+            color: 'var(--text-secondary)',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {meta.number}
+          </span>
         </span>
-      </span>
 
-      <span style={{ flex: 1, minWidth: 0 }}>
+        <span
+          dir="rtl"
+          lang="ar"
+          style={{
+            display: 'block',
+            fontFamily: "'KFGQPC Uthmanic Hafs v22', serif",
+            fontSize: 'var(--font-title3)',
+            lineHeight: 1.6,
+            color: 'var(--text-secondary)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+        >
+          {meta.arabic}
+        </span>
+
         <span style={{
           display: 'block',
           fontSize: 'var(--font-subhead)',
           lineHeight: 'var(--leading-subhead)',
-          fontWeight: 'var(--weight-regular)',
           color: 'var(--text-primary)',
           letterSpacing: 'var(--tracking-tight)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {meta.transliteration}
         </span>
+
         <span style={{
-          display: 'block', marginTop: 'var(--space-hair)',
-          fontSize: 'var(--font-caption1)',
-          lineHeight: 'var(--leading-caption1)',
+          display: 'block',
+          fontSize: 'var(--font-caption2)',
+          lineHeight: 'var(--leading-caption2)',
           color: 'var(--text-tertiary)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {meta.russian} · {meta.ayahs} {ayahWord(meta.ayahs)}
         </span>
-      </span>
+      </button>
 
-      <span
-        dir="rtl"
-        lang="ar"
-        style={{
-          flexShrink: 0,
-          fontFamily: "'KFGQPC Uthmanic Hafs v22', serif",
-          // Ступень Title 3.  Межстрочный оставлен коэффициентом:
-          // у арабского выносные элементы и огласовки выше латинских,
-          // и жёсткие 25px из шкалы срезали бы их сверху.
-          fontSize: 'var(--font-title3)',
-          color: 'var(--text-secondary)',
-          lineHeight: 1.6,
-        }}
-      >
-        {meta.arabic}
-      </span>
-    </button>
-
-      {/* Слушать суру целиком. Отдельной кнопкой, потому что нажатие на
-          строку открывает чтение — это разные намерения, и сваливать их в
-          один тап значило бы угадывать за человека. */}
+      {/* Слушать суру целиком — отдельной кнопкой в углу: нажатие на карточку
+          открывает чтение, это разные намерения. Вынесена абсолютно, чтобы не
+          сжимать текст в узком столбце. */}
       <button
         onClick={() => {
           if (soundingHere) audio.pause();
           else audio.playSurah(meta.number, meta.ayahs);
         }}
         aria-label={soundingHere
-          // Действие — пауза, а не остановка: очередь и место сохраняются.
-          // Подпись обязана называть то, что произойдёт.
           ? `Пауза: ${meta.transliteration}`
           : `Слушать суру ${meta.transliteration} целиком`}
         className="icon-btn"
         style={{
-          flexShrink: 0,
-          width: 'var(--hit-min)', height: 'var(--hit-min)',
-          marginLeft: 'var(--space-hair)',
+          position: 'absolute',
+          top: 'var(--space-hair)', right: 'var(--space-hair)',
+          width: '38px', height: '38px',
           color: soundingHere ? 'var(--text-primary)' : 'var(--text-tertiary)',
         }}
       >
-        {soundingHere ? <Pause size={ICON_SIZE.md} /> : <Play size={ICON_SIZE.md} />}
+        {soundingHere ? <Pause size={ICON_SIZE.sm} /> : <Play size={ICON_SIZE.sm} />}
       </button>
     </div>
   );

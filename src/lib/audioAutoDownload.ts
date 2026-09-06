@@ -26,8 +26,8 @@
  * которое стоит принимать вместе с дизайном онбординга.
  */
 
-import { DEFAULT_RECITER } from './reciters';
-import { isOfflineSupported, downloadedCount, TOTAL_AYAHS } from './audioStore';
+import { DEFAULT_RECITER, RECITERS } from './reciters';
+import { isOfflineSupported, downloadedCount, surahFileCount, TOTAL_AYAHS } from './audioStore';
 import { startDownload, getDownloadState, type DownloadStatus } from './audioDownloads';
 
 const PREFS_KEY = 'audio.autoDownload.optedOut';
@@ -100,6 +100,21 @@ export function shouldAutoStart(status: DownloadStatus, optedOut: boolean): bool
 async function tryStart() {
   if (!shouldAutoStart(getDownloadState(DEFAULT_RECITER).status, await hasOptedOut())) {
     return;
+  }
+  // 🔴 Не начинаем вторую фонотеку поверх первой.
+  //
+  // Чтец по умолчанию сменился на Ясира (05.09.2026), и у тех, кто не выбирал
+  // чтеца руками, на диске уже лежал автоскачанный Аляфаси — около 0.7 ГБ.
+  // Без этой проверки поверх него молча начиналась бы закачка Ясира ещё на
+  // 1.4 ГБ: до двух с лишним гигабайт на телефоне, о которых человек не
+  // просил. Разрешение владельца «пусть качают» относилось к одной фонотеке,
+  // а не к сумме.
+  //
+  // Поэтому автозагрузка стартует только на чистом устройстве. Если что-то уже
+  // скачано — решение о второй фонотеке принимает человек кнопкой.
+  for (const r of RECITERS) {
+    if (r.id === DEFAULT_RECITER) continue;
+    if (downloadedCount(r.id) > 0 || surahFileCount(r.id) > 0) return;
   }
   void startDownload(DEFAULT_RECITER, { kind: 'all' });
 }

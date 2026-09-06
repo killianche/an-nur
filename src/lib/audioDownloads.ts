@@ -386,14 +386,32 @@ export async function downloadSurahFile(
     return false;
   }
 
+  // На диске больше, чем весит файл на сервере, — значит лежит мусор: склейка
+  // после ответа 200, остаток от другого битрейта, обрывок чужой версии. Такой
+  // файл не «уже скачан», его надо начать заново, иначе объявим полным битое.
+  if (готово > всего) {
+    await Filesystem.deleteFile({ directory: Directory.LibraryNoCloud, path })
+      .catch(() => { /* могло не быть */ });
+    готово = 0;
+  }
+
   while (готово < всего) {
+    // Пауза обязана срабатывать между кусками: иначе человек, увидевший
+    // объём в сотню мегабайт, жмёт «Паузу» и ничего не происходит — загрузка
+    // идёт до конца, а состояние в интерфейсе не меняется.
+    if (cancelFlags.has(reciter)) return false;
+
     const до = Math.min(готово + SURAH_CHUNK_BYTES, всего) - 1;
     const res = await CapacitorHttp.request({
       url, method: 'GET', responseType: 'blob',
       headers: { Range: `bytes=${готово}-${до}` },
     });
-    if (res.status !== 206 && res.status !== 200) {
-      throw new Error(`сура ${surah}: HTTP ${res.status}`);
+    // Только 206. Ответ 200 означает, что сервер прислал ВЕСЬ файл, не поняв
+    // заголовка Range: дописать такое к уже лежащим байтам — испортить файл
+    // молча. Честно отступаем на поаятный путь.
+    if (res.status !== 206) {
+      if (готово === 0) return false;
+      throw new Error(`сура ${surah}: сервер перестал отдавать частями (HTTP ${res.status})`);
     }
     const data = res.data;
     if (typeof data !== 'string' || data.length === 0) {
@@ -482,12 +500,20 @@ export async function startDownload(reciter: ReciterId, scope: DownloadScope): P
         return;
       }
     } catch (error) {
-      // Недокачанный файл не оставляем: он бесполезен и вводит в заблуждение
-      // счётчик занятого места.
-      await discardSurahFile(reciter, scope.surah);
+      // 🔴 Частично скачанное НЕ стираем.
+      //
+      // Первая редакция звала здесь `discardSurahFile` на любую ошибку. На
+      // нестабильной сети это означало: 100 МБ из 110 скачано, лифт — и всё
+      // удалено, следующая попытка с нуля. Длинная сура не скачалась бы
+      // никогда, а трафик тратился бы заново каждый раз.
+      //
+      // Файл — это и есть точка докачки, поэтому при обрыве оставляем его и
+      // показываем паузу. Удалять есть смысл только когда содержимое
+      // непригодно (см. `downloadSurahFile`: там файл начинается заново, если
+      // на диске оказалось больше ожидаемого).
       patch(reciter, {
-        status: 'error', scope,
-        error: `Не удалось скачать суру целиком: ${String(error).slice(0, 80)}`,
+        status: 'paused', scope,
+        error: `Загрузка прервана: ${String(error).slice(0, 60)}. Нажмите «Скачать», чтобы продолжить.`,
       });
       return;
     }

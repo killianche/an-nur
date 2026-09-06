@@ -17,18 +17,13 @@
 import { useEffect, useState } from 'react';
 import { RECITERS, reciterById, supportsAyahOffline, type ReciterId } from '../lib/reciters';
 import {
-  TOTAL_AYAHS, TOTAL_SURAHS, downloadedCount, completeSurahCount,
-  downloadedInSurah, isSurahComplete, isOfflineSupported,
-  subscribeAudioStore, clearReciter, clearSurah,
-} from '../lib/audioStore';
-import {
   getDownloadState, startDownload, pauseDownload, resetDownloadState,
   subscribeDownloads, estimateBytes, formatBytes,
   type DownloadScope,
 } from '../lib/audioDownloads';
 import { optOutOfAutoDownload } from '../lib/audioAutoDownload';
 import { ayahsInSurah } from '../lib/ayahNumbering';
-import { hasSurahFile, surahFileCount } from '../lib/audioStore';
+import { TOTAL_AYAHS, TOTAL_SURAHS, clearReciter, clearSurah, completeSurahCount, downloadedCount, downloadedInSurah, hasSurahFile, isOfflineSupported, isSurahComplete, subscribeAudioStore, surahFileCount } from '../lib/audioStore';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { settingCard, cardTitle } from './ReadingSettings';
 import { Download, Trash, CheckCircle, Pause, ICON_SIZE } from './icons';
@@ -176,10 +171,17 @@ function SurahRow({ reciter, surah }: { reciter: ReciterId; surah: number }) {
         )}
       </div>
 
-      <Meter value={asSurahFile ? total : have} max={total} />
+      {/* Во время сплошной загрузки поаятных отметок не появляется, и шкала
+          по аятам стояла бы на нуле все несколько минут — человек решил бы,
+          что зависло. Пока идёт эта сура, показываем байты. */}
+      {busyOnThis && st.bytesTotal > 0
+        ? <Meter value={st.bytes} max={st.bytesTotal} />
+        : <Meter value={asSurahFile ? total : have} max={total} />}
 
       <span style={meta_}>
-        {asSurahFile
+        {busyOnThis && st.bytesTotal > 0
+          ? `Качаю одной записью: ${formatBytes(st.bytes)} из ${formatBytes(st.bytesTotal)}`
+          : asSurahFile
           ? 'Эта сура есть офлайн одной записью — читается без стыков'
           : complete
           ? 'Эта сура есть офлайн'
@@ -262,11 +264,15 @@ function ReciterRow({ id, label }: {
           : complete
           ? `Весь Коран офлайн · ${TOTAL_SURAHS} сур`
           : running
-          ? `Качаю: ${st.done} из ${st.total} · ${formatBytes(st.bytes)}`
+          ? (st.bytesTotal > 0
+            ? `Качаю: ${formatBytes(st.bytes)} из ${formatBytes(st.bytesTotal)}`
+            : `Качаю: ${st.done} из ${st.total} · ${formatBytes(st.bytes)}`)
           : have > 0 || сплошных > 0
           // Сплошные записи считаем отдельным слагаемым: в поаятной карте их
           // нет, и без этого сводка занижала бы скачанное.
-          ? `${suras + сплошных} из ${TOTAL_SURAHS} сур целиком${have > 0 ? ` · ${have} аятов` : ''}`
+          // Складывать напрямую нельзя: сура, скачанная и поаятно, и сплошной
+          // записью, посчиталась бы дважды — получилось бы «115 из 114».
+          ? `${Math.min(TOTAL_SURAHS, suras + сплошных)} из ${TOTAL_SURAHS} сур целиком${have > 0 ? ` · ${have} аятов` : ''}`
           : 'Не скачано — играет стримом'}
       </span>
     </div>

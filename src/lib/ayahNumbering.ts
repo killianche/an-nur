@@ -88,3 +88,22 @@ export function juzRange(juz: number): [number, number] {
     : globalAyahNumber(JUZ_STARTS[i + 1][0], JUZ_STARTS[i + 1][1]) - 1;
   return [from, to];
 }
+
+/**
+ * В каком джузе НАЧИНАЕТСЯ сура.
+ *
+ * Границы джузов не совпадают с границами сур: джуз может начаться посреди
+ * суры, а длинная сура — занять три джуза. Поэтому «джуз суры» — это всегда
+ * приближение, и здесь оно определено явно: джуз, в который попадает ПЕРВЫЙ
+ * аят суры. Для заголовков в списке этого достаточно, а для чтения границы
+ * берутся из `juzRange`, где они точные.
+ */
+export function juzOfSurah(surah: number): number {
+  const first = firstGlobalOfSurah(surah);
+  for (let juz = 30; juz >= 1; juz--) {
+    const [from] = juzRange(juz);
+    if (first >= from) return juz;
+  }
+  return 1;
+}
+
