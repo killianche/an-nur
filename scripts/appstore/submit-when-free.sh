@@ -8,9 +8,22 @@
 # Останавливается сам: и по успеху, и по исчерпании попыток.
 set -u
 cd "$(dirname "$0")/../.."
-export ASC_ISSUER_ID=cdd3af45-fbd3-4d29-a8c4-d5b622e90054
-export ASC_KEY_ID=4239FJ4XKF
-export ASC_KEY_PATH=secrets/AuthKey_4239FJ4XKF.p8
+# 🔴 Идентификаторы Apple НЕ в коде.
+#
+# 07.09.2026 репозиторий стал публичным ради снятия лимита минут Actions. До
+# этого issuer id и key id лежали прямо здесь. Сами по себе они не пускают
+# никуда — без приватного ключа .p8 подписать запрос нечем, а он в git не
+# попадал ни разу, — но публиковать их незачем.
+#
+# Доступы теперь в secrets/asc.env: каталог целиком в .gitignore, там же лежит
+# сам ключ. Образец — в secrets/README.md.
+if [ -f secrets/asc.env ]; then
+  # shellcheck disable=SC1091
+  . secrets/asc.env
+fi
+: "${ASC_ISSUER_ID:?нет доступа к App Store Connect — создайте secrets/asc.env, образец в secrets/README.md}"
+: "${ASC_KEY_ID:?нет ASC_KEY_ID — см. secrets/README.md}"
+: "${ASC_KEY_PATH:?нет ASC_KEY_PATH — см. secrets/README.md}"
 
 состояние() {
   node --input-type=module -e "
