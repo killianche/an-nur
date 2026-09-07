@@ -32,8 +32,35 @@ if (группы.data.length === 0) {
   process.exit(1);
 }
 
-const сборки = await ascGet(`/v1/apps/${APP}/builds`, credentials, { limit: 20 });
-const готовые = сборки.data.filter(b => b.attributes.processingState === 'VALID');
+/**
+ * 🔴 Список сборок у Apple согласуется НЕ СРАЗУ — ищем с повторами.
+ *
+ * 07.09.2026 сборка 23 не попала в TestFlight при полностью успешном выпуске.
+ * В логе видно почему: в 06:11:31 опрос показал `VALID`, а через ДВЕ СЕКУНДЫ
+ * тот же список отдал её уже без этого статуса, и скрипт решил, что сборки
+ * нет вовсе. Одиночный запрос к этому эндпоинту недостоверен.
+ *
+ * Поэтому ищем нужную сборку до десяти раз с паузой в 20 секунд. Отсутствие
+ * после всех попыток — уже настоящее отсутствие, и вот тогда ошибка честная.
+ */
+const пауза = мс => new Promise(r => setTimeout(r, мс));
+
+async function найтиГотовые() {
+  for (let попытка = 1; попытка <= 10; попытка++) {
+    const ответ = await ascGet(`/v1/apps/${APP}/builds`, credentials, { limit: 20 });
+    const список = ответ.data.filter(b => b.attributes.processingState === 'VALID');
+    const нужный = process.argv[2];
+    if (!нужный ? список.length > 0
+      : список.some(b => b.attributes.version === String(нужный))) return список;
+    if (попытка < 10) {
+      console.log(`сборки ${нужный ?? ''} в списке пока нет — попытка ${попытка} из 10`);
+      await пауза(20000);
+    }
+  }
+  return [];
+}
+
+const готовые = await найтиГотовые();
 if (готовые.length === 0) {
   console.error('Обработанных сборок нет — ещё рано.');
   process.exit(1);
