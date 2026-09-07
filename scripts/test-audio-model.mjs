@@ -1701,25 +1701,45 @@ await groupAsync('Азкары: два порядка, оба из данных'
   );
   const { orderAzkar } = mod;
 
-  // Как в файле: сперва три суры (14, 15, 16), потом остальное.
-  const какВФайле = [14, 15, 16, 1, 5, 6, 7, 3].map(n => ({ n_in_category: n }));
+  // Нарочно вперемешку — как лежат вечерние в файле.
+  const вперемешку = [
+    { n_in_category: 14, page: 'Page1' },
+    { n_in_category: 15, page: 'Page1_2' },
+    { n_in_category: 2,  page: 'Page2' },
+    { n_in_category: 12, page: 'Page_Kursi' },
+    { n_in_category: 6,  page: 'Page8' },
+    { n_in_category: 8,  page: 'Page4' },
+    { n_in_category: 17, page: 'Page_Baqara285' },
+  ];
 
-  const поНомерам = orderAzkar(какВФайле, 'book').map(x => x.n_in_category);
+  const поНомерам = orderAzkar(вперемешку, 'book').map(x => x.n_in_category);
   check('«по номерам» выстраивает по возрастанию',
-    поНомерам.join(','), '1,3,5,6,7,14,15,16');
+    поНомерам.join(','), '2,6,8,12,14,15,17');
 
-  const исходный = orderAzkar(какВФайле, 'source').map(x => x.n_in_category);
-  check('«как изначально» не трогает порядок массива',
-    исходный.join(','), '14,15,16,1,5,6,7,3');
+  const исходный = orderAzkar(вперемешку, 'source').map(x => x.page);
+  check('«как изначально» идёт по страницам книги',
+    исходный.join(','), 'Page1,Page1_2,Page2,Page4,Page8,Page_Kursi,Page_Baqara285');
+
+  // Page10 не должна оказаться перед Page2 — строковая сортировка именно так и
+  // ошибается, а заметить это можно только зная книгу.
+  const десятки = orderAzkar(
+    [{ page: 'Page10' }, { page: 'Page2' }, { page: 'Page1_3' }], 'source',
+  ).map(x => x.page);
+  check('страницы сравниваются числами, а не строками',
+    десятки.join(','), 'Page1_3,Page2,Page10');
 
   check('исходный массив не изменён',
-    какВФайле.map(x => x.n_in_category).join(','), '14,15,16,1,5,6,7,3');
-  check('ни один азкар не теряется', поНомерам.length, какВФайле.length);
+    вперемешку.map(x => x.n_in_category).join(','), '14,15,2,12,6,8,17');
+  check('ни один азкар не теряется', поНомерам.length, вперемешку.length);
 
   // Реальные данные: порядок в файле обязан отличаться от порядка по номерам,
   // иначе выбор бессмыслен и настройка вводит в заблуждение.
   const { readFileSync } = await import('node:fs');
   const данные = JSON.parse(readFileSync(resolve(ROOT, 'public/azkar/azkar.json'), 'utf8'));
+  const номерСтраницы = p => {
+    const m = /^Page(\d+)(?:_(\d+))?$/.exec(p ?? '');
+    return m ? Number(m[1]) * 100 + Number(m[2] ?? 0) : Infinity;
+  };
   for (const кат of ['morning', 'evening']) {
     const сп = данные.entries.filter(e => e.category === кат);
     const a = orderAzkar(сп, 'book').map(x => x.id).join(',');
@@ -1727,6 +1747,14 @@ await groupAsync('Азкары: два порядка, оба из данных'
     check(`«${кат}»: порядки действительно разные`, a !== b, true);
     check(`«${кат}»: состав одинаковый`,
       [...a.split(',')].sort().join(',') === [...b.split(',')].sort().join(','), true);
+
+    // Главное свойство исходного порядка: страницы книги идут не убывая.
+    // У вечерних порядок записей в файле этому не удовлетворял — 7, 9, 10,
+    // 11, 14, 13, 8, 6, 4, 5, — из-за чего «как изначально» показывало не
+    // книжную последовательность.
+    const стр = orderAzkar(сп, 'source').map(x => номерСтраницы(x.page));
+    const неубывает = стр.every((v, i) => i === 0 || стр[i - 1] <= v);
+    check(`«${кат}»: страницы книги идут по порядку`, неубывает, true);
   }
 });
 
