@@ -1689,73 +1689,59 @@ await groupAsync('Старую поаятную фонотеку не удваи
 
 // ─── Порядок азкаров ─────────────────────────────────────────────────
 //
-// Владелец 07.09.2026: «изначально у них была другая последовательность».
-// Она никуда не пропадала — в `azkar.json` порядок записей и их нумерация
-// разные, а экран сортировал по номеру. Теперь порядок выбирается, и правило
-// покрыто тестами: ошибка здесь не падает и не видна — список остаётся
-// полным, просто идёт не так, как в книге.
+// Владелец 07.09.2026 передал приложение Jawziyya Azkar как образец: «сделай,
+// как у них». Их последовательность перенесена в src/content/azkarAppOrder.ts.
+// Ошибка здесь не падает и не видна: список остаётся полным, просто идёт не
+// так, как в образце, — а заметить это может только тот, кто знает порядок
+// наизусть. Поэтому проверяем на реальных данных.
 
-await groupAsync('Азкары: два порядка, оба из данных', async () => {
-  const mod = await import(
-    pathToFileURL(resolve(ROOT, 'src/lib/azkarPrefs.ts')).href
-  );
-  const { orderAzkar } = mod;
+await groupAsync('Азкары идут в порядке образца', async () => {
+  const [prefs, порядок] = await Promise.all([
+    import(pathToFileURL(resolve(ROOT, 'src/lib/azkarPrefs.ts')).href),
+    import(pathToFileURL(resolve(ROOT, 'src/content/azkarAppOrder.ts')).href),
+  ]);
+  const { orderAzkar } = prefs;
+  const { AZKAR_APP_ORDER_MORNING, AZKAR_APP_ORDER_EVENING } = порядок;
 
-  // Нарочно вперемешку — как лежат вечерние в файле.
-  const вперемешку = [
-    { n_in_category: 14, page: 'Page1' },
-    { n_in_category: 15, page: 'Page1_2' },
-    { n_in_category: 2,  page: 'Page2' },
-    { n_in_category: 12, page: 'Page_Kursi' },
-    { n_in_category: 6,  page: 'Page8' },
-    { n_in_category: 8,  page: 'Page4' },
-    { n_in_category: 17, page: 'Page_Baqara285' },
-  ];
-
-  const поНомерам = orderAzkar(вперемешку, 'book').map(x => x.n_in_category);
-  check('«по номерам» выстраивает по возрастанию',
-    поНомерам.join(','), '2,6,8,12,14,15,17');
-
-  const исходный = orderAzkar(вперемешку, 'source').map(x => x.page);
-  check('«как изначально» идёт по страницам книги',
-    исходный.join(','), 'Page1,Page1_2,Page2,Page4,Page8,Page_Kursi,Page_Baqara285');
-
-  // Page10 не должна оказаться перед Page2 — строковая сортировка именно так и
-  // ошибается, а заметить это можно только зная книгу.
-  const десятки = orderAzkar(
-    [{ page: 'Page10' }, { page: 'Page2' }, { page: 'Page1_3' }], 'source',
-  ).map(x => x.page);
-  check('страницы сравниваются числами, а не строками',
-    десятки.join(','), 'Page1_3,Page2,Page10');
-
-  check('исходный массив не изменён',
-    вперемешку.map(x => x.n_in_category).join(','), '14,15,2,12,6,8,17');
-  check('ни один азкар не теряется', поНомерам.length, вперемешку.length);
-
-  // Реальные данные: порядок в файле обязан отличаться от порядка по номерам,
-  // иначе выбор бессмыслен и настройка вводит в заблуждение.
   const { readFileSync } = await import('node:fs');
   const данные = JSON.parse(readFileSync(resolve(ROOT, 'public/azkar/azkar.json'), 'utf8'));
-  const номерСтраницы = p => {
-    const m = /^Page(\d+)(?:_(\d+))?$/.exec(p ?? '');
-    return m ? Number(m[1]) * 100 + Number(m[2] ?? 0) : Infinity;
-  };
-  for (const кат of ['morning', 'evening']) {
-    const сп = данные.entries.filter(e => e.category === кат);
-    const a = orderAzkar(сп, 'book').map(x => x.id).join(',');
-    const b = orderAzkar(сп, 'source').map(x => x.id).join(',');
-    check(`«${кат}»: порядки действительно разные`, a !== b, true);
-    check(`«${кат}»: состав одинаковый`,
-      [...a.split(',')].sort().join(',') === [...b.split(',')].sort().join(','), true);
 
-    // Главное свойство исходного порядка: страницы книги идут не убывая.
-    // У вечерних порядок записей в файле этому не удовлетворял — 7, 9, 10,
-    // 11, 14, 13, 8, 6, 4, 5, — из-за чего «как изначально» показывало не
-    // книжную последовательность.
-    const стр = orderAzkar(сп, 'source').map(x => номерСтраницы(x.page));
-    const неубывает = стр.every((v, i) => i === 0 || стр[i - 1] <= v);
-    check(`«${кат}»: страницы книги идут по порядку`, неубывает, true);
+  for (const [кат, образец] of [
+    ['morning', AZKAR_APP_ORDER_MORNING],
+    ['evening', AZKAR_APP_ORDER_EVENING],
+  ]) {
+    const сп = данные.entries.filter(e => e.category === кат);
+    const вышло = orderAzkar(сп, 'app').map(x => x.id);
+
+    // Ожидаемое: сперва образец, затем всё, чего в образце нет, своим чередом.
+    const хвост = сп.map(x => x.id).filter(id => !образец.includes(id));
+    check(`«${кат}»: порядок совпадает с образцом`,
+      вышло.join(','), [...образец, ...хвост].join(','));
+    check(`«${кат}»: ни один азкар не потерян`, вышло.length, сп.length);
+    check(`«${кат}»: без повторов`, new Set(вышло).size, сп.length);
+
+    const поНомерам = orderAzkar(сп, 'book').map(x => x.id);
+    check(`«${кат}»: второй вариант — по номерам`,
+      поНомерам.join(','),
+      [...сп].sort((a, b) => a.n_in_category - b.n_in_category).map(x => x.id).join(','));
+    check(`«${кат}»: порядки действительно разные`, вышло.join(',') !== поНомерам.join(','), true);
   }
+
+  // Опознавательные точки образца: утренние начинаются с сайид аль-истигфар,
+  // а аят аль-Курси стоит последним — так это и выглядит в их приложении.
+  const утро = данные.entries.filter(e => e.category === 'morning');
+  const у = orderAzkar(утро, 'app').map(x => x.id);
+  check('утренние начинаются с сайид аль-истигфар', у[0], 'azkar-007');
+  check('аят аль-Курси — последний', у[у.length - 1], 'azkar-038');
+
+  // Вечерняя Бакара 285-286 у них отсутствует и обязана уйти в конец, а не
+  // пропасть: список полный при любом варианте.
+  const вечер = данные.entries.filter(e => e.category === 'evening');
+  const в = orderAzkar(вечер, 'app').map(x => x.id);
+  check('Бакара 285-286 сохраняется и стоит в конце', в[в.length - 1], 'azkar-040');
+
+  // Исходный массив не трогаем.
+  check('исходный массив не изменён', данные.entries[0].id, 'azkar-001');
 });
 
 // ─── Доводка листа мусхафа ───────────────────────────────────────────
