@@ -15,7 +15,7 @@
  * молча, потому что стекло полупрозрачное и текст под ним «вроде виден».
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
 import { TabQuran, TabAzkar, TabPrayer, Flower } from './icons';
@@ -57,8 +57,18 @@ const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }
  * включать её сюда нельзя — отступ удвоится.
  */
 const BAR_HEIGHT = 62;
-/** Насколько панель сжимается при прокрутке вниз. */
-const BAR_HEIGHT_MIN = 44;
+/*
+ * 🔴 Сжатия при прокрутке здесь БОЛЬШЕ НЕТ, и возвращать его не нужно.
+ *
+ * 05.09.2026 панель специально сделали сжимающейся — это черта нижнего меню
+ * iOS 26 (`.tabBarMinimizeBehavior(.onScrollDown)`). 06.09.2026 владелец,
+ * посмотрев вживую, попросил обратное, дословно: «и то, что нижнее меню при
+ * прокрутке уменьшается — тоже убери, пускай оно стабильное».
+ *
+ * Причина понятна и без Apple: панель дёргалась на каждом движении пальца в
+ * списке из 114 строк, а подписи то появлялись, то исчезали. Похожесть на
+ * систему не стоит скачущего элемента под большим пальцем.
+ */
 /** Зазор до нижнего края безопасной области и до боковых краёв. */
 const BAR_INSET = 10;
 const BAR_SIDE = 14;
@@ -75,52 +85,6 @@ export function TabBar({ active, onSelect }: {
 }) {
   const lastActiveTapRef = useRef<{ id: TabId; at: number } | null>(null);
 
-  /**
-   * Сжатие при прокрутке — главная черта нижнего меню iOS 26.
-   *
-   * Вниз — панель ужимается и прячет подписи, освобождая экран под текст.
-   * Вверх или у самого верха — разворачивается обратно. Порог в 4 px гасит
-   * дрожание пальца, иначе панель мигала бы на каждом кадре.
-   *
-   * При включённом «уменьшении движения» не сжимаемся вовсе: для человека,
-   * который просил меньше анимаций, скачущая панель — раздражитель, а не
-   * украшение.
-   */
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let last = window.scrollY;
-    let frame = 0;
-    // Читаем позицию у ТОГО, кто прокрутился: у окна или у внутреннего
-    // контейнера. Прежняя версия смотрела только `window.scrollY`, и на экране
-    // со своей прокруткой панель не сжималась бы вовсе — поведение зависело бы
-    // от вёрстки конкретного раздела, чего человек понять не может.
-    const позиция = (target: EventTarget | null): number => {
-      if (!target || target === document || target === window) return window.scrollY;
-      const el = target as HTMLElement;
-      return typeof el.scrollTop === 'number' ? el.scrollTop : window.scrollY;
-    };
-    const onScroll = (event: Event) => {
-      if (frame) return;
-      const y = позиция(event.target);
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        const dy = y - last;
-        last = y;
-        if (y < 48) { setCollapsed(false); return; }
-        if (dy > 4) setCollapsed(true);
-        else if (dy < -4) setCollapsed(false);
-      });
-    };
-    // Событие прокрутки не всплывает, но проходит фазу перехвата — так один
-    // слушатель ловит и окно, и любой внутренний контейнер.
-    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
-    return () => {
-      document.removeEventListener('scroll', onScroll, { capture: true });
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, []);
-
   return (
     <nav
       aria-label="Разделы"
@@ -132,9 +96,9 @@ export function TabBar({ active, onSelect }: {
         // Решения владельца по этой панели менялись: 04.09.2026 он выбрал
         // системную панель во всю ширину, 05.09 — вернуться к плавающей, но
         // «как в последней iOS». Поэтому здесь именно черты iOS 26: панель
-        // висит НАД содержимым с отступами от краёв, полностью скруглена и
-        // СЖИМАЕТСЯ при прокрутке вниз, разворачиваясь при прокрутке вверх
-        // (`.tabBarMinimizeBehavior(.onScrollDown)` у Apple).
+        // висит НАД содержимым с отступами от краёв и полностью скруглена.
+        // Сжатие при прокрутке было и снято владельцем 06.09.2026 — см.
+        // комментарий у `BAR_HEIGHT`.
         //
         // Точных величин Apple не публикует — высоты и радиус подобраны на
         // глаз по отрисовке, а не взяты из документации.
@@ -143,9 +107,9 @@ export function TabBar({ active, onSelect }: {
         right: `${BAR_SIDE}px`,
         bottom: `calc(env(safe-area-inset-bottom) + ${BAR_INSET}px)`,
         zIndex: 40,
-        height: `${collapsed ? BAR_HEIGHT_MIN : BAR_HEIGHT}px`,
+        height: `${BAR_HEIGHT}px`,
         boxSizing: 'border-box',
-        borderRadius: `${(collapsed ? BAR_HEIGHT_MIN : BAR_HEIGHT) / 2}px`,
+        borderRadius: `${BAR_HEIGHT / 2}px`,
         // Кромка стекла: светлая линия сверху ловит свет, общая рамка держит
         // форму на любом фоне.
         border: '1px solid rgb(var(--surface-rgb) / 0.55)',
@@ -155,9 +119,6 @@ export function TabBar({ active, onSelect }: {
         maxWidth: '520px',
         margin: '0 auto',
         overflow: 'hidden',
-        transition:
-          'height var(--dur-slow) var(--ease-panel),'
-          + ' border-radius var(--dur-slow) var(--ease-panel)',
       }}
     >
       <div
@@ -255,14 +216,6 @@ export function TabBar({ active, onSelect }: {
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
-                  // В сжатом виде подписи уходят — как в iOS 26. Высота при
-                  // этом схлопывается вместе с ними, поэтому текст не
-                  // «выпрыгивает» из капсулы во время перехода.
-                  height: collapsed ? 0 : undefined,
-                  opacity: collapsed ? 0 : 1,
-                  transition:
-                    'opacity var(--dur-base) var(--ease-standard),'
-                    + ' height var(--dur-slow) var(--ease-panel)',
                   // Caption 2 (11/13) — нижняя ступень iOS и одновременно
                   // минимальный кегль, который Apple разрешает в
                   // интерфейсе.  Начертания только те два, что реально

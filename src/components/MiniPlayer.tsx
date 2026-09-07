@@ -17,24 +17,35 @@
  * ── Управление прямо в полоске ────────────────────────────────────────
  *
  * Владелец попросил не гонять его в полный плеер ради паузы и соседнего
- * аята. Поэтому здесь есть переход по аятам, пауза и скорость — всё, что
- * нужно на ходу, в один тап.
+ * аята. Поэтому здесь есть переход по аятам, пауза, скорость и остановка —
+ * всё, что нужно на ходу, в один тап.
  *
- * Смена чтеца сюда НЕ вынесена намеренно. Полоска высотой 52 px уже несёт
- * четыре органа управления и название; пятый превратил бы её в панель
- * кнопок, где промахиваешься мимо нужной. Чтец меняется тапом по названию —
- * это открывает полный плеер, где он и живёт, — и ещё кнопкой «Аа» в
- * полноэкранном мусхафе.
+ * Смена чтеца сюда НЕ вынесена намеренно: полоска и так несёт пять органов
+ * управления. Чтец меняется тапом по названию — это открывает полный плеер,
+ * где он и живёт, — и ещё кнопкой «Аа» в полноэкранном мусхафе.
+ *
+ * ── Порядок веса на полоске (06.09.2026) ──────────────────────────────
+ *
+ * Владелец: «дизайн плеера улучши». На прежней полоске самым тяжёлым
+ * элементом была рамка вокруг «1×» — то есть скорость, вещь, которую
+ * трогают раз в месяц, кричала громче кнопки «пауза». Разложено по
+ * важности:
+ *
+ *   эквалайзер и название → пауза → соседние аяты → скорость → остановка
+ *
+ * Скорость стала простым текстом без рамки; остановка отделена волоском,
+ * чтобы её не задевали, целясь в «следующий аят».
  *
  * ── Что здесь НЕ делается ─────────────────────────────────────────────
  *
  * Полоска не подписывается на прогресс и позицию слова. Ей нужны только
- * номер суры и состояние — иначе каждый кадр воспроизведения перерисовывал
- * бы её поверх списка сур.
+ * номер суры, аят и состояние — иначе каждый кадр воспроизведения
+ * перерисовывал бы её поверх списка сур. Поэтому «живость» показывает
+ * анимированный эквалайзер (чистый CSS, ноль ре-рендеров), а не шкала.
  */
 
 import { useEffect } from 'react';
-import { Pause, Play, SkipBack, SkipForward, ICON_SIZE } from './icons';
+import { Pause, Play, SkipBack, SkipForward, Close, ICON_SIZE } from './icons';
 import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { reciterById } from '../lib/reciters';
@@ -42,7 +53,7 @@ import { GLASS_BLUR } from '../lib/glass';
 import { TAB_BAR_HEIGHT } from './TabBar';
 
 /** Высота полоски и её зазор до панели вкладок. */
-const HEIGHT = 52;
+const HEIGHT = 56;
 const GAP = 6;
 
 export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
@@ -87,7 +98,7 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         display: 'flex',
         alignItems: 'center',
         gap: '2px',
-        padding: '0 var(--space-tight) 0 var(--space-snug)',
+        padding: '0 8px 0 10px',
         boxSizing: 'border-box',
       }}
     >
@@ -96,31 +107,56 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         aria-label={`Открыть плеер: ${meta?.transliteration ?? currentSurah}`}
         style={{
           flex: 1, minWidth: 0,
-          display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-          gap: '1px',
+          display: 'flex', alignItems: 'center', gap: '10px',
           background: 'transparent', border: 'none', padding: 0,
           cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
           WebkitTapHighlightColor: 'transparent',
         }}
       >
-        <span style={{
-          maxWidth: '100%',
-          fontSize: 'var(--font-caption1)',
-          lineHeight: 'var(--leading-caption1)',
-          fontWeight: 'var(--weight-semibold)',
-          color: 'var(--text-primary)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          {meta?.transliteration ?? `Сура ${currentSurah}`}
+        {/* Якорь «звучит сейчас». Он же — понятная мишень для тапа по
+            названию: попасть в квадрат легче, чем в строку текста. */}
+        <span
+          aria-hidden
+          style={{
+            flexShrink: 0,
+            width: '34px', height: '34px',
+            borderRadius: '11px',
+            background: 'rgb(var(--ink-rgb) / 0.05)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <span className="mini-eq" data-playing={playing ? 'true' : 'false'}>
+            <i /><i /><i />
+          </span>
         </span>
+
         <span style={{
-          maxWidth: '100%',
-          fontSize: 'var(--font-caption2)',
-          lineHeight: 'var(--leading-caption2)',
-          color: 'var(--text-tertiary)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          flex: 1, minWidth: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '1px',
         }}>
-          {reciterById(reciter).label}
+          <span style={{
+            maxWidth: '100%',
+            fontSize: 'var(--font-caption1)',
+            lineHeight: 'var(--leading-caption1)',
+            fontWeight: 'var(--weight-semibold)',
+            color: 'var(--text-primary)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {meta?.transliteration ?? `Сура ${currentSurah}`}
+          </span>
+          {/* Аят впереди чтеца: он меняется всё время чтения, а чтец —
+              раз в месяц. При нехватке ширины обрезается именно имя. */}
+          <span style={{
+            maxWidth: '100%',
+            fontSize: 'var(--font-caption2)',
+            lineHeight: 'var(--leading-caption2)',
+            color: 'var(--text-tertiary)',
+            fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {currentAyah ? `Аят ${currentAyah} · ` : ''}{reciterById(reciter).label}
+          </span>
         </span>
       </button>
 
@@ -128,7 +164,7 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         onClick={() => audio.prev()}
         aria-label="Предыдущий аят"
         className="icon-btn"
-        style={{ flexShrink: 0, width: '40px', height: '40px', color: 'var(--text-secondary)' }}
+        style={{ flexShrink: 0, width: '34px', height: '38px', color: 'var(--text-secondary)' }}
       >
         <SkipBack size={ICON_SIZE.sm} />
       </button>
@@ -151,7 +187,11 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         className="icon-btn"
         style={{
           flexShrink: 0,
-          width: '44px', height: '44px',
+          width: '40px', height: '40px',
+          borderRadius: '50%',
+          // Единственная заполненная кнопка на полоске: пауза важнее всего
+          // остального, и глаз должен находить её без поиска.
+          background: 'rgb(var(--ink-rgb) / 0.07)',
           color: 'var(--text-primary)',
           opacity: loading ? 0.45 : 1,
         }}
@@ -163,7 +203,7 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         onClick={() => audio.next()}
         aria-label="Следующий аят"
         className="icon-btn"
-        style={{ flexShrink: 0, width: '40px', height: '40px', color: 'var(--text-secondary)' }}
+        style={{ flexShrink: 0, width: '34px', height: '38px', color: 'var(--text-secondary)' }}
       >
         <SkipForward size={ICON_SIZE.sm} />
       </button>
@@ -173,11 +213,13 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         aria-label={`Скорость ${playbackRate}×, изменить`}
         style={{
           flexShrink: 0,
-          minWidth: '46px', height: '30px',
+          minWidth: '30px', height: '30px',
           borderRadius: 'var(--radius-pill)',
-          border: '1px solid var(--hairline)',
-          background: 'rgb(var(--ink-rgb) / 0.04)',
-          color: 'var(--text-primary)',
+          // Без рамки: скорость — самая редкая из кнопок, и обведённая
+          // капсула делала её самым тяжёлым пятном на полоске.
+          border: 'none',
+          background: 'transparent',
+          color: 'var(--text-tertiary)',
           fontFamily: 'inherit',
           fontSize: 'var(--font-caption2)',
           fontVariantNumeric: 'tabular-nums',
@@ -188,6 +230,27 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         {playbackRate}×
       </button>
 
+      {/* Волосок-разделитель: остановка — не часть перемотки, и промах по
+          ней стоит дороже прочих (звук выключается совсем). */}
+      <span
+        aria-hidden
+        style={{
+          flexShrink: 0,
+          width: '1px', height: '20px',
+          margin: '0 4px',
+          background: 'var(--hairline)',
+        }}
+      />
+
+      <button
+        onClick={() => audio.stopAll()}
+        aria-label="Остановить чтение"
+        title="Остановить чтение"
+        className="icon-btn"
+        style={{ flexShrink: 0, width: '32px', height: '38px', color: 'var(--text-tertiary)' }}
+      >
+        <Close size={ICON_SIZE.sm} />
+      </button>
     </div>
   );
 }
