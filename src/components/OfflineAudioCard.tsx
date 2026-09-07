@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { RECITERS, reciterById, supportsAyahOffline, type ReciterId } from '../lib/reciters';
+import { RECITERS, hasSurahAudio, reciterById, supportsAyahOffline, type ReciterId } from '../lib/reciters';
 import {
   getDownloadState, startDownload, pauseDownload, resetDownloadState,
   subscribeDownloads, estimateBytes, formatBytes,
@@ -210,9 +210,22 @@ function ReciterRow({ id, label }: {
   // Складывать напрямую нельзя: сура, скачанная и поаятно, и сплошной
   // записью, посчиталась бы дважды — получилось бы «115 из 114».
   const целиком = Math.min(TOTAL_SURAHS, suras + сплошных);
-  const complete = целиком >= TOTAL_SURAHS;
+  const непрерывно = hasSurahAudio(id);
+  // 🔴 «Собрано» — это собрано СПЛОШНЫМИ записями, а не «есть хоть как-то».
+  //
+  // Ревью поймало тупик: у человека со старой поаятной фонотекой (114 полных
+  // сур из 6236 файлов) строка считалась завершённой, и оставалась одна
+  // кнопка — «Удалить». Автозагрузка ему тоже не полагается, чтобы не класть
+  // рядом второй комплект. Получалось, что именно тот, ради кого делалась
+  // правка, не мог получить чтение без швов, не стерев сперва 1.4 ГБ.
+  //
+  // Теперь у него есть обе кнопки: «Скачать сплошными» и «Удалить старое».
+  const собрано = непрерывно ? сплошных >= TOTAL_SURAHS : целиком >= TOTAL_SURAHS;
+  const естьЧтоУдалить = целиком > 0 || have > 0;
   const st = getDownloadState(id);
   const running = st.status === 'running';
+  // Полоса показывает то, что реально даёт чтение без швов.
+  const шкала = непрерывно ? сплошных : целиком;
 
   const ALL: DownloadScope = { kind: 'all' };
 
@@ -228,21 +241,13 @@ function ReciterRow({ id, label }: {
           {label}
         </span>
 
-        {complete && !running && (
+        {собрано && !running && (
           <span aria-hidden style={{ display: 'inline-flex', color: 'var(--text-tertiary)' }}>
             <CheckCircle size={ICON_SIZE.sm} />
           </span>
         )}
 
-        {complete ? (
-          <ActionButton
-            label="Удалить"
-            icon={<Trash size={ICON_SIZE.sm} />}
-            onClick={() => {
-              void clearReciter(id).then(() => resetDownloadState(id));
-            }}
-          />
-        ) : running ? (
+        {running ? (
           <ActionButton
             label="Пауза"
             icon={<Pause size={ICON_SIZE.sm} />}
@@ -254,15 +259,28 @@ function ReciterRow({ id, label }: {
             }}
           />
         ) : (
-          <ActionButton
-            label={have > 0 ? 'Докачать' : 'Скачать весь Коран'}
-            icon={<Download size={ICON_SIZE.sm} />}
-            onClick={() => { void startDownload(id, ALL); }}
-          />
+          <>
+            {!собрано && (
+              <ActionButton
+                label={шкала > 0 ? 'Докачать' : 'Скачать весь Коран'}
+                icon={<Download size={ICON_SIZE.sm} />}
+                onClick={() => { void startDownload(id, ALL); }}
+              />
+            )}
+            {естьЧтоУдалить && (
+              <ActionButton
+                label="Удалить"
+                icon={<Trash size={ICON_SIZE.sm} />}
+                onClick={() => {
+                  void clearReciter(id).then(() => resetDownloadState(id));
+                }}
+              />
+            )}
+          </>
         )}
       </div>
 
-      <Meter value={целиком} max={TOTAL_SURAHS} />
+      <Meter value={шкала} max={TOTAL_SURAHS} />
 
       <span style={{
         ...meta_,
@@ -270,12 +288,18 @@ function ReciterRow({ id, label }: {
       }}>
         {st.status === 'error'
           ? st.error
-          : complete
-          ? `Весь Коран офлайн · ${TOTAL_SURAHS} сур`
+          : собрано
+          ? `Весь Коран офлайн · ${TOTAL_SURAHS} сур одной записью`
           : running
-          ? `Качаю ${st.done} из ${st.total} сур · ${formatBytes(st.bytes)}`
-          : целиком > 0 || have > 0
-          ? `${целиком} из ${TOTAL_SURAHS} сур целиком${have > 0 ? ` · ${have} аятов` : ''}`
+          // Единицы задания зависят от того, что качается: сплошные записи
+          // считаются сурами, аварийный поаятный путь — аятами. Одна подпись
+          // на оба случая давала «0 из 1 сур» и «12 из 286 сур».
+          ? `Качаю ${st.done} из ${st.total} ${st.scope?.kind === 'all' && непрерывно ? 'сур' : 'файлов'} · ${formatBytes(st.bytes)}`
+          : шкала > 0
+          ? `${шкала} из ${TOTAL_SURAHS} сур одной записью${have > 0 ? ` · и ${have} аятов по старому` : ''}`
+          : have > 0
+          // Старая фонотека: играет офлайн, но со стыками на границах аятов.
+          ? `${suras} сур по аятам — офлайн есть, но со стыками. «Скачать» даст чтение без них`
           : 'Не скачано — играет стримом'}
       </span>
     </div>

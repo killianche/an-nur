@@ -836,6 +836,10 @@ body {
  * подписана на прогресс (иначе каждый кадр воспроизведения перерисовывал бы
  * её поверх списка сур), поэтому «живость» показывает анимация, а не шкала:
  * она ничего не знает о времени и не стоит ни одного ре-рендера.
+ *
+ * Три состояния обязаны отличаться СТАТИЧЕСКИ, а не только движением — иначе
+ * при выключенных анимациях пауза и чтение выглядят одинаково, а «загрузка»
+ * притворяется паузой. Ревью поймало это до выпуска.
  */
 .mini-eq {
   display: inline-flex;
@@ -846,30 +850,44 @@ body {
 .mini-eq i {
   display: block;
   width: 2.5px;
-  height: 5px;
   border-radius: 2px;
   background: currentColor;
   transform-origin: bottom;
 }
-.mini-eq[data-playing="true"] i {
-  animation: miniEq 900ms var(--ease-standard) infinite alternate;
+
+/* Играет: полоски высокие и живут. */
+.mini-eq[data-state="playing"] i { height: 6px; animation: miniEq 900ms var(--ease-standard) infinite alternate; }
+.mini-eq[data-state="playing"] i:nth-child(2) { animation-delay: 150ms; animation-duration: 700ms; }
+.mini-eq[data-state="playing"] i:nth-child(3) { animation-delay: 320ms; animation-duration: 1100ms; }
+
+/* Пауза: замерли ступенькой и заметно ниже. */
+.mini-eq[data-state="paused"] i { height: 4px; }
+.mini-eq[data-state="paused"] i:nth-child(2) { height: 8px; }
+.mini-eq[data-state="paused"] i:nth-child(3) { height: 6px; }
+
+/* Загрузка: ровные полоски дышат все разом — ни на что другое не похоже. */
+.mini-eq[data-state="loading"] i {
+  height: 9px;
+  animation: miniEqWait 1100ms var(--ease-standard) infinite;
 }
-.mini-eq[data-playing="true"] i:nth-child(2) { animation-delay: 150ms; animation-duration: 700ms; }
-.mini-eq[data-playing="true"] i:nth-child(3) { animation-delay: 320ms; animation-duration: 1100ms; }
 
 @keyframes miniEq {
   from { transform: scaleY(1); }
-  to   { transform: scaleY(2.6); }
+  to   { transform: scaleY(2.3); }
 }
 
-/* На паузе полоски замирают ступенькой — сразу видно, что звук стоит. */
-.mini-eq[data-playing="false"] i:nth-child(2) { height: 9px; }
-.mini-eq[data-playing="false"] i:nth-child(3) { height: 7px; }
+@keyframes miniEqWait {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .mini-eq[data-playing="true"] i { animation: none; }
-  .mini-eq[data-playing="true"] i:nth-child(2) { height: 11px; }
-  .mini-eq[data-playing="true"] i:nth-child(3) { height: 8px; }
+  .mini-eq i { animation: none !important; }
+  /* Без движения различие несёт только высота — разводим её сильнее. */
+  .mini-eq[data-state="playing"] i { height: 14px; }
+  .mini-eq[data-state="playing"] i:nth-child(2) { height: 10px; }
+  .mini-eq[data-state="playing"] i:nth-child(3) { height: 13px; }
+  .mini-eq[data-state="loading"] i { height: 9px; opacity: 0.5; }
 }
 
 /* ─── Icon buttons — Lucide-grade hit + hover ────────────────── */

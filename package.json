@@ -1,8 +1,8 @@
 {
   "name": "an-nur",
   "private": true,
-  "version": "2.0.0",
-  "iosBuild": 16,
+  "version": "2.1.0",
+  "iosBuild": 17,
   "type": "module",
   "scripts": {
     "brand:generate": "python3 scripts/generate-brand-assets.py",

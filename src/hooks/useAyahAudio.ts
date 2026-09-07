@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { ayahAudioUrl } from '../lib/quranUtils';
 import { ayahAudioRange } from '../lib/ayahAudioRange';
 import { localAyahSrc, localSurahSrc, unmarkSurahFile } from '../lib/audioStore';
-import { cacheAyah } from '../lib/audioDownloads';
 import {
   DEFAULT_RECITER, RECITERS_WITH_SEGMENTS, hasSurahAudio, requiresSurahAudioStream,
   surahAudioUrl, type ReciterId,
@@ -82,6 +81,42 @@ const completedRange = new WeakSet<HTMLAudioElement>();
  * именно потому, что хвост обрубался.
  */
 const finishingTail = new WeakSet<HTMLAudioElement>();
+
+/**
+ * Элементы, которым уже давали второй шанс.
+ *
+ * Сплошная запись играет из сети, поэтому обычный обрыв связи стал стоить
+ * дороже, чем раньше: молчание вместо звука. Одна повторная попытка того же
+ * адреса закрывает случайную осечку (переезд между вышками, секундный провал
+ * Wi-Fi), а бесконечно долбиться в мёртвую сеть нельзя — поэтому шанс ровно
+ * один на элемент.
+ */
+const retriedOnce = new WeakSet<HTMLAudioElement>();
+
+/** Пауза перед повторной попыткой. */
+const RETRY_DELAY_MS = 900;
+
+/**
+ * Сколько ждать первого звука, прежде чем считать источник мёртвым.
+ *
+ * 🔴 Это не перестраховка, а починка настоящего отказа. Медиаэлемент при
+ * мёртвом соединении (captive portal в отеле, тоннель, «полоска есть, данных
+ * нет») НЕ бросает `error` — он молча стоит в `stalled`. Значит обработчик
+ * ошибки не вызовется никогда, и человек получит вечную «загрузку» с
+ * заблокированной кнопкой паузы. Ревью поймало это до выпуска.
+ *
+ * Пять секунд: меньше — сорвём медленную, но живую сотовую сеть; больше —
+ * человек успеет решить, что приложение сломалось.
+ */
+const STALL_TIMEOUT_MS = 5000;
+
+/**
+ * То же, но для обрыва ПОСРЕДИ чтения (`waiting`).
+ *
+ * Дольше, чем на старте: здесь звук уже шёл, человек слушает, и оборвать
+ * чтение из-за восьмисекундной ямы на слабой сотовой сети хуже, чем подождать.
+ */
+const MIDSTREAM_STALL_MS = 8000;
 
 function touchCache(key: string, audio: HTMLAudioElement) {
   // LRU touch: удалить старую запись чтобы переместить в end (Map
@@ -475,9 +510,32 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // rejecting play().  Keep one terminal path and make sure a late failure
     // from an obsolete element cannot stop a newer ayah selected by the user.
     let failed = false;
+    let stallTimer = 0;
+    const stopStallWatch = () => {
+      if (stallTimer) { window.clearTimeout(stallTimer); stallTimer = 0; }
+    };
+    /**
+     * Сторож первого звука. На `setTimeout`, а не на кадрах: кадры не
+     * приходят при заблокированном экране и в свёрнутом приложении
+     * (`CLAUDE.md`, грабли §5), а фоновое прослушивание живёт именно там.
+     */
+    const startStallWatch = (ms: number = STALL_TIMEOUT_MS) => {
+      stopStallWatch();
+      stallTimer = window.setTimeout(() => {
+        stallTimer = 0;
+        if (failed) return;
+        if (activeAudioRef.current !== audio || logicalKeyForAudio.get(audio) !== k) return;
+        // Звук пошёл — сторож не нужен. Проверяем состояние элемента, а не
+        // факт события: на бесшовной границе `playing` уже не повторится.
+        if (!audio.paused && audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return;
+        failAndStop('stalled');
+      }, ms);
+    };
+
     const failAndStop = (reason: unknown) => {
       if (failed) return;
       failed = true;
+      stopStallWatch();
 
       console.warn('[ayah-audio] playback failed on', `${surah}:${ayah}`, {
         reason,
@@ -490,7 +548,25 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
         return;
       }
 
-      // 🔴 Прежде чем сдаться — попробовать поаятные файлы.
+      // 🔴 Сначала — один повтор того же источника.
+      //
+      // Сплошная запись идёт из сети, и одиночная осечка связи не повод
+      // прекращать чтение. Второй шанс даётся один раз на элемент, иначе
+      // приложение будет молча долбиться в мёртвую сеть.
+      if (!retriedOnce.has(audio) && playbackMode === 'surah') {
+        retriedOnce.add(audio);
+        window.setTimeout(() => {
+          if (activeAudioRef.current !== audio || logicalKeyForAudio.get(audio) !== k) return;
+          failed = false;
+          audio.load();
+          seekAudio(audio, range?.startSeconds ?? 0);
+          startStallWatch();
+          void audio.play().catch(() => failAndStop('retry-failed'));
+        }, RETRY_DELAY_MS);
+        return;
+      }
+
+      // 🔴 Потом — поаятные файлы.
       //
       // Сплошная запись берётся из сети, когда её нет на диске. В самолёте
       // это отказ, и раньше выбор режима заранее уводил такие суры на
@@ -503,6 +579,8 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
         playbackMode = 'ayah';
         audio.onended = null;
         audio.onerror = null;
+        audio.onwaiting = null;
+        audio.onplaying = null;
         if (audioCache.get(mediaK) === audio) {
           audio.pause();
           audio.removeAttribute('src');
@@ -529,6 +607,12 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     audio.onerror = () => {
       failAndStop('media-error');
     };
+    // 🔴 Обрыв посреди чтения. Медиаэлемент сообщает о нём `waiting`, а
+    // `error` может не прийти вовсе — поток просто замолкает, и интерфейс
+    // продолжает показывать «играет». Сторож переводит это в честный отказ:
+    // повтор, потом поаятные файлы, потом остановка.
+    audio.onwaiting = () => { if (!failed) startStallWatch(MIDSTREAM_STALL_MS); };
+    audio.onplaying = () => { stopStallWatch(); };
 
     // Apply the user-selected playback rate before kicking off play() —
     // setting rate AFTER play() has known iOS Safari quirks (silent until
@@ -538,12 +622,14 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     try {
       // Тот же audio уже играет через границу аята — повторный play() не
       // нужен и в некоторых WebView сам создаёт короткий щелчок/задержку.
+      startStallWatch();
       if (!seamlessSameMedia) await audio.play();
       // `error` may have fired while WebKit was settling the play() promise.
       // Do not resurrect a queue that failAndStop() has already cleared.
       if (failed || activeAudioRef.current !== audio || logicalKeyForAudio.get(audio) !== k) {
         return;
       }
+      stopStallWatch();
       setAudioState('playing');
       // Кэш по воспроизведению: аят, который только что зазвучал со
       // стрима, тихо оседает на устройстве.  Так офлайн-библиотека
@@ -556,7 +642,13 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       // Аль-Бакара по сотовой сети тянет поток И ещё 286 отдельных mp3.
       // Офлайн-библиотека наполняется обычным чтением по аятам и кнопкой
       // «скачать» — этого достаточно.
-      if (playbackMode !== 'surah') cacheAyah(r, surah, ayah);
+      // Поаятного докачивания здесь больше НЕТ.
+      //
+      // Раньше прозвучавший аят тихо оседал на устройстве, и офлайн-библиотека
+      // росла от обычного чтения. После перехода на сплошные записи это стало
+      // одновременно бессмысленным и вредным: в режиме `surah` качается один
+      // сплошной файл, а поаятный режим включается только аварийно — то есть
+      // когда сети и так нет и качать нечего.
       // Pre-warm the next ayah so auto-advance is gap-free.  We only
       // prefetch ONE ahead — going further wastes mobile data on ayahs
       // the user might never reach (e.g. they tap a different ayah,

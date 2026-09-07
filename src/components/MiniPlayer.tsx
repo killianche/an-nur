@@ -53,7 +53,7 @@ import { GLASS_BLUR } from '../lib/glass';
 import { TAB_BAR_HEIGHT } from './TabBar';
 
 /** Высота полоски и её зазор до панели вкладок. */
-const HEIGHT = 56;
+const HEIGHT = 58;
 const GAP = 6;
 
 export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
@@ -126,7 +126,10 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
             color: 'var(--text-secondary)',
           }}
         >
-          <span className="mini-eq" data-playing={playing ? 'true' : 'false'}>
+          <span
+            className="mini-eq"
+            data-state={loading ? 'loading' : playing ? 'playing' : 'paused'}
+          >
             <i /><i /><i />
           </span>
         </span>
@@ -164,7 +167,7 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         onClick={() => audio.prev()}
         aria-label="Предыдущий аят"
         className="icon-btn"
-        style={{ flexShrink: 0, width: '34px', height: '38px', color: 'var(--text-secondary)' }}
+        style={{ flexShrink: 0, width: '38px', height: '44px', color: 'var(--text-secondary)' }}
       >
         <SkipBack size={ICON_SIZE.sm} />
       </button>
@@ -187,7 +190,7 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         className="icon-btn"
         style={{
           flexShrink: 0,
-          width: '40px', height: '40px',
+          width: '44px', height: '44px',
           borderRadius: '50%',
           // Единственная заполненная кнопка на полоске: пауза важнее всего
           // остального, и глаз должен находить её без поиска.
@@ -203,7 +206,7 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         onClick={() => audio.next()}
         aria-label="Следующий аят"
         className="icon-btn"
-        style={{ flexShrink: 0, width: '34px', height: '38px', color: 'var(--text-secondary)' }}
+        style={{ flexShrink: 0, width: '38px', height: '44px', color: 'var(--text-secondary)' }}
       >
         <SkipForward size={ICON_SIZE.sm} />
       </button>
@@ -213,7 +216,7 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         aria-label={`Скорость ${playbackRate}×, изменить`}
         style={{
           flexShrink: 0,
-          minWidth: '30px', height: '30px',
+          minWidth: '38px', height: '44px',
           borderRadius: 'var(--radius-pill)',
           // Без рамки: скорость — самая редкая из кнопок, и обведённая
           // капсула делала её самым тяжёлым пятном на полоске.
@@ -247,7 +250,10 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         aria-label="Остановить чтение"
         title="Остановить чтение"
         className="icon-btn"
-        style={{ flexShrink: 0, width: '32px', height: '38px', color: 'var(--text-tertiary)' }}
+        // Мишень 40×44 и цвет secondary: промах по этой кнопке стоит дороже
+        // прочих (звук выключается совсем), а третичный цвет не дотягивал до
+        // контраста 3:1, который Apple просит для нетекстовых элементов.
+        style={{ flexShrink: 0, width: '40px', height: '44px', color: 'var(--text-secondary)' }}
       >
         <Close size={ICON_SIZE.sm} />
       </button>
