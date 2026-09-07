@@ -1036,77 +1036,73 @@ function SuraAyahs({
   playingIndex?: number | null;
   loadingIndex?: number | null;
 }) {
+  const активен = (i: number) => playingIndex === i || loadingIndex === i;
+
   return (
     <div style={{ marginBottom: '20px' }}>
-      {ayahs.map((a, i) => (
-        <div key={i} style={{
-          paddingTop: i === 0 ? 0 : '20px',
-          paddingBottom: i === ayahs.length - 1 ? 0 : '20px',
-          borderBottom: i === ayahs.length - 1 ? 'none' : '1px solid var(--hairline)',
-        }}>
-          {/* Arabic — right-aligned (rtl), large, same Naskh face as
-              flat-mode. */}
-          {showArabic && (
-            <div
-              dir="rtl"
-              lang="ar"
-              style={{
-                direction: 'rtl',
-                textAlign: 'right',
-                fontFamily: fontConfig.stack,
-                // +17px flat reading bump across all 4 size steps, applied
-                // to every value of the clamp().
-                fontSize: `clamp(${28 * fontConfig.sizeMul * arabicScale + 17}px, calc(${7 * fontConfig.sizeMul * arabicScale}vw + 17px), ${44 * fontConfig.sizeMul * arabicScale + 17}px)`,
-                lineHeight: fontConfig.lineHeight,
-                color: 'var(--text-primary)',
-                fontFeatureSettings: '"liga" 1, "calt" 1, "kern" 1',
-                marginBottom: '10px',
-              }}
-            >
+      {/* 🔴 Сура идёт СПЛОШНЫМ арабским, потом сплошным переводом.
+          Владелец 07.09.2026: «чтобы шёл полностью арабский текст, потом
+          полностью перевод». Прежде аяты чередовались с переводом через
+          разделители, и сура читалась рвано — не как сура, а как список.
+
+          Аяты внутри блока разделяет номер-маркер, как в мусхафе. Он же
+          кнопка: тап играет именно этот аят, поэтому чтение по одному
+          аяту не потерялось вместе с прежним рядом кнопок.
+
+          Шейпинг это не ломает: маркер стоит МЕЖДУ аятами, на границе
+          слов, а не внутри слова (`CLAUDE.md`, сакральное правило §7). */}
+      {showArabic && (
+        <div
+          dir="rtl"
+          lang="ar"
+          style={{
+            direction: 'rtl',
+            textAlign: 'right',
+            fontFamily: fontConfig.stack,
+            fontSize: `clamp(${28 * fontConfig.sizeMul * arabicScale + 17}px, calc(${7 * fontConfig.sizeMul * arabicScale}vw + 17px), ${44 * fontConfig.sizeMul * arabicScale + 17}px)`,
+            lineHeight: fontConfig.lineHeight,
+            color: 'var(--text-primary)',
+            fontFeatureSettings: '"liga" 1, "calt" 1, "kern" 1',
+            marginBottom: '16px',
+          }}
+        >
+          {ayahs.map((a, i) => (
+            <span key={i}>
               {a.arabic}
-            </div>
-          )}
+              {onPlayAyah ? (
+                <button
+                  onClick={() => onPlayAyah(i)}
+                  aria-label={активен(i)
+                    ? `Пауза, аят ${surahNumber}:${startAyah + i}`
+                    : `Слушать аят ${surahNumber}:${startAyah + i}`}
+                  title={`${surahNumber}:${startAyah + i}`}
+                  style={{
+                    ...маркер,
+                    color: активен(i) ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                    borderColor: активен(i) ? 'var(--text-primary)' : 'var(--hairline-strong)',
+                    background: активен(i) ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {startAyah + i}
+                </button>
+              ) : (
+                <span aria-hidden style={маркер}>{startAyah + i}</span>
+              )}
+              {' '}
+            </span>
+          ))}
+        </div>
+      )}
 
-          {/* Ряд аята — как в Коране: ссылка слева, кнопка справа. */}
-          {onPlayAyah && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              margin: '2px 0 10px',
-            }}>
-              <span style={{
-                fontSize: 'var(--font-caption1)',
-                lineHeight: 'var(--leading-caption1)',
-                fontVariantNumeric: 'tabular-nums',
-                letterSpacing: '0.02em',
-                color: 'var(--text-tertiary)',
-              }}>
-                {surahNumber}:{startAyah + i}
-              </span>
-              <button
-                onClick={() => onPlayAyah(i)}
-                aria-label={playingIndex === i ? 'Пауза' : 'Слушать аят'}
-                title={playingIndex === i ? 'Пауза' : 'Слушать аят'}
-                className="icon-btn"
-                data-active={playingIndex === i || loadingIndex === i}
-                style={{
-                  width: '40px', height: '40px', marginInlineStart: 'auto',
-                  color: (playingIndex === i || loadingIndex === i)
-                    ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                }}
-              >
-                {playingIndex === i
-                  ? <Pause size={ICON_SIZE.md} />
-                  : <Play size={ICON_SIZE.md} />}
-              </button>
-            </div>
-          )}
-
-          {/* Russian translation. */}
-          {showRussian && a.russian && (
-            <p style={{
-              margin: '0 0 12px',
+      {/* Перевод — тоже сплошным блоком. Номер перед строкой сохраняет
+          связь с аятом: правило видимости требует и арабский, и перевод,
+          и ссылку сура:аят на одном экране. */}
+      {showRussian && (
+        <div>
+          {ayahs.map((a, i) => a.russian ? (
+            <p key={i} style={{
+              margin: '0 0 10px',
               fontFamily: latinStack(russianFont),
               fontSize: `${15 * russianScale + latinSizeBump(russianFont)}px`,
               fontWeight: latinWeight(russianFont),
@@ -1114,15 +1110,50 @@ function SuraAyahs({
               color: 'var(--text-secondary)',
               letterSpacing: '-0.005em',
             }}>
+              <span style={{
+                fontSize: 'var(--font-caption1)',
+                fontVariantNumeric: 'tabular-nums',
+                letterSpacing: '0.02em',
+                color: 'var(--text-tertiary)',
+                marginInlineEnd: '8px',
+              }}>
+                {surahNumber}:{startAyah + i}
+              </span>
               {a.russian}
             </p>
-          )}
-
+          ) : null)}
         </div>
-      ))}
+      )}
     </div>
   );
 }
+
+/** Номер аята в сплошном арабском — кружок, как маркер в мусхафе. */
+const маркер: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: '1.55em',
+  height: '1.55em',
+  padding: '0 0.25em',
+  margin: '0 0.3em',
+  borderRadius: '50%',
+  border: '1px solid var(--hairline-strong)',
+  background: 'transparent',
+  // Кегль номера не тянется за арабским: при крупном шрифте кружок
+  // размером с букву выглядел бы кляксой посреди аята.
+  fontSize: 'var(--font-caption1)',
+  // 🔴 Цифры набираются интерфейсным шрифтом, а НЕ арабским.
+  // Маркер стоит внутри арабского блока и унаследовал бы Naskh: в
+  // кораничных начертаниях латинских цифр может не быть вовсе, и вместо
+  // номера аята встал бы пустой прямоугольник посреди суры.
+  fontFamily: latinStack('inter-regular'),
+  fontVariantNumeric: 'tabular-nums',
+  lineHeight: 1,
+  verticalAlign: 'middle',
+  color: 'var(--text-tertiary)',
+  WebkitTapHighlightColor: 'transparent',
+};
 
 /**
  * SourceDisclosure — collapsible "Источник и награды" panel.
