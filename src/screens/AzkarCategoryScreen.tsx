@@ -35,6 +35,7 @@ import { SourceDisclosure, TasbihPill } from '../components/DevotionalBits';
 import { useAzkarAudio, type AzkarTrack } from '../hooks/useAzkarAudio';
 import { ayahAudioUrl } from '../lib/quranUtils';
 import {
+  orderAzkar, readAzkarOrder, subscribeAzkarOrder,
   readAzkarPrefs, writeAzkarPref, writeAzkarScale,
   writeAzkarFont, writeAzkarLatinFont,
 } from '../lib/azkarPrefs';
@@ -156,12 +157,19 @@ export function AzkarCategoryScreen({ category, theme, setTheme, onBack }: Props
   useEffect(() => () => stopAllRef.current(), []);
 
   // ── Filter + sort entries for this category, build the audio queue ──
+  //
+  // Порядок выбирает человек в настройках аккаунта: «по номерам» (как было)
+  // или «как в исходнике». Правило — в `orderAzkar`, здесь только подписка:
+  // настройка меняется на другом экране, и список обязан её увидеть без
+  // перезахода. Тексты азкаров это не затрагивает никак — меняется только
+  // очерёдность обхода одного и того же массива.
+  const [azkarOrder, setAzkarOrder] = useState(readAzkarOrder);
+  useEffect(() => subscribeAzkarOrder(() => setAzkarOrder(readAzkarOrder())), []);
+
   const entries: AzkarEntry[] = useMemo(() => {
     if (!data) return [];
-    return data.entries
-      .filter(e => e.category === category)
-      .sort((a, b) => (a.n_in_category ?? 0) - (b.n_in_category ?? 0));
-  }, [data, category]);
+    return orderAzkar(data.entries.filter(e => e.category === category), azkarOrder);
+  }, [data, category, azkarOrder]);
 
   // Per-entry track queue.  Two paths:
   //

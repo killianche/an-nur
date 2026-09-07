@@ -43,6 +43,9 @@ import {
 } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { FullQuranAudioManager } from '../components/OfflineAudioCard';
+import {
+  AZKAR_ORDERS, readAzkarOrder, writeAzkarOrder, type AzkarOrder,
+} from '../lib/azkarPrefs';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import type { Theme } from '../hooks/useTheme';
 import { THEME_LABELS } from '../hooks/useTheme';
@@ -222,6 +225,12 @@ export function AccountScreen({ theme, setTheme, onBack, onOpenDocument }: Props
           Размер текста и шрифты настраиваются там, где читают: в Коране,
           азкарах и дуа — своей кнопкой в шапке.
         </Hint>
+      </Card>
+
+      {/* ── Порядок азкаров ──────────────────────────────────────────── */}
+      <SectionTitle>Азкары</SectionTitle>
+      <Card>
+        <AzkarOrderPicker />
       </Card>
 
       {/* ── Полные записи чтецов ─────────────────────────────────────── */}
@@ -477,6 +486,87 @@ function Row({ icon, label, value, onClick }: {
     >
       {content}
     </button>
+  );
+}
+
+/**
+ * Порядок азкаров — два варианта.
+ *
+ * 🔴 Почему их ровно два и откуда они взялись.
+ *
+ * В `azkar.json` порядок записей и их нумерация — РАЗНЫЕ вещи. Экран с самого
+ * начала сортировал по номеру (`n_in_category`), а сам массив лежит в другой
+ * последовательности: у утренних 14, 15, 16, 1, 5, 6, 7, 3, 4 … — сперва три
+ * суры (Ихлас, Фаляк, Нас), потом остальное. Этот порядок пришёл с исходными
+ * данными и ни разу не менялся, так что «изначальная последовательность»,
+ * которую помнит владелец, никуда не пропадала — её просто перекрывала
+ * сортировка.
+ *
+ * Поэтому здесь не «сортировка» в общем смысле, а выбор одного из двух
+ * порядков, которые уже есть в данных. Ни один текст азкара при переключении
+ * не меняется — меняется только очерёдность карточек.
+ */
+function AzkarOrderPicker() {
+  const [order, setOrder] = useState<AzkarOrder>(readAzkarOrder);
+
+  const ОПИСАНИЕ: Record<AzkarOrder, { название: string; пояснение: string }> = {
+    book:   { название: 'По номерам', пояснение: '1, 2, 3 … — три суры в конце' },
+    source: { название: 'Как изначально', пояснение: 'сперва Ихлас, Фаляк и Нас' },
+  };
+
+  return (
+    <>
+      <div
+        role="radiogroup"
+        aria-label="Порядок азкаров"
+        style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-tight)',
+          padding: 'var(--space-cozy) var(--space-margin)',
+        }}
+      >
+        {AZKAR_ORDERS.map(вариант => {
+          const выбран = order === вариант;
+          return (
+            <button
+              key={вариант}
+              role="radio"
+              aria-checked={выбран}
+              onClick={() => { setOrder(вариант); writeAzkarOrder(вариант); }}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                gap: '2px',
+                minHeight: '58px', padding: 'var(--space-tight) var(--space-snug)',
+                borderRadius: 'var(--radius-control)',
+                border: `1px solid ${выбран ? 'var(--text-primary)' : 'var(--hairline)'}`,
+                background: выбран ? 'rgb(var(--ink-rgb) / 0.05)' : 'transparent',
+                color: 'var(--text-primary)',
+                textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              <span style={{
+                fontSize: 'var(--font-subhead)',
+                lineHeight: 'var(--leading-subhead)',
+                fontWeight: выбран ? 'var(--weight-semibold)' : 'var(--weight-regular)',
+              }}>
+                {ОПИСАНИЕ[вариант].название}
+              </span>
+              <span style={{
+                fontSize: 'var(--font-caption2)',
+                lineHeight: 'var(--leading-caption2)',
+                color: 'var(--text-tertiary)',
+              }}>
+                {ОПИСАНИЕ[вариант].пояснение}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <Hint>
+        Меняется только очерёдность карточек в утренних и вечерних азкарах.
+        Сами тексты, перевод и транскрипция остаются прежними.
+      </Hint>
+    </>
   );
 }
 

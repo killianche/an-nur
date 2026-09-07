@@ -28,7 +28,30 @@ const KEYS = {
   translitScale: 'azkar.translitScale',
   russianFont:   'azkar.russianFont',   // see LATIN_FONTS in lib/typography.ts
   translitFont:  'azkar.translitFont',
+  order:         'azkar.order',          // см. AZKAR_ORDERS ниже
 } as const;
+
+/**
+ * Порядок азкаров в разделе.
+ *
+ * 🔴 В данных лежат ДВА порядка, и это не догадка, а свойство файла.
+ *
+ *  • `book` — по полю `n_in_category`: 1, 2, 3 … Так экран показывает азкары
+ *    сейчас. Три суры (Ихлас, Фаляк, Нас) стоят в конце, под номерами 14–16.
+ *  • `source` — порядок, в котором записи ЛЕЖАТ в `azkar.json`. Он другой:
+ *    у утренних это 14, 15, 16, 1, 5, 6, 7, 3, 4, 8, 9, 10, 12, 2, 11, 13 —
+ *    то есть сперва три суры, потом остальное своим чередом. Этот порядок
+ *    пришёл из исходных данных (снимок QuranIng, коммит af7e7b8) и с тех пор
+ *    не менялся — сортировка по номеру появилась уже в приложении.
+ *
+ * Владелец 07.09.2026 вспомнил, что «изначально последовательность была
+ * другая», и попросил дать выбор. Ничего не пересобирается и не
+ * переписывается: обе последовательности — это два способа обойти один и тот
+ * же массив. Сами тексты азкаров не трогаются вовсе.
+ */
+export const AZKAR_ORDERS = ['book', 'source'] as const;
+export type AzkarOrder = typeof AZKAR_ORDERS[number];
+const DEFAULT_ORDER: AzkarOrder = 'book';
 
 const VISIBILITY_DEFAULTS = {
   showArabic:   true,
@@ -112,6 +135,50 @@ function readLatinFont(key: string, def: LatinFontId): LatinFontId {
   return (LATIN_FONT_IDS as readonly string[]).includes(v ?? '')
     ? (v as LatinFontId)
     : def;
+}
+
+/** Как сейчас упорядочены азкары. */
+export function readAzkarOrder(): AzkarOrder {
+  if (typeof window === 'undefined') return DEFAULT_ORDER;
+  const v = window.localStorage.getItem(KEYS.order);
+  return (AZKAR_ORDERS as readonly string[]).includes(v ?? '')
+    ? (v as AzkarOrder)
+    : DEFAULT_ORDER;
+}
+
+// Настройка живёт в одном экране (аккаунт), а действует в другом (азкары).
+// Подписка нужна, чтобы список не ждал перемонтирования: человек меняет
+// порядок и тут же уходит смотреть — увидеть он должен новый.
+const слушатели = new Set<() => void>();
+
+export function subscribeAzkarOrder(fn: () => void): () => void {
+  слушатели.add(fn);
+  return () => { слушатели.delete(fn); };
+}
+
+export function writeAzkarOrder(order: AzkarOrder) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(KEYS.order, order);
+  слушатели.forEach(fn => fn());
+}
+
+/**
+ * Разложить записи категории в выбранном порядке.
+ *
+ * Отдельной чистой функцией, а не сортировкой по месту: правило легко
+ * сломать незаметно — список останется полным, просто пойдёт не в том
+ * порядке, и заметить это может только человек, знающий книгу наизусть.
+ *
+ * `source` — это порядок ИСХОДНОГО МАССИВА, поэтому здесь ничего не
+ * сортируется: массив уже пришёл в нужной последовательности, и любая
+ * сортировка её бы и разрушила.
+ */
+export function orderAzkar<T extends { n_in_category?: number }>(
+  список: readonly T[],
+  order: AzkarOrder,
+): T[] {
+  if (order === 'source') return [...список];
+  return [...список].sort((a, b) => (a.n_in_category ?? 0) - (b.n_in_category ?? 0));
 }
 
 export function readAzkarPrefs() {
