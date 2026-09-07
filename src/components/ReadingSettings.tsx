@@ -1431,36 +1431,91 @@ export function Switch({ on }: { on: boolean }) {
   );
 }
 
+/**
+ * ScalePicker — размер текста плюсом и минусом.
+ *
+ * Было четыре кнопки «А» разного кегля в ряд. Владелец 07.09.2026 попросил
+ * десять ступеней — а десять кнопок в ряд не помещаются даже на широком
+ * телефоне, и разложить их в две строки значит превратить выбор в таблицу.
+ *
+ * Поэтому шаговый переключатель: минус, образец с номером ступени, плюс.
+ * Образец показывает букву тем кеглем, который сейчас выбран, — то есть
+ * результат виден до того, как закроешь настройки.
+ */
 export function ScalePicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const шаги = SCALE_OPTIONS.map(o => o.value);
+  // Ближайшая ступень, а не строгое равенство: в localStorage может лежать
+  // значение из старой сборки, и тогда индекс был бы -1.
+  const индекс = шаги.reduce(
+    (лучший, v, i) => Math.abs(v - value) < Math.abs(шаги[лучший] - value) ? i : лучший,
+    0,
+  );
+  const шаг = (куда: -1 | 1) => {
+    const следующий = Math.min(шаги.length - 1, Math.max(0, индекс + куда));
+    if (следующий !== индекс) onChange(шаги[следующий]);
+  };
+
+  const кнопка: React.CSSProperties = {
+    flexShrink: 0,
+    width: '52px', height: '48px',
+    borderRadius: '12px',
+    border: '1px solid var(--hairline)',
+    background: 'rgb(var(--ink-rgb) / 0.03)',
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    fontSize: '22px',
+    lineHeight: 1,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    WebkitTapHighlightColor: 'transparent',
+  };
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
-      {SCALE_OPTIONS.map((s, i) => {
-        const active = Math.abs(value - s.value) < 0.01;
-        return (
-          <button
-            key={s.value}
-            onClick={() => onChange(s.value)}
-            style={{
-              minHeight: '48px',
-              padding: '10px 0',
-              borderRadius: '12px',
-              border: `1px solid ${active ? 'var(--text-primary)' : 'var(--hairline)'}`,
-              background: active
-                ? 'rgb(var(--ink-rgb) / 0.08)'
-                : 'rgb(var(--ink-rgb) / 0.03)',
-              boxShadow: active ? 'inset 0 0 0 1px var(--text-primary)' : 'none',
-              color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: `${SCALE_FONT_PX[i]}px`,
-              fontWeight: 'var(--weight-regular)',
-              lineHeight: 1.2,
-            }}
-          >
-            {s.label}
-          </button>
-        );
-      })}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <button
+        onClick={() => шаг(-1)}
+        disabled={индекс === 0}
+        aria-label="Меньше"
+        style={{ ...кнопка, opacity: индекс === 0 ? 0.35 : 1 }}
+      >
+        −
+      </button>
+
+      {/* Образец: буква тем кеглем, что выбран, и номер ступени под ней. */}
+      <span style={{
+        flex: 1, minWidth: 0,
+        height: '48px',
+        borderRadius: '12px',
+        border: '1px solid var(--hairline)',
+        background: 'rgb(var(--ink-rgb) / 0.05)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: '10px',
+        overflow: 'hidden',
+      }}>
+        <span aria-hidden style={{
+          fontSize: `${SCALE_FONT_PX[индекс]}px`,
+          lineHeight: 1,
+          color: 'var(--text-primary)',
+        }}>
+          A
+        </span>
+        <span style={{
+          fontSize: 'var(--font-caption2)',
+          color: 'var(--text-tertiary)',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {индекс + 1} / {шаги.length}
+        </span>
+      </span>
+
+      <button
+        onClick={() => шаг(1)}
+        disabled={индекс === шаги.length - 1}
+        aria-label="Больше"
+        style={{ ...кнопка, opacity: индекс === шаги.length - 1 ? 0.35 : 1 }}
+      >
+        +
+      </button>
     </div>
   );
 }

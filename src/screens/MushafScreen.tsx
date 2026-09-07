@@ -272,6 +272,8 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   } | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Завершение текущей доводки — чтобы новый жест мог оборвать её. */
+  const finishTurn = useRef<(() => void) | null>(null);
   const dragFrame = useRef<number | null>(null);
   const pendingDrag = useRef(0);
   const turning = useRef(false);
@@ -302,6 +304,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     dragFrame.current = null;
     pendingDrag.current = 0;
     turning.current = false;
+    finishTurn.current = null;
     const track = pageTrackRef.current;
     if (!track) return;
     track.style.setProperty('--mushaf-turn-duration', '0ms');
@@ -356,14 +359,37 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       if (nextPage != null) flushSync(() => setPage(nextPage));
       pendingDrag.current = 0;
       turning.current = false;
+      finishTurn.current = null;
     };
+
+    // 🔴 Доводку можно ОБОРВАТЬ новым касанием — см. `onTouchStart`.
+    //
+    // Владелец 07.09.2026: «нельзя быстро свайпать страницы… из-за того, что
+    // она долистывается, приходится ждать». Так и было: `onTouchStart`
+    // отбрасывал касание, пока `turning.current` истинно, то есть на всю
+    // длительность доводки. А доводку в тот же день попросили сделать вдвое
+    // медленнее — без прерывания это заперло бы листание совсем.
+    //
+    // Поэтому финал вынесен в ref: новый жест вызывает его немедленно,
+    // страница фиксируется, трек возвращается в ноль, и палец сразу ведёт
+    // следующий лист.
+    finishTurn.current = finish;
 
     if (duration === 0) finish();
     else turnTimer.current = setTimeout(finish, duration + 24);
   }, [setPage]);
 
   const onTouchStart = (e: React.TouchEvent) => {
-    if (turning.current) return;
+    // Идёт доводка — не отбрасываем касание, а завершаем её мгновенно.
+    // Лист «доскакивает» на место, и тот же палец начинает следующий свайп:
+    // так страницы листаются подряд, без ожидания анимации.
+    if (turning.current) {
+      if (turnTimer.current != null) {
+        clearTimeout(turnTimer.current);
+        turnTimer.current = null;
+      }
+      finishTurn.current?.();
+    }
     // Второй палец — это масштабирование (touchAction разрешает pinch-zoom).
     // Без этой проверки он перезаписывал снимок касания, и отпускание одного
     // пальца давало «неподвижный тап» с малым смещением: панель прыгала
@@ -780,7 +806,14 @@ function PreparedMushafPage({
       className="mushaf-page-layer"
       data-current={visible ? '' : undefined}
       style={{
-        '--mushaf-page-offset': `${offset * 100}%`,
+        // Соседние листы разведены зазором: между ними видно поле, а не
+        // стык двух картинок. Владелец 07.09.2026 попросил именно это —
+        // «расстояние между двумя листами» вместо прежнего свечения.
+        '--mushaf-page-offset': offset === 0
+          ? '0%'
+          : offset > 0
+            ? 'calc(100% + var(--mushaf-gutter))'
+            : 'calc(-100% - var(--mushaf-gutter))',
         position: 'absolute',
         inset: landscapeWide ? '0 0 auto' : 0,
         minHeight: '100%',
