@@ -26,8 +26,8 @@
  * которое стоит принимать вместе с дизайном онбординга.
  */
 
-import { DEFAULT_RECITER, RECITERS } from './reciters';
-import { isOfflineSupported, downloadedCount, surahFileCount, TOTAL_AYAHS } from './audioStore';
+import { DEFAULT_RECITER, RECITERS, hasSurahAudio } from './reciters';
+import { isOfflineSupported, downloadedCount, surahFileCount, TOTAL_AYAHS, TOTAL_SURAHS } from './audioStore';
 import { startDownload, getDownloadState, type DownloadStatus } from './audioDownloads';
 
 const PREFS_KEY = 'audio.autoDownload.optedOut';
@@ -116,7 +116,38 @@ async function tryStart() {
     if (r.id === DEFAULT_RECITER) continue;
     if (downloadedCount(r.id) > 0 || surahFileCount(r.id) > 0) return;
   }
+
+  // 🔴 И не заводимся поверх УЖЕ СОБРАННОЙ поаятной фонотеки того же чтеца.
+  //
+  // 06.09.2026 фонотека переехала на сплошные записи сур. У того, кто раньше
+  // скачал Ясира поаятно (около 1.4 ГБ), автозагрузка иначе молча положила бы
+  // рядом второй такой же комплект — до 2.8 ГБ звука одного чтеца. Ничего не
+  // удаляем сами: старые файлы остаются рабочим офлайном (со швами), а
+  // решение перекачать библиотеку принимает человек кнопкой «Скачать».
+  //
+  // Само правило — в `shouldBuildSurahLibrary`, оно покрыто тестами.
+  if (!shouldBuildSurahLibrary(
+    surahFileCount(DEFAULT_RECITER), downloadedCount(DEFAULT_RECITER))) return;
+
   void startDownload(DEFAULT_RECITER, { kind: 'all' });
+}
+
+/**
+ * Начинать ли собирать фонотеку сплошными записями.
+ *
+ * 06.09.2026 фонотека переехала с 6236 поаятных файлов на 114 сплошных
+ * записей сур. У того, кто раньше скачал чтеца поаятно (около 1.4 ГБ),
+ * автозагрузка иначе молча положила бы рядом второй такой же комплект — до
+ * 2.8 ГБ звука одного чтеца. Ничего не удаляем сами: старые файлы остаются
+ * рабочим офлайном, а решение перекачать библиотеку принимает человек.
+ *
+ * Порог, а не «больше нуля»: несколько десятков поаятных файлов набираются
+ * сами от обычного чтения, и отказывать из-за них нельзя.
+ */
+export function shouldBuildSurahLibrary(сплошных: number, поаятных: number): boolean {
+  if (сплошных >= TOTAL_SURAHS) return false;
+  if (сплошных > 0) return true;
+  return поаятных < TOTAL_AYAHS / 4;
 }
 
 /**
@@ -131,7 +162,15 @@ export async function armAutoDownload(): Promise<void> {
   if (!isOfflineSupported()) return;
   if (await hasOptedOut()) return;
   // Уже всё скачано — нечего делать.
-  if (downloadedCount(DEFAULT_RECITER) >= TOTAL_AYAHS) return;
+  //
+  // Считаем в тех единицах, в которых теперь и качаем: фонотека собирается
+  // сплошными записями сур (114 файлов). Проверка по 6236 аятам после
+  // перехода означала бы, что автозагрузка каждый раз считает библиотеку
+  // пустой и заводится поверх готовой.
+  const собрано = hasSurahAudio(DEFAULT_RECITER)
+    ? !shouldBuildSurahLibrary(surahFileCount(DEFAULT_RECITER), downloadedCount(DEFAULT_RECITER))
+    : downloadedCount(DEFAULT_RECITER) >= TOTAL_AYAHS;
+  if (собрано) return;
 
   window.setTimeout(async () => {
     if (await isOnWifi()) { tryStart(); return; }

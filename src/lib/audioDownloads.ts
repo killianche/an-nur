@@ -228,6 +228,24 @@ function prioritiseForFullDownload(all: [number, number][]): [number, number][] 
  * разворачивая список: функция зовётся из рендера, а разворачивание
  * 6236 пар там обходилось дороже самой отрисовки.
  */
+/**
+ * Какие суры ещё нужно скачать и в каком порядке.
+ *
+ * Отдельной чистой функцией, потому что ошибка здесь не видна: задание
+ * просто качает не то или не в том порядке, а выглядит рабочим. Сперва
+ * Аль-Фатиха, затем джуз Амма — то, что читают каждый день, приезжает
+ * первым; остальное следом по номеру.
+ */
+export function fullDownloadSurahOrder(есть: (сура: number) => boolean): number[] {
+  const [juz30From] = juzRange(30);
+  const вес = (сура: number) => сура === 1
+    ? 0
+    : (firstGlobalOfSurah(сура) >= juz30From ? 1 : 2);
+  const остались: number[] = [];
+  for (let s = 1; s <= TOTAL_SURAHS; s++) if (!есть(s)) остались.push(s);
+  return остались.sort((a, b) => вес(a) - вес(b) || a - b);
+}
+
 export function missingCount(reciter: ReciterId, scope: DownloadScope): number {
   if (scope.kind === 'all') {
     return TOTAL_AYAHS - downloadedCount(reciter);
@@ -465,7 +483,7 @@ export async function startDownload(reciter: ReciterId, scope: DownloadScope): P
     });
     return;
   }
-  if (!supportsAyahOffline(reciter)) {
+  if (!supportsAyahOffline(reciter) && !surahAudioUrl(reciter, 1)) {
     patch(reciter, {
       status: 'error',
       error: 'Для этого чтеца пока доступно только потоковое воспроизведение.',
@@ -517,6 +535,70 @@ export async function startDownload(reciter: ReciterId, scope: DownloadScope): P
       });
       return;
     }
+  }
+
+  // 🔴 Вся фонотека — СПЛОШНЫМИ записями сур, а не 6236 кусочками.
+  //
+  // Прежде «скачать всё» тянуло отдельный файл на каждый аят. Это работало и
+  // давало обратный эффект: собранная поаятная сура заставляла плеер играть
+  // её же поаятно, со швом на каждой границе (см. `useAyahAudio`, выбор
+  // режима). То есть чем полнее становилась офлайн-библиотека, тем хуже
+  // звучало чтение — и это происходило само, на Wi-Fi, без единого действия
+  // человека.
+  //
+  // Теперь скачивается ровно то, что играет: 114 непрерывных файлов. Путь
+  // один и тот же онлайн и офлайн, значит швов нет по построению.
+  //
+  // Порядок тот же, что и был у поаятной очереди: сперва Аль-Фатиха, потом
+  // джуз Амма — то, что читают каждый день, приезжает первым.
+  if (scope.kind === 'all' && surahAudioUrl(reciter, 1)) {
+    const остались = fullDownloadSurahOrder(s => hasSurahFile(reciter, s));
+
+    if (остались.length === 0) {
+      patch(reciter, { ...IDLE, scope });
+      return;
+    }
+
+    patch(reciter, {
+      status: 'running', scope, done: 0, total: остались.length,
+      bytes: 0, bytesTotal: 0, error: null,
+    });
+
+    let готовых = 0;
+    let байтовРанее = 0;
+    for (const сура of остались) {
+      if (cancelFlags.has(reciter)) {
+        cancelFlags.delete(reciter);
+        patch(reciter, { status: 'paused', done: готовых, bytes: байтовРанее });
+        return;
+      }
+      try {
+        // Байты копим по всему заданию: полоса не должна дёргаться назад на
+        // каждой новой суре. Полный размер задания заранее неизвестен —
+        // сколько весит сура, хост сообщает только в ответе на первый кусок.
+        const ok = await downloadSurahFile(reciter, сура, (сделано) => {
+          patch(reciter, { bytes: байтовРанее + сделано });
+        });
+        if (!ok) {
+          // Сплошной записи для этой суры нет — пропускаем её, не роняя
+          // задание. Такая сура останется потоковой.
+          continue;
+        }
+        байтовРанее = getDownloadState(reciter).bytes;
+        готовых++;
+        patch(reciter, { done: готовых });
+      } catch (error) {
+        // Частично скачанный файл остаётся точкой докачки — не стираем.
+        patch(reciter, {
+          status: 'paused', scope, done: готовых, bytes: байтовРанее,
+          error: `Загрузка прервана: ${String(error).slice(0, 60)}. Нажмите «Скачать», чтобы продолжить.`,
+        });
+        return;
+      }
+    }
+
+    patch(reciter, { ...IDLE, scope, done: готовых, total: остались.length });
+    return;
   }
 
   const targets = expandScope(scope)

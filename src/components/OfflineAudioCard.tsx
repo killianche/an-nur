@@ -23,7 +23,7 @@ import {
 } from '../lib/audioDownloads';
 import { optOutOfAutoDownload } from '../lib/audioAutoDownload';
 import { ayahsInSurah } from '../lib/ayahNumbering';
-import { TOTAL_AYAHS, TOTAL_SURAHS, clearReciter, clearSurah, completeSurahCount, downloadedCount, downloadedInSurah, hasSurahFile, isOfflineSupported, isSurahComplete, subscribeAudioStore, surahFileCount } from '../lib/audioStore';
+import { TOTAL_SURAHS, clearReciter, clearSurah, completeSurahCount, downloadedCount, downloadedInSurah, hasSurahFile, isOfflineSupported, isSurahComplete, subscribeAudioStore, surahFileCount } from '../lib/audioStore';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { settingCard, cardTitle } from './ReadingSettings';
 import { Download, Trash, CheckCircle, Pause, ICON_SIZE } from './icons';
@@ -200,8 +200,17 @@ function ReciterRow({ id, label }: {
 }) {
   const have = downloadedCount(id);
   const suras = completeSurahCount(id);
-  const complete = have >= TOTAL_AYAHS;
   const сплошных = surahFileCount(id);
+  // 🔴 Считаем СУРАМИ, а не аятами.
+  //
+  // Фонотека собирается сплошными записями — 114 файлов вместо 6236. Шкала
+  // по аятам после перехода стояла бы почти на нуле у человека, у которого
+  // на диске уже полКорана: поаятных отметок сплошная запись не создаёт.
+  //
+  // Складывать напрямую нельзя: сура, скачанная и поаятно, и сплошной
+  // записью, посчиталась бы дважды — получилось бы «115 из 114».
+  const целиком = Math.min(TOTAL_SURAHS, suras + сплошных);
+  const complete = целиком >= TOTAL_SURAHS;
   const st = getDownloadState(id);
   const running = st.status === 'running';
 
@@ -253,7 +262,7 @@ function ReciterRow({ id, label }: {
         )}
       </div>
 
-      <Meter value={have} max={TOTAL_AYAHS} />
+      <Meter value={целиком} max={TOTAL_SURAHS} />
 
       <span style={{
         ...meta_,
@@ -264,15 +273,9 @@ function ReciterRow({ id, label }: {
           : complete
           ? `Весь Коран офлайн · ${TOTAL_SURAHS} сур`
           : running
-          ? (st.bytesTotal > 0
-            ? `Качаю: ${formatBytes(st.bytes)} из ${formatBytes(st.bytesTotal)}`
-            : `Качаю: ${st.done} из ${st.total} · ${formatBytes(st.bytes)}`)
-          : have > 0 || сплошных > 0
-          // Сплошные записи считаем отдельным слагаемым: в поаятной карте их
-          // нет, и без этого сводка занижала бы скачанное.
-          // Складывать напрямую нельзя: сура, скачанная и поаятно, и сплошной
-          // записью, посчиталась бы дважды — получилось бы «115 из 114».
-          ? `${Math.min(TOTAL_SURAHS, suras + сплошных)} из ${TOTAL_SURAHS} сур целиком${have > 0 ? ` · ${have} аятов` : ''}`
+          ? `Качаю ${st.done} из ${st.total} сур · ${formatBytes(st.bytes)}`
+          : целиком > 0 || have > 0
+          ? `${целиком} из ${TOTAL_SURAHS} сур целиком${have > 0 ? ` · ${have} аятов` : ''}`
           : 'Не скачано — играет стримом'}
       </span>
     </div>

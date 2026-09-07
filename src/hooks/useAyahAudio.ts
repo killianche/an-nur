@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { ayahAudioUrl } from '../lib/quranUtils';
 import { ayahAudioRange } from '../lib/ayahAudioRange';
-import { hasSurahFile, localSurahSrc, unmarkSurahFile } from '../lib/audioStore';
-import { cacheAyah, missingCount } from '../lib/audioDownloads';
+import { localAyahSrc, localSurahSrc, unmarkSurahFile } from '../lib/audioStore';
+import { cacheAyah } from '../lib/audioDownloads';
 import {
   DEFAULT_RECITER, RECITERS_WITH_SEGMENTS, hasSurahAudio, requiresSurahAudioStream,
   surahAudioUrl, type ReciterId,
@@ -490,6 +490,28 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
         return;
       }
 
+      // 🔴 Прежде чем сдаться — попробовать поаятные файлы.
+      //
+      // Сплошная запись берётся из сети, когда её нет на диске. В самолёте
+      // это отказ, и раньше выбор режима заранее уводил такие суры на
+      // поаятное чтение — ценой шва у всех остальных. Теперь наоборот:
+      // сплошная идёт всегда, а поаятные файлы включаются только здесь, по
+      // факту неудачи. Повторного круга не будет: во второй раз режим уже
+      // `ayah`, и условие не выполнится.
+      const местныйАят = localAyahSrc(surah, ayah, r);
+      if (playbackMode === 'surah' && местныйАят) {
+        playbackMode = 'ayah';
+        audio.onended = null;
+        audio.onerror = null;
+        if (audioCache.get(mediaK) === audio) {
+          audio.pause();
+          audio.removeAttribute('src');
+          audioCache.delete(mediaK);
+        }
+        void playOne(surah, ayah, transition);
+        return;
+      }
+
       // Stop the queue on the SAME ayah.  A downloaded local file still plays
       // normally offline because ayahAudioUrl() chooses it before the network
       // URL; this branch is reached only when the selected source truly fails.
@@ -592,12 +614,21 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // сохраняется, и это честная плата за работу без сети.
     const startPlayback = () => {
       const r = reciterRef.current;
-      const offlineComplete = missingCount(r, { kind: 'surah', surah }) === 0;
-      // Сплошная запись на диске бьёт всё остальное: она и работает без сети,
-      // и не даёт швов. Поаятный режим остаётся только там, где её нет, а
-      // отдельные файлы аятов скачаны.
-      playbackMode = (hasSurahFile(r, surah) || (!offlineComplete && hasSurahAudio(r)))
-        ? 'surah' : 'ayah';
+      // 🔴 Сплошная запись — ВСЕГДА, пока она у чтеца есть.
+      //
+      // Здесь стояло `hasSurahFile(...) || (!offlineComplete && hasSurahAudio(r))`,
+      // и из-за второй половины приложение само себя портило. Автозагрузка
+      // наполняет фонотеку поаятными файлами; как только у суры собирались
+      // все аяты, `offlineComplete` становился истиной, и эта же сура
+      // начинала играть поаятно — со швом на каждой границе. Чем дольше
+      // телефон стоял на Wi-Fi, тем больше сур переезжало на плохой путь, и
+      // никакая правка таймингов этого не лечила: шов не в записи, а в
+      // подмене аудиоэлемента.
+      //
+      // Поаятный режим больше не выбирается заранее никогда. Он остался
+      // аварийным: если сплошная запись не открылась (нет сети и файла нет),
+      // `failAndStop` переключит режим и повторит тот же аят.
+      playbackMode = hasSurahAudio(r) ? 'surah' : 'ayah';
       startedWholeSurah = false;
       playOne(surah, ayah);
     };
@@ -621,19 +652,11 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
   const playFrom = useCallback((
     surah: number, fromAyah: number, lastAyah: number, mode: PlaybackMode = 'ayah',
   ) => {
-    // 🔴 Скачанная сура играет С УСТРОЙСТВА, а не потоком.
-    //
-    // Непрерывный файл берётся из сети всегда, и в самолётном режиме запуск
-    // полностью скачанной суры падал бы: загрузка не удаётся, воспроизведение
-    // тихо останавливается. Человек при этом видел бы, что сура скачана.
-    //
-    // Поэтому при полном офлайн-покрытии переходим на поаятный режим: он
-    // читает локальные файлы. Плата — швы между аятами возвращаются, но
-    // «играет со швами» несравнимо лучше, чем «не играет вовсе».
-    const offlineComplete = mode === 'surah'
-      && missingCount(reciterRef.current, { kind: 'surah', surah }) === 0;
-    playbackMode = (offlineComplete && !hasSurahFile(reciterRef.current, surah))
-      ? 'ayah' : mode;
+    // Режим тот же, что и при тапе: сплошная запись, пока она есть у чтеца.
+    // Локальный файл предпочитается сетевому внутри `getOrCreateAudio`, а
+    // отсутствие и того и другого разбирает аварийная ветка в `failAndStop`.
+    // Здесь `mode` управляет только тем, начинать ли суру с нуля записи.
+    playbackMode = hasSurahAudio(reciterRef.current) ? 'surah' : 'ayah';
     startedWholeSurah = mode === 'surah';
     queueRef.current = { surah, first: fromAyah, last: lastAyah, current: fromAyah };
     playOne(surah, fromAyah);
