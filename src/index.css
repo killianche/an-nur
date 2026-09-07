@@ -199,6 +199,7 @@
  *   dark    — чистая чёрная канва, нейтральные почти чёрные панели
  *   aurora  — светло-бежевый фон с редкой сеткой точек
  *   aurora2 — чёрная канва + сияние (CosmicLayer)
+ *   cosmos  — чёрная канва + летящие звёзды (CosmicLayer → CosmicWarp)
  *
  * В QuranIng тем было двенадцать плюс одиннадцать пресетов, бумажные
  * паттерны и фото-обои.  Здесь всё это снято: тема = один
@@ -288,6 +289,37 @@
   --hairline:        #1f1f25;
   --hairline-soft:   #16161b;
   --hairline-strong: #34343c;
+
+  --danger:      #ff453a;
+  --danger-soft: rgba(255, 69, 58, 0.14);
+}
+
+/* Тема «Космос»: чёрное небо и летящие звёзды (CosmicLayer → CosmicWarp).
+ *
+ * Палитра чернил — та же, что у «Авроры 2»: обе лежат на чистом чёрном, и
+ * разводить два набора почти одинаковых серых значило бы, что однажды они
+ * разъедутся. Различие тем — в слое фона, а не в тексте.
+ *
+ * Канва именно #000: под звёздами любой «мягкий графит» читается как серое
+ * пятно вокруг canvas. */
+[data-theme="cosmos"] {
+  --canvas:        #000000;
+  --canvas-soft:   #05050a;
+  --surface:       #101018;
+  --surface-rgb:       16 16 24;
+  --surface-strong:#181822;
+
+  --ink:           #f4f4f5;
+  --ink-rgb:           244 244 245;
+  --ink-soft:      #e4e4e7;
+  --ink-soft-rgb:      228 228 231;
+  --body:          #c0c0c8;
+  --muted:         #8a8a93;
+  --muted-soft:    #5a5a63;
+
+  --hairline:        #1c1c26;
+  --hairline-soft:   #141420;
+  --hairline-strong: #32323e;
 
   --danger:      #ff453a;
   --danger-soft: rgba(255, 69, 58, 0.14);
@@ -517,6 +549,12 @@
   --qcf-active: #4ade80;
 }
 
+/* Звёздный свет, а не зелень «Авроры 2»: подсветка активного слова должна
+   принадлежать сцене, иначе на чёрном небе она читается как чужой элемент. */
+[data-theme="cosmos"] {
+  --qcf-active: #93c5fd;
+}
+
 [data-theme="dark"] {
   --ayah-audio-fill: rgba(110, 231, 183, 0.12);
   --ayah-audio-halo: rgba(52, 211, 153, 0.075);
@@ -530,6 +568,11 @@
 [data-theme="aurora2"] {
   --ayah-audio-fill: rgba(196, 181, 253, 0.14);
   --ayah-audio-halo: rgba(167, 139, 250, 0.10);
+}
+
+[data-theme="cosmos"] {
+  --ayah-audio-fill: rgba(147, 197, 253, 0.13);
+  --ayah-audio-halo: rgba(96, 165, 250, 0.09);
 }
 
 /* ─── Выбранный аят в полноэкранном мусхафе ───────────────────────────
@@ -813,8 +856,12 @@ body {
     0 3px 10px -4px rgba(0, 0, 0, 0.12);
 }
 
+/* Тёмная семья тем: «Тёмная», «Аврора 2» и «Космос». Забыть здесь новую
+   тёмную тему — значит выдать ей светлое стекло: белёсые панели поверх
+   чёрного неба. Правило неочевидное, потому что ломается не код, а вид. */
 [data-theme="dark"] .liquid-glass,
-[data-theme="aurora2"] .liquid-glass {
+[data-theme="aurora2"] .liquid-glass,
+[data-theme="cosmos"] .liquid-glass {
   background: color-mix(in srgb, var(--surface) 68%, transparent);
   border-color: color-mix(in srgb, #ffffff 12%, transparent);
   box-shadow:
@@ -1166,7 +1213,8 @@ body {
   color: var(--ayah-word-color-light, #2563eb) !important;
 }
 [data-highlight-style="color"][data-theme="dark"] [data-active-word],
-[data-highlight-style="color"][data-theme="aurora2"] [data-active-word] {
+[data-highlight-style="color"][data-theme="aurora2"] [data-active-word],
+[data-highlight-style="color"][data-theme="cosmos"] [data-active-word] {
   color: var(--ayah-word-color-dark, #60a5fa) !important;
 }
 

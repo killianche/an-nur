@@ -787,6 +787,18 @@ const THEME_PREVIEW: Record<Theme,
     glow: 'radial-gradient(circle, rgba(116,106,92,0.20) 1.15px, transparent 1.4px)',
     glowSize: '20px 20px',
   },
+  cosmos: {
+    canvas: '#000000',
+    ink: '#f4f4f5',
+    // Звёзды разной величины: на карточке 96×64 движение не показать, а
+    // «россыпь на чёрном» отличает эту тему от «Тёмной» и от «Авроры 2»
+    // с одного взгляда.
+    glow:
+      'radial-gradient(circle, rgba(255,255,255,0.90) 1.1px, transparent 1.4px),'
+      + ' radial-gradient(circle, rgba(255,255,255,0.55) 0.7px, transparent 1.0px),'
+      + ' radial-gradient(circle, rgba(190,215,255,0.70) 0.9px, transparent 1.2px)',
+    glowSize: '37px 29px, 19px 23px, 53px 41px',
+  },
   aurora2: {
     canvas: '#000000',
     ink: '#f4f4f5',

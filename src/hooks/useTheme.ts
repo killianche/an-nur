@@ -19,7 +19,7 @@ import { useState, useEffect } from 'react';
 
 export type ThemeMode = 'light' | 'dark' | 'cosmic';
 
-export type Theme = 'light' | 'mushaf' | 'dark' | 'aurora' | 'aurora2';
+export type Theme = 'light' | 'mushaf' | 'dark' | 'aurora' | 'aurora2' | 'cosmos';
 
 /*
  * Порядок в списке оформления.  «Бежевая» первой — она и так дефолт
@@ -31,7 +31,7 @@ export type Theme = 'light' | 'mushaf' | 'dark' | 'aurora' | 'aurora2';
  * допустимых значений при чтении localStorage — перестановка ничей
  * сохранённый выбор не ломает.
  */
-export const ALL_THEMES: Theme[] = ['aurora', 'aurora2', 'dark', 'light', 'mushaf'];
+export const ALL_THEMES: Theme[] = ['aurora', 'aurora2', 'cosmos', 'dark', 'light', 'mushaf'];
 
 export const THEME_LABELS: Record<Theme, string> = {
   light:  'Светлая',
@@ -47,6 +47,11 @@ export const THEME_LABELS: Record<Theme, string> = {
   // автоматически получает новый фон, без сброса настроек при обновлении.
   aurora: 'Бежевая',
   aurora2: 'Аврора 2',
+  // Звёздное небо. Тема существовала до 09.08.2026, потом её убрали вместе
+  // с летящими звёздами; владелец попросил вернуть 07.09.2026 — отдельной
+  // темой, чтобы у тех, кто выбрал «Тёмную» ради спокойного фона, ничего не
+  // изменилось само.
+  cosmos: 'Космос',
 };
 
 /** Первый запуск открывается на светло-бежевой теме — это визуальная подпись
@@ -79,7 +84,7 @@ function migrateLegacy(v: string): Theme | null {
 }
 
 export function themeMode(t: Theme): ThemeMode {
-  if (t === 'aurora2') return 'cosmic';
+  if (t === 'aurora2' || t === 'cosmos') return 'cosmic';
   if (t === 'mushaf' || t === 'aurora') return 'light';
   return t;
 }

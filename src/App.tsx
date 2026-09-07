@@ -153,7 +153,9 @@ export default function App() {
   const [animateEnter, setAnimateEnter] = useState(false);
   const quranHomePreviewRef = useRef<IosBackPreview | null>(null);
   const isCosmic = themeMode(theme) === 'cosmic';
-  const cosmicVariant = theme === 'aurora2' ? 'aurora2' as const : 'aurora' as const;
+  const cosmicVariant = theme === 'cosmos'
+    ? 'cosmos' as const
+    : theme === 'aurora2' ? 'aurora2' as const : 'aurora' as const;
   const isPaper = theme === 'mushaf';
   const isDotted = theme === 'aurora';
 
@@ -614,7 +616,7 @@ function Shell({
   isCosmic: boolean;
   isPaper: boolean;
   isDotted: boolean;
-  cosmicVariant: 'aurora' | 'aurora2';
+  cosmicVariant: 'aurora' | 'aurora2' | 'cosmos';
   onEdgeBack?: () => void;
   edgeBackPreview?: IosBackPreview | null;
   /** Проигрывать короткое появление. Только на переходах вперёд. */

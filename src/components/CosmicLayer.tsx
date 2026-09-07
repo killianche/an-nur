@@ -31,12 +31,49 @@
 
 import { useEffect, useState } from 'react';
 import { Aurora } from './Aurora';
+import { CosmicWarp } from './CosmicWarp';
 import {
   auroraPaletteById, onAuroraPaletteChange, readAuroraPalette,
-  AURORA_SCENE, AURORA2_SCENE,
+  AURORA_SCENE, AURORA2_SCENE, COSMOS_SCENE,
 } from '../lib/cosmic';
 
-export function CosmicLayer({ variant = 'aurora' }: { variant?: 'aurora' | 'aurora2' }) {
+export function CosmicLayer({ variant = 'aurora' }:
+  { variant?: 'aurora' | 'aurora2' | 'cosmos' }) {
+  // 🔴 «Космос» — это звёзды, а не свет.
+  //
+  // Две «Авроры» отличаются только палитрой и направлением сияния, поэтому
+  // делят один слой. У «Космоса» другая природа сцены: чёрное небо и летящие
+  // звёзды на canvas, без градиентов. Поэтому он выходит здесь, до всей
+  // палитровой машинерии, — иначе пришлось бы протаскивать через неё вариант,
+  // которому она не нужна.
+  //
+  // Возвращён 07.09.2026 по просьбе владельца: тема была и её убрали
+  // 09.08.2026 вместе с `CosmicWarp.tsx`. Сам компонент восстановлен из
+  // истории без правок — он уже умеет и `prefers-reduced-motion` (статичное
+  // поле без цикла кадров), и паузу в скрытой вкладке.
+  if (variant === 'cosmos') {
+    return (
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          // Под содержимым, как у «Авроры 2»: звёзды — фон, а не плёнка
+          // поверх интерфейса.
+          zIndex: 0,
+          pointerEvents: 'none',
+          isolation: 'isolate',
+          contain: 'paint',
+          transform: 'translateZ(0)',
+          willChange: 'transform',
+          background: '#000',
+        }}
+      >
+        <CosmicWarp speed={COSMOS_SCENE.starsSpeed} />
+      </div>
+    );
+  }
+
   // Какая из двух космических тем сейчас: ледяная рамка по краям или
   // зелёное пятно из центра.  Всё различие сводится к палитре и сцене —
   // сам слой один и тот же.
