@@ -391,13 +391,14 @@ function SurahList({ surahs, onSelect, grouped = true }: {
                 key={m.number}
                 meta={m}
                 onClick={() => onSelect(m.number)}
-                // Одинокая сура в джузе занимает обе колонки.
+                // 🔴 Растяжения одинокой карточки на обе колонки больше НЕТ.
                 //
-                // В начале Корана суры длинные, и в джуз попадает ровно одна:
-                // при жёсткой сетке получался столбец полупустых рядов, то
-                // есть два столбца ради ничего. Широкая карточка читается как
-                // намеренная, а длинной суре крупный вид и к лицу.
-                wide={items.length === 1}
+                // Приём был введён, чтобы не оставлять полупустой ряд: в
+                // начале Корана суры длинные, и в джуз попадает ровно одна.
+                // Но при высокой карточке это давало череду плит в полэкрана
+                // — ровно то, что владелец назвал «максимально плохо».
+                // С компактной карточкой пустая ячейка рядом читается как
+                // воздух, и растягивать нечего.
                 sounding={звучит === m.number}
               />
             ))}
@@ -461,10 +462,35 @@ function JuzHeading({ juz }: { juz: number }) {
  * поэтому карточка одинаково работает на всех пяти темах, включая тёмные и
  * фотографическую «бумагу».
  */
-function SurahCard({ meta, onClick, wide = false, sounding = false }: {
+/**
+ * SurahCard — карточка суры в списке.
+ *
+ * 🔴 Переписана 07.09.2026. Владелец: «дизайн карточек сур максимально плох».
+ *
+ * Что было не так. Всё содержимое лежало в ОДНОМ вертикальном столбике:
+ * ромб с номером, под ним арабское название, под ним русское, под ним смысл.
+ * Карточка вырастала под 200 px, справа от ромба и от коротких строк
+ * оставалось пустое поле, и на экран влезало четыре суры из ста четырнадцати.
+ * Плюс одинокая сура в джузе растягивалась на обе колонки — а в начале Корана
+ * суры длинные, и такие джузы идут подряд: получалась череда плит.
+ *
+ * Что сделано. Номер и арабское название встали в ОДНУ строку — по краям, как
+ * колонтитул: номер слева, арабский справа, и пустота между ними работает на
+ * композицию, а не остаётся дырой. Ниже русское имя, ещё ниже смысл и число
+ * аятов. Высота ~86 px вместо ~200.
+ *
+ * Растяжение на обе колонки убрано совсем: одинокая карточка просто стоит в
+ * левой колонке. При такой высоте пустая ячейка рядом читается как воздух, а
+ * не как поломка, — чего нельзя было сказать про плиту в полэкрана.
+ *
+ * Кнопка «слушать» осталась отдельной и переехала в нижний правый угол: там
+ * она не спорит с арабским названием за верхнюю строку. Нажатие на карточку и
+ * нажатие на кнопку — разные намерения (открыть чтение против включить звук),
+ * поэтому это две разные цели, а не одна.
+ */
+function SurahCard({ meta, onClick, sounding = false }: {
   meta: SurahMeta;
   onClick: () => void;
-  wide?: boolean;
   /** Звучит ли именно эта сура. Приходит сверху: подписка на звук одна на
    *  весь список, иначе перерисовывались бы все 114 карточек. */
   sounding?: boolean;
@@ -477,8 +503,7 @@ function SurahCard({ meta, onClick, wide = false, sounding = false }: {
     <div
       style={{
         position: 'relative',
-        gridColumn: wide ? '1 / -1' : undefined,
-        borderRadius: '18px',
+        borderRadius: '16px',
         background: pressed
           ? 'rgb(var(--ink-rgb) / 0.07)'
           : 'rgb(var(--ink-rgb) / 0.035)',
@@ -499,52 +524,62 @@ function SurahCard({ meta, onClick, wide = false, sounding = false }: {
         style={{
           display: 'grid', gap: 'var(--space-hair)',
           width: '100%', minWidth: 0,
-          padding: 'var(--space-snug)',
-          paddingBottom: 'var(--space-tight)',
+          padding: 'var(--space-snug) var(--space-snug) var(--space-tight)',
           border: 'none', background: 'transparent',
           cursor: 'pointer', textAlign: 'left',
           fontFamily: 'inherit', color: 'inherit',
           WebkitTapHighlightColor: 'transparent',
         }}
       >
-        {/* Номер в ромбе — форма из мусхафа, где номер аята стоит в розетке. */}
-        <span aria-hidden style={{
-          width: '30px', height: '30px',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          transform: 'rotate(45deg)',
-          border: '1px solid var(--hairline-strong)',
-          borderRadius: 'var(--radius-chip)',
+        {/* Верхняя строка: номер слева, арабское название справа. */}
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: 'var(--space-tight)',
+          minWidth: 0,
         }}>
-          <span style={{
-            transform: 'rotate(-45deg)',
-            fontSize: 'var(--font-caption2)',
-            fontWeight: 'var(--weight-semibold)',
-            color: 'var(--text-secondary)',
-            fontVariantNumeric: 'tabular-nums',
+          {/* Номер в ромбе — форма из мусхафа, где номер аята стоит в розетке. */}
+          <span aria-hidden style={{
+            flexShrink: 0,
+            width: '24px', height: '24px',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            transform: 'rotate(45deg)',
+            border: '1px solid var(--hairline-strong)',
+            borderRadius: '7px',
           }}>
-            {meta.number}
+            <span style={{
+              transform: 'rotate(-45deg)',
+              fontSize: 'var(--font-caption2)',
+              fontWeight: 'var(--weight-semibold)',
+              color: 'var(--text-secondary)',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {meta.number}
+            </span>
           </span>
-        </span>
 
-        <span
-          dir="rtl"
-          lang="ar"
-          style={{
-            display: 'block',
-            fontFamily: "'KFGQPC Uthmanic Hafs v22', serif",
-            fontSize: 'var(--font-title3)',
-            lineHeight: 1.6,
-            color: 'var(--text-secondary)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}
-        >
-          {meta.arabic}
+          <span
+            dir="rtl"
+            lang="ar"
+            style={{
+              flex: 1, minWidth: 0,
+              textAlign: 'right',
+              fontFamily: "'KFGQPC Uthmanic Hafs v22', serif",
+              // Кегль тот же, что был, но межстрочье прижато: в одной строке
+              // «воздух» 1.6 растил карточку впустую.
+              fontSize: 'var(--font-title3)',
+              lineHeight: 1.15,
+              color: 'var(--text-secondary)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}
+          >
+            {meta.arabic}
+          </span>
         </span>
 
         <span style={{
           display: 'block',
           fontSize: 'var(--font-subhead)',
           lineHeight: 'var(--leading-subhead)',
+          fontWeight: 'var(--weight-semibold)',
           color: 'var(--text-primary)',
           letterSpacing: 'var(--tracking-tight)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -552,8 +587,13 @@ function SurahCard({ meta, onClick, wide = false, sounding = false }: {
           {meta.transliteration}
         </span>
 
+        {/* Место под кнопку в углу — иначе смысл суры уезжал бы под неё.
+            Резервируем только ШИРИНУ: по высоте кнопка ложится в нижнее поле
+            карточки, и держать под неё лишние 30 px строки незачем — из-за
+            этого карточка была на 14 px выше без единой видимой причины. */}
         <span style={{
           display: 'block',
+          paddingRight: '28px',
           fontSize: 'var(--font-caption2)',
           lineHeight: 'var(--leading-caption2)',
           color: 'var(--text-tertiary)',
@@ -563,9 +603,7 @@ function SurahCard({ meta, onClick, wide = false, sounding = false }: {
         </span>
       </button>
 
-      {/* Слушать суру целиком — отдельной кнопкой в углу: нажатие на карточку
-          открывает чтение, это разные намерения. Вынесена абсолютно, чтобы не
-          сжимать текст в узком столбце. */}
+      {/* Слушать суру целиком — отдельной кнопкой в нижнем углу. */}
       <button
         onClick={() => {
           if (soundingHere) audio.pause();
@@ -577,8 +615,8 @@ function SurahCard({ meta, onClick, wide = false, sounding = false }: {
         className="icon-btn"
         style={{
           position: 'absolute',
-          top: 'var(--space-hair)', right: 'var(--space-hair)',
-          width: '38px', height: '38px',
+          bottom: '1px', right: '1px',
+          width: '32px', height: '32px',
           color: soundingHere ? 'var(--text-primary)' : 'var(--text-tertiary)',
         }}
       >
