@@ -38,6 +38,19 @@ import { QcfMushafPage } from '../components/QcfMushafPage';
 import { FontErrorBanner } from '../components/FontErrorBanner';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import { pageTurnDuration } from '../lib/mushafTurn';
+
+/**
+ * Зазор между соседними листами, px.
+ *
+ * 🔴 Одно число и для вида, и для арифметики доводки — иначе рывок.
+ *
+ * 07.09.2026 зазор жил только в CSS, а доводка целилась ровно в ширину
+ * экрана. Соседний лист при этом стоит на «ширина + зазор», поэтому в самом
+ * конце страница доезжала и ПОДПРЫГИВАЛА на 18 px, подравнивая разницу.
+ * Владелец увидел это сразу: «в самом конце дёргается, подравнивая
+ * добавленный отступ». Держать зазор в двух местах нельзя.
+ */
+const PAGE_GUTTER = 18;
 import { MushafReadingSettings, ThemeSettings } from '../components/ReadingSettings';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { useAudioActions, useAudioState, useAudioTick } from '../hooks/AudioProvider';
@@ -486,7 +499,9 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       && (Math.abs(dx) >= Math.min(104, width * 0.18)
         || (Math.abs(dx) >= 20 && velocity >= 0.48));
 
-    if (committed) settlePageTurn(delta > 0 ? width : -width, next, velocity);
+    // Целимся в ширину ПЛЮС зазор: ровно туда, где стоит соседний лист.
+    const путь = width + PAGE_GUTTER;
+    if (committed) settlePageTurn(delta > 0 ? путь : -путь, next, velocity);
     else settlePageTurn(0, null, velocity);
   };
 
@@ -696,11 +711,14 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
 
         {!error && (
           <div ref={pageTrackRef} className="mushaf-page-track" style={{
+            // Зазор задаётся отсюда, а не из CSS: то же число участвует в
+            // расчёте доводки, и разъехаться они не должны.
+            '--mushaf-gutter': `${PAGE_GUTTER}px`,
             position: 'relative', width: '100%', height: '100%', minHeight: 0,
             overflowY: 'hidden',
             overflowX: 'hidden',
             WebkitOverflowScrolling: 'touch',
-          }}>
+          } as React.CSSProperties}>
             {pageWindow.map(preparedPage => (
               <PreparedMushafPage
                 key={preparedPage}

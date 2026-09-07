@@ -28,7 +28,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Appearance, Bell, ChevronRight, Clock, Close, Compass, ICON_SIZE, Plus, Trash,
+  Appearance, Bell, ChevronLeft, ChevronRight, Clock, Close, Compass, ICON_SIZE, Plus, Trash,
 } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
@@ -72,9 +72,12 @@ type Props = {
   /** Открыть киблу.  Она перестала быть вкладкой: её открывают редко, а
    *  вход логичнее там, где человек уже думает о молитве. */
   onOpenQibla: () => void;
+  /** Намаз перестал быть вкладкой 07.09.2026 и открывается пушем — значит
+   *  нужен возврат. Крупный заголовок сохранён: экран остаётся «своим». */
+  onBack?: () => void;
 };
 
-export function PrayerTimesScreen({ theme, setTheme, onOpenQibla }: Props) {
+export function PrayerTimesScreen({ theme, setTheme, onBack, onOpenQibla }: Props) {
   const [cities, setCities] = useState<PrayerCity[]>(readPrayerScreenCities);
   const [activeId, setActive] = useState<string>(() => readActiveId());
   const [primarySource, setPrimarySource] = useState(readPrimaryPrayerSource);
@@ -191,6 +194,22 @@ export function PrayerTimesScreen({ theme, setTheme, onOpenQibla }: Props) {
         paddingTop: 'calc(env(safe-area-inset-top) + var(--space-margin))',
         paddingBottom: 'var(--space-snug)',
       }}>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Назад"
+            className="icon-btn"
+            style={{
+              flexShrink: 0,
+              width: 'var(--hit-min)', height: 'var(--hit-min)',
+              marginLeft: 'calc(var(--space-snug) * -1)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <ChevronLeft size={ICON_SIZE.md} />
+          </button>
+        )}
         <h1 className="display-serif" style={{
           margin: 0, flex: 1, minWidth: 0,
           // Кегль заголовка экрана плавающий: на телефоне решает 8vw, а

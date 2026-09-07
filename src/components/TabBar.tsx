@@ -18,7 +18,7 @@
 import { useRef, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
-import { TabQuran, TabAzkar, TabPrayer, Flower } from './icons';
+import { TabQuran, TabAzkar, Flower } from './icons';
 import { GLASS_BLUR } from '../lib/glass';
 
 /**
@@ -29,7 +29,15 @@ import { GLASS_BLUR } from '../lib/glass';
  * переехала в шапку главной, рядом с оформлением, а экран стал обычным
  * пушем с кнопкой «назад».
  */
-export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer';
+/**
+ * Разделы нижней панели.
+ *
+ * Намаз ушёл отсюда 07.09.2026 по просьбе владельца — в шапку каждого
+ * раздела, рядом с оформлением и аккаунтом. Причина та же, по которой раньше
+ * ушёл аккаунт: вкладка занимала четверть самой дорогой полосы экрана, а
+ * открывают её несколько раз в день, не десятки.
+ */
+export type TabId = 'quran' | 'azkar' | 'dua';
 
 /** Размер глифа вкладки — ступень `--icon-tab` из общей шкалы.  В JSX
  *  он приходит числом (иконки принимают `size`), поэтому значение здесь
@@ -44,7 +52,6 @@ const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }
   { id: 'quran', label: 'Коран', icon: selected => <TabQuran size={TAB_ICON} isFilled={selected} /> },
   { id: 'azkar', label: 'Азкары', icon: selected => <TabAzkar size={TAB_ICON} isFilled={selected} /> },
   { id: 'dua', label: 'Дуа', icon: selected => <Flower size={TAB_ICON} isFilled={selected} /> },
-  { id: 'prayer', label: 'Намаз', icon: selected => <TabPrayer size={TAB_ICON} isFilled={selected} /> },
 ];
 
 /**
@@ -69,8 +76,21 @@ const BAR_HEIGHT = 62;
  * списке из 114 строк, а подписи то появлялись, то исчезали. Похожесть на
  * систему не стоит скачущего элемента под большим пальцем.
  */
-/** Зазор до нижнего края безопасной области и до боковых краёв. */
+/** Зазор до нижнего края безопасной области и до боковых краёв.
+ *
+ * Владелец 07.09.2026: «нижнее меню слишком высоко, надо спустить». Было 10 px
+ * ПОВЕРХ всей безопасной области — на iPhone с домашней полосой это 34 + 10,
+ * то есть капсула висела в 44 px от края экрана и читалась как оторванная.
+ *
+ * Теперь от безопасной области отнимается 14 px: панель опускается на 24 px и
+ * встаёт примерно в 20 px от края — ближе к домашней полосе, но не на ней.
+ * На устройствах без полосы (`inset` = 0) остаётся минимум в 6 px. */
 const BAR_INSET = 10;
+/** Насколько поджимаем безопасную область снизу — см. комментарий выше. */
+const BAR_SAFE_TRIM = 14;
+/** Готовая нижняя координата капсулы. */
+export const TAB_BAR_BOTTOM =
+  `max(6px, calc(env(safe-area-inset-bottom) - ${BAR_SAFE_TRIM}px))`;
 const BAR_SIDE = 14;
 
 /** Сколько места панель занимает снизу — см. предупреждение в шапке. */
@@ -105,7 +125,7 @@ export function TabBar({ active, onSelect }: {
         position: 'fixed',
         left: `${BAR_SIDE}px`,
         right: `${BAR_SIDE}px`,
-        bottom: `calc(env(safe-area-inset-bottom) + ${BAR_INSET}px)`,
+        bottom: TAB_BAR_BOTTOM,
         zIndex: 40,
         height: `${BAR_HEIGHT}px`,
         boxSizing: 'border-box',

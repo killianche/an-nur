@@ -50,7 +50,7 @@ import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { reciterById } from '../lib/reciters';
 import { GLASS_BLUR } from '../lib/glass';
-import { TAB_BAR_HEIGHT } from './TabBar';
+import { TAB_BAR_HEIGHT, TAB_BAR_BOTTOM } from './TabBar';
 
 /** Высота полоски и её зазор до панели вкладок. */
 const HEIGHT = 58;
@@ -89,7 +89,9 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         right: '12px',
         // Ровно над капсулой вкладок, с тем же зазором: две плавающие
         // панели должны читаться одной стопкой, а не случайной парой.
-        bottom: `calc(env(safe-area-inset-bottom) + ${TAB_BAR_HEIGHT + GAP}px)`,
+        // Считаем от той же координаты, что и сама капсула: иначе панель
+        // опустилась бы, а полоска плеера осталась висеть на прежнем месте.
+        bottom: `calc(${TAB_BAR_BOTTOM} + ${TAB_BAR_HEIGHT - 10 + GAP}px)`,
         zIndex: 39,
         maxWidth: '560px',
         margin: '0 auto',

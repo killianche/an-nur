@@ -40,7 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Appearance, Check, DragHandle, ICON_SIZE, MinusCircleFill, Plus,
-  Typography,
+  TabPrayer, Typography,
 } from '../components/icons';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
 import { TasbihPill } from '../components/DevotionalBits';
@@ -60,13 +60,18 @@ import {
   readDuaList, removeFromDuaList,
 } from '../lib/duaList';
 
-type Props = { theme: Theme; setTheme: (t: Theme) => void };
+type Props = {
+  theme: Theme;
+  setTheme: (t: Theme) => void;
+  /** Намаз переехал из нижнего меню в шапку каждого раздела. */
+  onPrayer?: () => void;
+};
 type Mode = 'mine' | 'all';
 
 /** Дальше задержку не растим: последние карточки не должны ждать. */
 const MAX_STAGGER_MS = 240;
 
-export function DuaScreen({ theme, setTheme }: Props) {
+export function DuaScreen({ theme, setTheme, onPrayer }: Props) {
   const [data, setData] = useState<DuaData | null>(null);
   const [mode, setMode] = useState<Mode>('mine');
   const [editing, setEditing] = useState(false);
@@ -259,6 +264,25 @@ export function DuaScreen({ theme, setTheme }: Props) {
           <Typography size={ICON_SIZE.md} />
         </button>
 
+        {/* Намаз — переехал из нижнего меню в шапку каждого раздела
+            (решение владельца 07.09.2026). */}
+        {onPrayer && (
+          <button
+            onClick={onPrayer}
+            aria-label="Намаз"
+            title="Время намаза"
+            className="icon-btn"
+            style={{
+              width: '42px', height: '42px', flexShrink: 0,
+              borderRadius: 'var(--radius-control)',
+              border: '1px solid var(--hairline)',
+              background: 'rgb(var(--ink-rgb) / 0.04)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <TabPrayer size={ICON_SIZE.md} />
+          </button>
+        )}
         <button
           ref={themeBtnRef}
           onClick={() => { setThemeOpen(v => !v); setTypographyOpen(false); }}
