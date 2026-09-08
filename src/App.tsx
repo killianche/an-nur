@@ -67,9 +67,6 @@ type Screen =
   | { name: 'azkar-category'; category: AzkarCategoryId }
   | { name: 'bookmarks' }
   | { name: 'account' }
-  // Намаз перестал быть вкладкой 07.09.2026: открывается кнопкой в шапке
-  // любого раздела и живёт своей записью в истории, как аккаунт.
-  | { name: 'prayer' }
   | { name: 'surah'; number: number; initialAyah?: number }
   // Режим мусхафа — отдельный экран, а не вариант чтения: у него своя
   // единица навигации (страница, не аят) и своя история.
@@ -507,25 +504,6 @@ export default function App() {
     );
   }
 
-  // Намаз — экран-пуш, а не вкладка: место в нижней панели ему не по чину,
-  // а кнопка есть в шапке Корана, азкаров и дуа.
-  if (screen.name === 'prayer') {
-    return (
-      <Shell key="prayer" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
-        <Suspense fallback={<ScreenFallback />}>
-        <ErrorBoundary name="PrayerTimesScreen" onReset={goBack}>
-          <PrayerTimesScreen
-            theme={theme}
-            setTheme={setTheme}
-            onBack={goBack}
-            onOpenQibla={() => navigate({ name: 'qibla' })}
-          />
-        </ErrorBoundary>
-        </Suspense>
-      </Shell>
-    );
-  }
-
   if (screen.name === 'bookmarks') {
     return (
       <Shell key="bookmarks" isCosmic={isCosmic} isPaper={isPaper} isDotted={isDotted} cosmicVariant={cosmicVariant} animateEnter={animateEnter} onEdgeBack={goBack} edgeBackPreview={backPreview}>
@@ -573,7 +551,6 @@ export default function App() {
             onSelectSurah={(n, ayah) => navigate({ name: 'surah', number: n, initialAyah: ayah })}
             onBookmarks={() => navigate({ name: 'bookmarks' })}
             onAccount={() => navigate({ name: 'account' })}
-            onPrayer={() => navigate({ name: 'prayer' })}
             theme={theme}
             setTheme={setTheme}
           />
@@ -584,18 +561,22 @@ export default function App() {
           <AzkarScreen
             theme={theme}
             setTheme={setTheme}
-            onPrayer={() => navigate({ name: 'prayer' })}
             onOpenCategory={c => navigate({ name: 'azkar-category', category: c })}
+          />
+        </ErrorBoundary>
+      )}
+      {tab === 'prayer' && (
+        <ErrorBoundary name="PrayerTimesScreen">
+          <PrayerTimesScreen
+            theme={theme}
+            setTheme={setTheme}
+            onOpenQibla={() => navigate({ name: 'qibla' })}
           />
         </ErrorBoundary>
       )}
       {tab === 'dua' && (
         <ErrorBoundary name="DuaScreen">
-          <DuaScreen
-            theme={theme}
-            setTheme={setTheme}
-            onPrayer={() => navigate({ name: 'prayer' })}
-          />
+          <DuaScreen theme={theme} setTheme={setTheme} />
         </ErrorBoundary>
       )}
       </Suspense>

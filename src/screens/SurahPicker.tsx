@@ -43,7 +43,7 @@ import { juzOfSurah } from '../lib/ayahNumbering';
 import { readRecents } from '../lib/recents';
 import { search, snippet, type AyahHit } from '../lib/search';
 import { useQuranSources } from '../content/quran-sources-lazy';
-import { Appearance, Search, Close, Bookmark as BookmarkIcon, Person, TabPrayer, ICON_SIZE, Play, Pause } from '../components/icons';
+import { Appearance, Search, Close, Bookmark as BookmarkIcon, Person, ICON_SIZE, Play, Pause } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { useAudioActions, useAudioState } from '../hooks/AudioProvider';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
@@ -71,8 +71,6 @@ type Props = {
   onBookmarks?: () => void;
   theme: Theme;
   setTheme: (t: Theme) => void;
-  /** Намаз переехал из нижнего меню в шапку — на всех разделах. */
-  onPrayer?: () => void;
   /** Аккаунт переехал из нижнего меню сюда, в шапку. */
   onAccount?: () => void;
 };
@@ -86,7 +84,7 @@ function ayahWord(n: number): string {
   return 'аятов';
 }
 
-export function SurahPicker({ onSelectSurah, onBookmarks, onAccount, onPrayer, theme, setTheme }: Props) {
+export function SurahPicker({ onSelectSurah, onBookmarks, onAccount, theme, setTheme }: Props) {
   const [query, setQuery] = useState('');
   const [themeOpen, setThemeOpen] = useState(false);
   const themeBtnRef = useRef<HTMLButtonElement>(null);
@@ -157,12 +155,6 @@ export function SurahPicker({ onSelectSurah, onBookmarks, onAccount, onPrayer, t
           Коран
         </h1>
 
-        {/* Намаз — первым: время намаза смотрят чаще, чем закладки. */}
-        {onPrayer && (
-          <IconAction label="Намаз" onClick={onPrayer}>
-            <TabPrayer size={ICON_SIZE.md} />
-          </IconAction>
-        )}
         {onBookmarks && (
           <IconAction label="Закладки" onClick={onBookmarks}>
             <BookmarkIcon size={ICON_SIZE.md} />
@@ -386,23 +378,31 @@ function SurahList({ surahs, onSelect, grouped = true }: {
       {секции.map(({ juz, items }) => (
         <section key={juz || 'all'} style={{ display: 'grid', gap: 'var(--space-snug)' }}>
           {juz > 0 && <JuzHeading juz={juz} />}
+          {/* 🔴 ОДИН столбец, сгруппированным островком — как список в iOS.
+              Владелец 08.09.2026: «раньше они были в один столбец просто,
+              сделай так же, просто оставь джузы».
+
+              Две колонки продержались два дня и оба раза были названы плохими,
+              и причина у этого не вкусовая: в 175 px не помещается ни смысл
+              суры, ни длинное название, а у джузов 3, 4, 6, 7 подряд идёт по
+              одной суре — правая колонка пустовала. Один столбец снимает обе
+              беды сразу: каждой строке достаётся вся ширина.
+
+              Строки живут в одном скруглённом островке с волосками между
+              ними — это стандартная сгруппированная таблица iOS, и она же
+              честно показывает, что джуз это один блок, а не россыпь. */}
           <div style={{
-            display: 'grid',
-            // Два столбца — просьба владельца: список из 114 строк в один
-            // столбец на телефоне читается как бесконечная лента. На узком
-            // экране (320 px) карточка ужимается, но не ломается.
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 'var(--space-snug)',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            background: 'rgb(var(--ink-rgb) / 0.04)',
+            border: '1px solid var(--hairline)',
           }}>
-            {items.map(m => (
-              <SurahCard
+            {items.map((m, i) => (
+              <SurahRow
                 key={m.number}
                 meta={m}
                 onClick={() => onSelect(m.number)}
-                // Одинокая сура занимает всю ширину — но своей, горизонтальной
-                // раскладкой той же высоты, а не растянутой вертикальной. См.
-                // разбор в шапке `SurahCard`.
-                wide={items.length === 1}
+                last={i === items.length - 1}
                 sounding={звучит === m.number}
               />
             ))}
@@ -413,6 +413,7 @@ function SurahList({ surahs, onSelect, grouped = true }: {
   );
 }
 
+/** Заголовок раздела в результатах поиска. */
 function SectionHeading({ text }: { text: string }) {
   return (
     <div style={{
@@ -431,7 +432,6 @@ function SectionHeading({ text }: { text: string }) {
   );
 }
 
-/** Заголовок джуза: тонкая линия и подпись капителью — как разделы в мусхафе. */
 function JuzHeading({ juz }: { juz: number }) {
   return (
     <div style={{
@@ -467,143 +467,53 @@ function JuzHeading({ juz }: { juz: number }) {
  * фотографическую «бумагу».
  */
 /**
- * SurahCard — карточка суры в списке.
+ * SurahRow — строка суры в сгруппированном списке.
  *
- * 🔴 Переписана дважды 07.09.2026. Владелец сначала: «дизайн карточек сур
- * максимально плох», потом, увидев первую переделку: «также ужасен».
+ * ── История, чтобы не ходить по кругу ─────────────────────────────────
  *
- * ── Что ломало вид на самом деле ──────────────────────────────────────
+ * Список сур переделывался трижды за двое суток. Сначала были высокие
+ * карточки в две колонки (владелец: «максимально плох»), потом компактные в
+ * две колонки (владелец: «также ужасен»), и только потом стало ясно, что
+ * дело не в оформлении карточки, а в самой сетке: в колонку 175 px не
+ * помещается ни смысл суры, ни длинное название, а у джузов 3, 4, 6, 7 подряд
+ * идёт по одной суре и половина ряда пустует.
  *
- * 1. Смысл суры не помещался. «Семейство Имрана · 200 аятов» в колонке
- *    шириной 175 px обрывался многоточием почти всегда, и список выглядел
- *    недоделанным. Лечится не кеглем, а раскладкой: число аятов уехало на
- *    строку с названием (справа), и смысл получил всю ширину.
+ * 08.09.2026 владелец попросил вернуть один столбец и заодно довести вид «как
+ * в последней iOS». Это одна и та же работа: строка во всю ширину и есть тот
+ * самый вид.
  *
- * 2. Пустая правая колонка. В начале Корана суры длинные, и в джуз попадает
- *    ровно ОДНА: у джузов 3, 4, 6, 7 подряд справа зияла дыра. Первая
- *    попытка растягивала такую карточку на обе колонки — но с прежней
- *    вертикальной раскладкой выходила плита в полэкрана, и это было хуже.
+ * ── Из чего собрана строка ────────────────────────────────────────────
  *
- *    Теперь широкая карточка не «растянутая узкая», а СВОЯ композиция:
- *    горизонтальная, той же высоты. Дыры нет, плиты нет, ритм ровный.
+ * Слева — номер в ромбе: форма из мусхафа, где номер аята стоит в розетке.
+ * Дальше имя и под ним смысл с числом аятов — обе строки получают всю ширину
+ * и больше не обрываются. Справа арабское название: оно и есть настоящее имя
+ * суры, поэтому стоит на своём месте — у правого края, как в книге. Кнопка
+ * «слушать» замыкает строку.
  *
- * ── Правило ───────────────────────────────────────────────────────────
- *
- * Обе композиции обязаны быть одной высоты. Как только они разойдутся,
- * список снова станет рваным — а заметно это только на живом экране, тестом
- * не ловится. Первый же замер это и поймал: широкая выходила 56 px против
- * 79 у узкой, потому что строк в ней две, а не три. Поэтому высота задана
- * явно константой, а содержимое широкой центрируется по вертикали.
+ * Волоски между строками отступают от левого края на ширину ромба — так же
+ * ведёт себя сгруппированная таблица в iOS: разделитель начинается под
+ * текстом, а не под иконкой.
  */
-/** Высота карточки — одна для обеих композиций, см. разбор выше. */
-const CARD_HEIGHT = 79;
-function SurahCard({ meta, onClick, wide = false, sounding = false }: {
+function SurahRow({ meta, onClick, last = false, sounding = false }: {
   meta: SurahMeta;
   onClick: () => void;
-  /** Одинокая сура в джузе занимает всю ширину — и раскладку меняет тоже. */
-  wide?: boolean;
+  /** Последняя в островке — под ней волоска нет. */
+  last?: boolean;
   /** Звучит ли именно эта сура. Приходит сверху: подписка на звук одна на
-   *  весь список, иначе перерисовывались бы все 114 карточек. */
+   *  весь список, иначе перерисовывались бы все 114 строк. */
   sounding?: boolean;
 }) {
   const [pressed, setPressed] = useState(false);
   const audio = useAudioActions();
-  const soundingHere = sounding;
-
-  const номер = (
-    <span aria-hidden style={{
-      flexShrink: 0,
-      width: '26px', height: '26px',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      transform: 'rotate(45deg)',
-      border: '1px solid var(--hairline-strong)',
-      borderRadius: '8px',
-    }}>
-      <span style={{
-        transform: 'rotate(-45deg)',
-        fontSize: 'var(--font-caption2)',
-        fontWeight: 'var(--weight-semibold)',
-        color: 'var(--text-secondary)',
-        fontVariantNumeric: 'tabular-nums',
-      }}>
-        {meta.number}
-      </span>
-    </span>
-  );
-
-  const арабский = (
-    <span
-      dir="rtl"
-      lang="ar"
-      style={{
-        flex: 1, minWidth: 0,
-        textAlign: 'right',
-        fontFamily: "'KFGQPC Uthmanic Hafs v22', serif",
-        fontSize: 'var(--font-title3)',
-        lineHeight: 1.15,
-        color: 'var(--text-secondary)',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-      }}
-    >
-      {meta.arabic}
-    </span>
-  );
-
-  const имя = (
-    <span style={{
-      flex: 1, minWidth: 0,
-      fontSize: 'var(--font-subhead)',
-      lineHeight: 'var(--leading-subhead)',
-      fontWeight: 'var(--weight-semibold)',
-      color: 'var(--text-primary)',
-      letterSpacing: 'var(--tracking-tight)',
-      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-    }}>
-      {meta.transliteration}
-    </span>
-  );
-
-  const аятов = (
-    <span style={{
-      flexShrink: 0,
-      fontSize: 'var(--font-caption2)',
-      lineHeight: 'var(--leading-caption2)',
-      color: 'var(--text-tertiary)',
-      fontVariantNumeric: 'tabular-nums',
-    }}>
-      {meta.ayahs} {ayahWord(meta.ayahs)}
-    </span>
-  );
-
-  const смысл = (
-    <span style={{
-      display: 'block',
-      paddingRight: '30px',
-      fontSize: 'var(--font-caption2)',
-      lineHeight: 'var(--leading-caption2)',
-      color: 'var(--text-tertiary)',
-      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-    }}>
-      {meta.russian}
-    </span>
-  );
 
   return (
     <div
       style={{
         position: 'relative',
-        gridColumn: wide ? '1 / -1' : undefined,
-        minHeight: `${CARD_HEIGHT}px`,
-        display: 'grid',
-        borderRadius: '16px',
-        background: pressed
-          ? 'rgb(var(--ink-rgb) / 0.08)'
-          : 'rgb(var(--ink-rgb) / 0.045)',
-        border: '1px solid var(--hairline)',
-        transform: pressed ? 'scale(0.985)' : 'none',
-        transition:
-          'background var(--dur-fast) var(--ease-standard),'
-          + ' transform var(--dur-fast) var(--ease-standard)',
+        display: 'flex',
+        alignItems: 'center',
+        background: pressed ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent',
+        transition: 'background var(--dur-fast) var(--ease-standard)',
       }}
     >
       <button
@@ -613,87 +523,101 @@ function SurahCard({ meta, onClick, wide = false, sounding = false }: {
         onPointerLeave={() => setPressed(false)}
         onPointerCancel={() => setPressed(false)}
         style={{
-          display: 'grid', gap: '3px',
-          // Широкая карточка ниже по содержимому — центрируем, чтобы её
-          // высота совпала с узкой и ряды шли ровно.
-          alignContent: wide ? 'center' : 'start',
-          width: '100%', minWidth: 0,
-          padding: 'var(--space-snug) var(--space-snug) var(--space-tight)',
+          flex: 1, minWidth: 0,
+          display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+          padding: 'var(--space-snug) 0 var(--space-snug) var(--space-cozy)',
+          minHeight: '62px',
           border: 'none', background: 'transparent',
           cursor: 'pointer', textAlign: 'left',
           fontFamily: 'inherit', color: 'inherit',
           WebkitTapHighlightColor: 'transparent',
         }}
       >
-        {wide ? (
-          <>
-            {/* Широкая: всё в одну строку — номер, имя, арабский. */}
-            <span style={{
-              display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
-              minWidth: 0,
-            }}>
-              {номер}
-              {имя}
-              {арабский}
-            </span>
-            <span style={{
-              display: 'flex', alignItems: 'baseline', gap: 'var(--space-snug)',
-              minWidth: 0, paddingRight: '30px',
-            }}>
-              <span style={{
-                flex: 1, minWidth: 0,
-                fontSize: 'var(--font-caption2)',
-                lineHeight: 'var(--leading-caption2)',
-                color: 'var(--text-tertiary)',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {meta.russian}
-              </span>
-              {аятов}
-            </span>
-          </>
-        ) : (
-          <>
-            {/* Узкая: номер и арабский по краям, ниже имя с числом аятов,
-                ниже смысл во всю ширину — он и обрывался прежде. */}
-            <span style={{
-              display: 'flex', alignItems: 'center', gap: 'var(--space-tight)',
-              minWidth: 0,
-            }}>
-              {номер}
-              {арабский}
-            </span>
-            <span style={{
-              display: 'flex', alignItems: 'baseline', gap: 'var(--space-tight)',
-              minWidth: 0,
-            }}>
-              {имя}
-              {аятов}
-            </span>
-            {смысл}
-          </>
-        )}
+        {/* Номер в ромбе — розетка мусхафа. */}
+        <span aria-hidden style={{
+          flexShrink: 0,
+          width: '28px', height: '28px',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          transform: 'rotate(45deg)',
+          border: '1px solid var(--hairline-strong)',
+          borderRadius: '9px',
+        }}>
+          <span style={{
+            transform: 'rotate(-45deg)',
+            fontSize: 'var(--font-caption2)',
+            fontWeight: 'var(--weight-semibold)',
+            color: 'var(--text-secondary)',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {meta.number}
+          </span>
+        </span>
+
+        <span style={{ flex: 1, minWidth: 0, display: 'grid', gap: '1px' }}>
+          <span style={{
+            fontSize: 'var(--font-subhead)',
+            lineHeight: 'var(--leading-subhead)',
+            fontWeight: 'var(--weight-semibold)',
+            color: 'var(--text-primary)',
+            letterSpacing: 'var(--tracking-tight)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {meta.transliteration}
+          </span>
+          <span style={{
+            fontSize: 'var(--font-caption2)',
+            lineHeight: 'var(--leading-caption2)',
+            color: 'var(--text-tertiary)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {meta.russian} · {meta.ayahs} {ayahWord(meta.ayahs)}
+          </span>
+        </span>
+
+        <span
+          dir="rtl"
+          lang="ar"
+          style={{
+            flexShrink: 0,
+            maxWidth: '38%',
+            fontFamily: "'KFGQPC Uthmanic Hafs v22', serif",
+            fontSize: 'var(--font-title3)',
+            lineHeight: 1.25,
+            color: 'var(--text-secondary)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+        >
+          {meta.arabic}
+        </span>
       </button>
 
-      {/* Слушать суру целиком — отдельной кнопкой в нижнем углу. */}
       <button
         onClick={() => {
-          if (soundingHere) audio.pause();
+          if (sounding) audio.pause();
           else audio.playSurah(meta.number, meta.ayahs);
         }}
-        aria-label={soundingHere
+        aria-label={sounding
           ? `Пауза: ${meta.transliteration}`
           : `Слушать суру ${meta.transliteration} целиком`}
         className="icon-btn"
         style={{
-          position: 'absolute',
-          bottom: '1px', right: '1px',
-          width: '32px', height: '32px',
-          color: soundingHere ? 'var(--text-primary)' : 'var(--text-tertiary)',
+          flexShrink: 0,
+          width: '44px', height: '44px',
+          marginRight: 'var(--space-tight)',
+          color: sounding ? 'var(--text-primary)' : 'var(--text-tertiary)',
         }}
       >
-        {soundingHere ? <Pause size={ICON_SIZE.sm} /> : <Play size={ICON_SIZE.sm} />}
+        {sounding ? <Pause size={ICON_SIZE.sm} /> : <Play size={ICON_SIZE.sm} />}
       </button>
+
+      {/* Волосок между строками — с отступом слева, как в списках iOS. */}
+      {!last && (
+        <span aria-hidden style={{
+          position: 'absolute', left: 'calc(var(--space-cozy) + 28px + var(--space-snug))',
+          right: 0, bottom: 0, height: '1px',
+          background: 'var(--hairline)',
+        }} />
+      )}
     </div>
   );
 }

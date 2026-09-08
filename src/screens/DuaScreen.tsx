@@ -40,7 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Appearance, Check, DragHandle, ICON_SIZE, MinusCircleFill, Plus,
-  TabPrayer, Typography,
+  Typography,
 } from '../components/icons';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
 import { TasbihPill } from '../components/DevotionalBits';
@@ -63,17 +63,42 @@ import {
 type Props = {
   theme: Theme;
   setTheme: (t: Theme) => void;
-  /** Намаз переехал из нижнего меню в шапку каждого раздела. */
-  onPrayer?: () => void;
 };
 type Mode = 'mine' | 'all';
+
+/**
+ * Что показываем при открытии раздела.
+ *
+ * 🔴 По умолчанию — ВСЕ дуа, а не «мой список».
+ *
+ * Владелец 08.09.2026: «по умолчанию сделаем, чтобы просто были все дуа, если
+ * человек хочет, он может переключиться на избранные». Причина понятна и без
+ * него: у нового человека избранного нет вовсе, и раздел открывался пустым —
+ * приложение выглядело сломанным ровно в тот момент, когда его показывают
+ * впервые.
+ *
+ * Выбор запоминается: кто переключился на избранные, при следующем открытии
+ * снова видит их. Настройка своя, отдельным ключом — с азкарами и Кораном она
+ * ничего общего не имеет.
+ */
+const DUA_MODE_KEY = 'dua.mode';
+
+function readDuaMode(): Mode {
+  if (typeof window === 'undefined') return 'all';
+  return window.localStorage.getItem(DUA_MODE_KEY) === 'mine' ? 'mine' : 'all';
+}
+
+function writeDuaMode(mode: Mode) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(DUA_MODE_KEY, mode);
+}
 
 /** Дальше задержку не растим: последние карточки не должны ждать. */
 const MAX_STAGGER_MS = 240;
 
-export function DuaScreen({ theme, setTheme, onPrayer }: Props) {
+export function DuaScreen({ theme, setTheme }: Props) {
   const [data, setData] = useState<DuaData | null>(null);
-  const [mode, setMode] = useState<Mode>('mine');
+  const [mode, setModeState] = useState<Mode>(readDuaMode);
   const [editing, setEditing] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
   const [list, setList] = useState<string[]>(readDuaList);
@@ -101,6 +126,9 @@ export function DuaScreen({ theme, setTheme, onPrayer }: Props) {
   }, []);
 
   useEffect(() => onDuaListChange(() => setList(readDuaList())), []);
+
+  // Выбор режима запоминается — см. `readDuaMode`.
+  const setMode = (next: Mode) => { setModeState(next); writeDuaMode(next); };
 
   // Правка живёт только в «моём списке»: в витрине нечего переставлять.
   useEffect(() => { if (mode !== 'mine') setEditing(false); }, [mode]);
@@ -264,25 +292,6 @@ export function DuaScreen({ theme, setTheme, onPrayer }: Props) {
           <Typography size={ICON_SIZE.md} />
         </button>
 
-        {/* Намаз — переехал из нижнего меню в шапку каждого раздела
-            (решение владельца 07.09.2026). */}
-        {onPrayer && (
-          <button
-            onClick={onPrayer}
-            aria-label="Намаз"
-            title="Время намаза"
-            className="icon-btn"
-            style={{
-              width: '42px', height: '42px', flexShrink: 0,
-              borderRadius: 'var(--radius-control)',
-              border: '1px solid var(--hairline)',
-              background: 'rgb(var(--ink-rgb) / 0.04)',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <TabPrayer size={ICON_SIZE.md} />
-          </button>
-        )}
         <button
           ref={themeBtnRef}
           onClick={() => { setThemeOpen(v => !v); setTypographyOpen(false); }}

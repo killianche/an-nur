@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { Theme } from '../hooks/useTheme';
-import { Appearance, ICON_SIZE, Sunrise, Sunset, TabPrayer } from '../components/icons';
+import { Appearance, ICON_SIZE, Sunrise, Sunset } from '../components/icons';
 import { ThemeSettings } from '../components/ReadingSettings';
 import { TAB_BAR_HEIGHT } from '../components/TabBar';
 import { loadAzkarData, type AzkarCategoryId, type AzkarData } from '../lib/azkar';
@@ -39,8 +39,6 @@ import { loadAzkarData, type AzkarCategoryId, type AzkarData } from '../lib/azka
 type Props = {
   theme: Theme;
   setTheme: (t: Theme) => void;
-  /** Намаз переехал из нижнего меню в шапку каждого раздела. */
-  onPrayer?: () => void;
   // onBack убран: возврат к Корану — это переключение вкладки в
   // нижней панели, отдельная ссылка в шапке была бы вторым путём.
   onOpenCategory: (category: AzkarCategoryId) => void;
@@ -55,7 +53,7 @@ function azkarWord(n: number): string {
   return 'азкаров';
 }
 
-export function AzkarScreen({ theme, setTheme, onPrayer, onOpenCategory }: Props) {
+export function AzkarScreen({ theme, setTheme, onOpenCategory }: Props) {
   const [data, setData] = useState<AzkarData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -117,25 +115,6 @@ export function AzkarScreen({ theme, setTheme, onPrayer, onOpenCategory }: Props
           Азкары
         </h1>
 
-        {/* Намаз — переехал из нижнего меню в шапку каждого раздела
-            (решение владельца 07.09.2026). */}
-        {onPrayer && (
-          <button
-            onClick={onPrayer}
-            aria-label="Намаз"
-            title="Время намаза"
-            className="icon-btn"
-            style={{
-              width: '42px', height: '42px', flexShrink: 0,
-              borderRadius: 'var(--radius-control)',
-              border: '1px solid var(--hairline)',
-              background: 'rgb(var(--ink-rgb) / 0.04)',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <TabPrayer size={ICON_SIZE.md} />
-          </button>
-        )}
         <button
           ref={themeBtnRef}
           onClick={() => setThemeOpen(v => !v)}

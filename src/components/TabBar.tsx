@@ -18,7 +18,7 @@
 import { useRef, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
-import { TabQuran, TabAzkar, Flower } from './icons';
+import { TabQuran, TabAzkar, TabPrayer, Flower } from './icons';
 import { GLASS_BLUR } from '../lib/glass';
 
 /**
@@ -32,12 +32,17 @@ import { GLASS_BLUR } from '../lib/glass';
 /**
  * Разделы нижней панели.
  *
- * Намаз ушёл отсюда 07.09.2026 по просьбе владельца — в шапку каждого
- * раздела, рядом с оформлением и аккаунтом. Причина та же, по которой раньше
- * ушёл аккаунт: вкладка занимала четверть самой дорогой полосы экрана, а
- * открывают её несколько раз в день, не десятки.
+ * 🔴 Намаз здесь — и переносить его отсюда больше не нужно.
+ *
+ * 07.09.2026 владелец попросил убрать его во вкладку в шапку каждого раздела;
+ * 08.09.2026, посмотрев вживую, попросил вернуть обратно вниз. Перенос
+ * откачен целиком: и вкладка на месте, и кнопки из шапок убраны — два входа
+ * в один раздел на одном экране это мусор, а не удобство.
+ *
+ * Прежний довод («вкладка занимает четверть самой дорогой полосы») оказался
+ * слабее того, что время намаза смотрят из любого места и ищут его внизу.
  */
-export type TabId = 'quran' | 'azkar' | 'dua';
+export type TabId = 'quran' | 'azkar' | 'dua' | 'prayer';
 
 /** Размер глифа вкладки — ступень `--icon-tab` из общей шкалы.  В JSX
  *  он приходит числом (иконки принимают `size`), поэтому значение здесь
@@ -52,6 +57,7 @@ const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }
   { id: 'quran', label: 'Коран', icon: selected => <TabQuran size={TAB_ICON} isFilled={selected} /> },
   { id: 'azkar', label: 'Азкары', icon: selected => <TabAzkar size={TAB_ICON} isFilled={selected} /> },
   { id: 'dua', label: 'Дуа', icon: selected => <Flower size={TAB_ICON} isFilled={selected} /> },
+  { id: 'prayer', label: 'Намаз', icon: selected => <TabPrayer size={TAB_ICON} isFilled={selected} /> },
 ];
 
 /**
