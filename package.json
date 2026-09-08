@@ -1,7 +1,7 @@
 {
   "name": "an-nur",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "iosBuild": 25,
   "type": "module",
   "scripts": {
