@@ -190,7 +190,8 @@ export function PlayerScreen({ onBack }: { onBack: () => void }) {
               // Сура дочитана — начинаем её заново, а не продолжаем с
               // последнего аята: продолжать там уже нечего.
               else if (finished) audio.playSurah(surah, total);
-              else audio.playFrom(surah, ayah, total, audio.currentMode());
+              // Продолжаем с места паузы, а не с начала аята.
+              else audio.resume();
             }}
             aria-label={playing ? 'Пауза' : 'Слушать'}
             style={{

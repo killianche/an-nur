@@ -181,12 +181,9 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
           // воспроизведение заново поверх ещё не начавшегося.
           if (loading) return;
           if (playing) audio.pause();
-          // Продолжаем с ТЕКУЩЕГО аята, а не с первого. Единица тут —
-          // аят, и `1` вместо него означала бы «начать суру заново»:
-          // человек ставил паузу на сороковом аяте, а получал первый.
-          else if (meta) {
-            audio.playFrom(currentSurah, currentAyah ?? 1, meta.ayahs, audio.currentMode());
-          }
+          // Продолжаем с места паузы: `resume` отпускает тот же элемент, а
+          // не начинает аят заново.
+          else audio.resume();
         }}
         aria-label={loading ? 'Загрузка' : playing ? 'Пауза' : 'Продолжить'}
         className="icon-btn"

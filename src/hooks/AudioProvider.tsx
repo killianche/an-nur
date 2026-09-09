@@ -76,6 +76,8 @@ export type AudioActions = {
   next: () => void;
   prev: () => void;
   pause: () => void;
+  /** Продолжить с места паузы. */
+  resume: () => void;
   stopAll: () => void;
   cyclePlaybackRate: () => void;
   dismissFailure: () => void;
@@ -140,12 +142,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     bindMediaSessionHandlers({
-      onPlay: () => {
-        const a = live.current;
-        if (!a.currentSurah) return;
-        const meta = SURAH_BY_NUMBER[a.currentSurah];
-        a.playFrom(a.currentSurah, a.currentAyah ?? 1, meta?.ayahs ?? 9999, a.currentMode());
-      },
+      // Продолжаем с места паузы, а не с начала аята: это делает `resume`.
+      onPlay: () => live.current.resume(),
       onPause: () => live.current.pause(),
       onPrev: () => live.current.prev(),
       onNext: () => live.current.next(),
@@ -164,6 +162,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     next: () => live.current.next(),
     prev: () => live.current.prev(),
     pause: () => live.current.pause(),
+    resume: () => live.current.resume(),
     stopAll: () => live.current.stopAll(),
     cyclePlaybackRate: () => live.current.cyclePlaybackRate(),
     dismissFailure: () => live.current.dismissFailure(),

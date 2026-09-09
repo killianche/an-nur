@@ -1000,55 +1000,39 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
    * if the next ayah change is closer than the smooth animation can
    * reasonably finish, we snap. `Infinity` when there's no active audio.
    */
-  // MediaSession action handlers — bind один раз при первом mount'е.
-  // Lock Screen / Control Center кнопки play/pause/prev/next должны
-  // дёргать наши же setter'ы.  Без этого кнопки серые и неактивные
-  // (system считает что у нас нет capability'ев).
-  useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
-    const ms = navigator.mediaSession;
-    ms.setActionHandler('play', () => {
-      // Resume — если paused, продолжить.  Без queue'а pause-pусто.
-      if (activeKey) {
-        // Состояние ставим ТОЛЬКО после успешного старта. Раньше `playing`
-        // объявлялось сразу, а отказ проглатывался: на экране блокировки
-        // висело «играет», хотя звука не было (сеть отвалилась, декодер
-        // занят). Показанное состояние обязано отражать настоящее.
-        void activeAudioRef.current?.play()
-          .then(() => {
-            setAudioState('playing');
-            setMediaSessionPlaybackState('playing');
-          })
-          .catch(() => {
-            setAudioState('paused');
-            setMediaSessionPlaybackState('paused');
-          });
-        setMediaSessionPlaybackState('playing');
-      }
-    });
-    ms.setActionHandler('pause', () => pauseCurrent());
-    ms.setActionHandler('nexttrack', () => {
-      const q = queueRef.current;
-      if (q && q.current < q.last) {
-        q.current = q.current + 1;
-        playOne(q.surah, q.current);
-      }
-    });
-    ms.setActionHandler('previoustrack', () => {
-      const q = queueRef.current;
-      if (q && q.current > 1) {
-        q.current = q.current - 1;
-        playOne(q.surah, q.current);
-      }
-    });
-    return () => {
-      ms.setActionHandler('play', null);
-      ms.setActionHandler('pause', null);
-      ms.setActionHandler('nexttrack', null);
-      ms.setActionHandler('previoustrack', null);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeKey, pauseCurrent]);
+  /**
+   * Продолжить с того места, где остановились.
+   *
+   * 🔴 Именно продолжить, а не перезапустить аят. Раньше и мини-плеер, и
+   * полный плеер, и лента звали `playFrom(сура, текущий аят, …)` — это
+   * начинало аят заново, и после паузы посреди длинного аята чтение
+   * откатывалось к его началу. Медиаэлемент при паузе сохраняет позицию,
+   * и достаточно его отпустить.
+   *
+   * Если элемента уже нет (сменился чтец, память освободили) — честно
+   * запускаем очередь с текущего аята.
+   */
+  const resume = useCallback(() => {
+    const q = queueRef.current;
+    if (!q) return;
+    const audio = activeAudioRef.current;
+    if (audio && audio.paused && audio.src) {
+      // Состояние ставим ТОЛЬКО после успешного старта: раньше `playing`
+      // объявлялось сразу, а отказ проглатывался — на экране блокировки
+      // висело «играет» при полной тишине.
+      void audio.play()
+        .then(() => {
+          setAudioState('playing');
+          setMediaSessionPlaybackState('playing');
+        })
+        .catch(() => {
+          setAudioState('paused');
+          setMediaSessionPlaybackState('paused');
+        });
+      return;
+    }
+    playFrom(q.surah, q.current, q.last, playbackMode);
+  }, [playFrom]);
 
   const getRemainingSeconds = useCallback(() => {
     if (!activeKey) return Infinity;
@@ -1084,6 +1068,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     next,
     prev,
     pause: pauseCurrent,
+    resume,
     stopAll,
     failure,
     dismissFailure: () => setFailure(null),
