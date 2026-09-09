@@ -494,16 +494,50 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // surah and SurahScreen's audio auto-scroll followed it to the bottom.
     const advanceOrStop = () => {
       const q = queueRef.current;
-      if (q && ayah < q.last) {
+      if (!q) { остановить(); return; }
+
+      // 🔴 Конец суры берём из данных, а не только из очереди.
+      //
+      // `handlePlay` без `lastAyah` кладёт в очередь 9999 — «до конца». С
+      // таким значением условие «аят меньше последнего» истинно всегда, и на
+      // последнем аяте плеер пытался открыть несуществующий следующий.
+      const мета = SURAH_BY_NUMBER[q.surah];
+      const конецСуры = Math.min(q.last, мета?.ayahs ?? q.last);
+
+      if (ayah < конецСуры) {
         q.current = ayah + 1;
         playOne(q.surah, q.current, 'automatic');
-      } else {
-        setAudioState('idle');
-        setActiveKey(null);
-        queueRef.current = null;
-        setProgress(0);
-        activeAudioRef.current = null;
+        return;
       }
+
+      // 🔴 Сура кончилась — идём в СЛЕДУЮЩУЮ, а не останавливаемся.
+      //
+      // Владелец 09.09.2026: «сура закончилась — останавливается чтение, вот
+      // этот момент тоже сделай». Так и было: очередь жила в пределах одной
+      // суры и на её последнем аяте гасила звук. Для чтения подряд это
+      // обрыв на каждой суре — особенно заметно на коротких.
+      //
+      // Новая сура начинается с НУЛЯ записи, а не с границы первого аята:
+      // иначе срезалась бы истиаза и басмала (см. `startedWholeSurah`).
+      const следующая = q.surah + 1;
+      const метаСледующей = SURAH_BY_NUMBER[следующая];
+      if (!метаСледующей) { остановить(); return; }
+
+      const r = reciterRef.current;
+      playbackMode = hasSurahAudio(r) ? 'surah' : 'ayah';
+      startedWholeSurah = true;
+      queueRef.current = {
+        surah: следующая, first: 1, last: метаСледующей.ayahs, current: 1,
+      };
+      playOne(следующая, 1, 'automatic');
+    };
+
+    const остановить = () => {
+      setAudioState('idle');
+      setActiveKey(null);
+      queueRef.current = null;
+      setProgress(0);
+      activeAudioRef.current = null;
     };
 
     // WebKit can report the same failed load twice: first via `error`, then by

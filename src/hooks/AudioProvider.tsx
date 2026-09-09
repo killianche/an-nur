@@ -44,6 +44,7 @@ import {
 import { useAyahAudio, type PlaybackMode, type PlaybackRate } from './useAyahAudio';
 import { DEFAULT_RECITER, RECITERS, type ReciterId } from '../lib/reciters';
 import { SURAH_BY_NUMBER } from '../content/surahs';
+import { bindMediaSessionHandlers } from '../lib/mediaSession';
 import { readPref } from '../lib/typography';
 
 const RECITER_IDS = RECITERS.map(r => r.id);
@@ -117,6 +118,36 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const meta = SURAH_BY_NUMBER[a.currentSurah];
     a.playFrom(a.currentSurah, a.currentAyah, meta?.ayahs ?? 9999, a.currentMode());
   }, [reciter]);
+
+  /**
+   * Кнопки на заблокированном экране и в пункте управления.
+   *
+   * 🔴 Их НЕ БЫЛО ВООБЩЕ. Модуль `mediaSession.ts` умеет их привязывать с
+   * самого начала, но `bindMediaSessionHandlers` не вызывался ни из одного
+   * места — я проверил поиском по всему `src`. Поэтому карточка «сейчас
+   * играет» на замке появлялась (её рисует система, раз звучит аудио), а
+   * кнопки были мертвы: нажать паузу или перейти к следующему аяту с
+   * заблокированного телефона было невозможно. Владелец 09.09.2026 описал
+   * это дословно: «им невозможно управлять».
+   *
+   * Привязка живёт здесь, а не в экране: экраны монтируются и исчезают, а
+   * звук продолжается — обработчики обязаны пережить любой переход.
+   * Обращаемся через `live.current`, поэтому привязка одноразовая и не
+   * пересоздаётся на каждом обновлении состояния.
+   */
+  useEffect(() => {
+    bindMediaSessionHandlers({
+      onPlay: () => {
+        const a = live.current;
+        if (!a.currentSurah) return;
+        const meta = SURAH_BY_NUMBER[a.currentSurah];
+        a.playFrom(a.currentSurah, a.currentAyah ?? 1, meta?.ayahs ?? 9999, a.currentMode());
+      },
+      onPause: () => live.current.pause(),
+      onPrev: () => live.current.prev(),
+      onNext: () => live.current.next(),
+    });
+  }, []);
 
   const setReciter = useCallback((id: ReciterId) => {
     setReciterState(id);
