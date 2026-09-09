@@ -1,0 +1,83 @@
+# Проверка сборки Android — БЕЗ выпуска.
+#
+# 🔴 Почему только проверка. Android — отдельный контур выпуска (CLAUDE.md
+# §0.1), и публиковать его без явной задачи владельца нельзя. Кроме того,
+# релизная сборка требует keystore: потерянный ключ означает, что приложение
+# в Google Play больше никогда не обновить, — такой ключ заводит владелец, а
+# не автоматика. Поэтому здесь debug-сборка на отладочной подписи: она
+# доказывает, что общий код `src/` компилируется и упаковывается под Android,
+# и ничего никуда не отправляет.
+#
+# Зачем это вообще нужно. Код общий на веб, iOS и Android, но собирался
+# месяцами только под iOS. Любая правка, ломающая Android (плагин без
+# реализации, отсутствующее разрешение, несовместимый Gradle), обнаружилась бы
+# только при выпуске. Один прогон здесь закрывает этот слепой угол.
+#
+# Запуск ручной: минуты Actions не тратятся на каждый коммит.
+
+name: Android check
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: android-check
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # JDK 21 — минимум для Android Gradle Plugin 8.13.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Установить зависимости
+        run: npm ci
+
+      # Те же гарды, что и в выпуске iOS: контур другой, а сакральный текст
+      # и модель аудио общие.
+      - name: Тесты
+        run: npm test
+
+      - name: Сакральный гард
+        run: npm run check:sacred
+
+      - name: Разбивка страниц мусхафа
+        run: npm run check:mushaf-pages
+
+      - name: Сборка веба
+        run: npm run build
+
+      - name: Перенос веб-ассетов в нативный проект
+        run: npx cap sync android
+
+      # local.properties в репозитории нет и быть не должно: он указывает на
+      # чужую машину. На раннере путь к SDK приходит переменной окружения.
+      - name: Сборка debug-APK
+        working-directory: android
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Забрать APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: an-nur-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
