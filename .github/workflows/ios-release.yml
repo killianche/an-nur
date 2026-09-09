@@ -115,6 +115,21 @@ jobs:
           printf '%s' "${ASC_KEY_P8}" > "${RUNNER_TEMP}/asc/AuthKey.p8"
           chmod 600 "${RUNNER_TEMP}/asc/AuthKey.p8"
 
+      # 🔴 Проверка ДО архива, а не после: вышедшая версия закрывает свой
+      # поезд, и Apple отвергает выгрузку словами «Invalid Pre-Release Train.
+      # The train version 'X' is closed for new build submissions».
+      # 08.09.2026 на этом сгорела сборка 25 — она прошла тесты, гард и всю
+      # компиляцию Xcode и упала на самой выгрузке, потратив полный прогон.
+      # Раньше шага здесь не было потому, что проверке нужен ключ Apple, а он
+      # готовится ниже; теперь она стоит сразу после подготовки ключа.
+      - name: Поезд версии свободен
+        if: ${{ inputs.upload }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_PATH: ${{ runner.temp }}/asc/AuthKey.p8
+        run: node scripts/appstore/check-version-free.mjs
+
       # Перед архивом чистим сертификаты, которые выпустили прошлые сборки.
       # Каждый запуск идёт на чистой машине и выпускает новый; на тринадцатом
       # Apple отвечает «maximum number of certificates», и архив падает —
