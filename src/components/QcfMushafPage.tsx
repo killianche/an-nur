@@ -24,8 +24,19 @@
  * Страница обязана быть видна целиком — в этом весь смысл режима.
  * Кегль не берётся из настроек, а вычисляется: сначала прикидка по
  * высоте (15 строк), потом замер реальной вёрстки и поправка, если
- * самая длинная строка не влезла по ширине.  Двух проходов хватает:
- * зависимость ширины от кегля линейная.
+ * самая длинная строка не влезла по ширине.  Проходов до трёх: ширина
+ * зависит от кегля почти линейно, но продвижения глифов округляются под
+ * пиксельную сетку, и после первой поправки остаётся невязка.
+ *
+ * Ширина строки — сумма ширин слов, а не `scrollWidth`.  У строки,
+ * выключенной по центру, содержимое вылезает на обе стороны, и
+ * `scrollWidth` засчитывает только один край; у выключенной по ширине он
+ * слеп совсем.  Правила подгонки вынесены в `lib/mushafFit.ts` и покрыты
+ * тестами, здесь остаётся чтение вёрстки.
+ *
+ * Подобранное кладётся в кэш на модуле: страница, к которой вернулись,
+ * не меряется заново и получает ровно тот же кегль.  Несошедшаяся
+ * подгонка не кешируется — иначе плохой кегль застрял бы на всю сессию.
  *
  * Почему не `transform: scale()` — он даёт мыло на тексте и убивает
  * попадание пальцем: у отмасштабированного слоя координаты тапа
@@ -48,6 +59,7 @@ import type { QcfPageData, QcfWord } from '../lib/qcf4';
 import { fontFamilyForPage } from '../content/quran-tajweed-meta';
 import { PALETTE_NAME } from '../lib/tajweedPalette';
 import { tajweedVisualWordPosition } from '../lib/tajweedAudioPosition';
+import { MAX_FIT_PASSES, fitScale, lineJustified } from '../lib/mushafFit';
 import type { MushafFontId } from '../lib/mushafFont';
 import type { TajweedPageData, TajweedPageWord } from '../lib/tajweedPage';
 
@@ -116,17 +128,33 @@ const LINE_FACTOR = 1.6;
  */
 const SIDE_PADDING_CSS =
   'max(4px, env(safe-area-inset-left), env(safe-area-inset-right))';
+
 /**
- * С какой заполненности строка считается полной и тянется по ширине.
+ * Готовая подгонка страницы: кегль и выключка строк.
  *
- * Замер идёт по естественной ширине слов: у глифов QCF боковые отступы
- * уже внутри, поэтому своего зазора вёрстка не добавляет — добавленный
- * заставлял строки переполняться и сбивал подбор кегля.
+ * Результат замера однозначно определяется страницей, изданием шрифта и
+ * размером места — значит вторично мерить его незачем. Без кэша каждая
+ * страница, к которой человек вернулся назад, подбирала кегль заново:
+ * два прохода вёрстки плюс чтение прямоугольника у каждого слова.
  *
- * 0.9 отделяет набранную строку от короткой: последняя строка суры и
- * строки Аль-Фатихи заполняют меньше, обычная строка мусхафа — больше.
+ * Кэш живёт на модуле, а не в состоянии: слои страниц монтируются и
+ * размонтируются на каждом листании, и состояние умирает вместе с ними.
  */
-const JUSTIFY_FILL = 0.9;
+type PageFit = { fontSize: number; justified: boolean[] };
+const fitCache = new Map<string, PageFit>();
+/** Больше окна листания на порядок — хватает на долгую сессию чтения. */
+const FIT_CACHE_LIMIT = 64;
+
+function rememberFit(key: string, fit: PageFit) {
+  // Сначала снимаем прежнюю запись: перезапись существующего ключа не
+  // должна вытеснять чужую подгонку.
+  fitCache.delete(key);
+  if (fitCache.size >= FIT_CACHE_LIMIT) {
+    const oldest = fitCache.keys().next().value;
+    if (oldest !== undefined) fitCache.delete(oldest);
+  }
+  fitCache.set(key, fit);
+}
 
 
 export const QcfMushafPage = memo(function QcfMushafPage({
@@ -181,7 +209,52 @@ export const QcfMushafPage = memo(function QcfMushafPage({
       : Math.max(9, Math.min(46, fitTo.height / (lineCount * LINE_FACTOR)))
     : BASE_FONT_PX;
 
-  const [fontSize, setFontSize] = useState(guess);
+  const fitKey = `${pageData.page}|${variant}|${landscapeWide ? 'wide' : 'page'}|${fitTo?.width ?? 0}|${fitTo?.height ?? 0}`;
+  // Готовая подгонка для этой же страницы в этом же месте, если она уже
+  // считалась раньше. Ключ включает издание и размер места, поэтому
+  // повторный замер дал бы ровно то же число.
+  const cachedFit = fitCache.get(fitKey);
+
+  /**
+   * Подгонка вместе с ключом, к которому она относится.
+   *
+   * Одним состоянием, а не двумя: кегль и выключка меряются в одном
+   * проходе и обязаны меняться вместе. Ключ внутри состояния нужен, чтобы
+   * при переходе на другую страницу не осталось ни одного кадра со старым
+   * кеглем — сброс идёт в фазе рендера, а не эффектом.
+   *
+   * 🔴 Сбрасывать эффектом нельзя, и это стоило неверной вёрстки. Эффекты
+   * одного коммита выполняются по порядку объявления, поэтому замер видел
+   * ещё СТАРЫЙ кегль: страница мерилась по числу от предыдущего места и
+   * считалась вписанной. Прежний код это переживал (сброс запускал новый
+   * проход), но строки Аль-Фатихи выходили за полосу набора на 1–3px —
+   * замер второго прохода был слепым: выключенная по ширине строка по
+   * определению равна контейнеру, и переполнение в `scrollWidth` не видно.
+   */
+  const [fit, setFit] = useState<PageFit & { key: string }>(() => ({
+    key: fitKey,
+    fontSize: cachedFit?.fontSize ?? guess,
+    justified: cachedFit?.justified ?? [],
+  }));
+  const boxRef = useRef<HTMLDivElement>(null);
+  // Сколько поправок уже сделали для этой страницы и этого места.
+  const passRef = useRef(cachedFit ? MAX_FIT_PASSES : 0);
+  const keyRef = useRef(fitKey);
+  /** Замер для текущего ключа закончен — вёрстку больше не трогаем. */
+  const doneRef = useRef(!!cachedFit);
+
+  if (keyRef.current !== fitKey) {
+    keyRef.current = fitKey;
+    passRef.current = cachedFit ? MAX_FIT_PASSES : 0;
+    doneRef.current = !!cachedFit;
+    setFit({
+      key: fitKey,
+      fontSize: cachedFit?.fontSize ?? guess,
+      justified: cachedFit?.justified ?? [],
+    });
+  }
+
+  const fontSize = fit.key === fitKey ? fit.fontSize : cachedFit?.fontSize ?? guess;
   /**
    * Как выключать каждую строку: `true` — по ширине, `false` — по центру.
    *
@@ -193,78 +266,67 @@ export const QcfMushafPage = memo(function QcfMushafPage({
    * Решается замером, а не числом слов: слова мусхафа разной длины, и три
    * длинных слова заполняют строку, а шесть коротких — нет.
    */
-  const [justified, setJustified] = useState<boolean[]>([]);
-  const boxRef = useRef<HTMLDivElement>(null);
-  // Сколько поправок уже сделали для этой страницы и этого места.
-  const passRef = useRef(0);
-  const keyRef = useRef('');
+  const justified = fit.key === fitKey ? fit.justified : cachedFit?.justified ?? [];
 
-  const fitKey = `${pageData.page}|${variant}|${landscapeWide ? 'wide' : 'page'}|${fitTo?.width ?? 0}|${fitTo?.height ?? 0}`;
-  if (keyRef.current !== fitKey) {
-    keyRef.current = fitKey;
-    passRef.current = 0;
-  }
-
+  // Подбор кегля и выключки. Без списка зависимостей: каждая поправка —
+  // это новый рендер, после которого вёрстку надо перемерить.
   useLayoutEffect(() => {
+    if (doneRef.current) return;
     if (!fitTo || !boxRef.current) return;
-    if (passRef.current >= 2) return;
     // Мерить по запасному шрифту нельзя — метрики другие, кегль выйдет
     // неверным, а после подмены страница не впишется.
     if (!fontsReady) return;
 
     const box = boxRef.current;
+    const key = fitKey;
     const lines = Array.from(box.children) as HTMLElement[];
-    let widthRatio = 1;
-    for (const line of lines) {
-      // Строки свёрстаны через space-between: если содержимое шире
-      // контейнера, оно вылезает, и scrollWidth это показывает.
-      if (line.clientWidth > 0 && line.scrollWidth > line.clientWidth) {
-        widthRatio = Math.max(widthRatio, line.scrollWidth / line.clientWidth);
-      }
-    }
+
+    // Истинная ширина набора в каждой строке — сумма ширин слов.
+    //
+    // 🔴 Не `scrollWidth`, и это принципиально. У строки, выключенной по
+    // центру, содержимое вылезает на ОБЕ стороны, а `scrollWidth`
+    // засчитывает только один край — в RTL как раз не тот. Замер выходил
+    // примерно вдвое меньше настоящего, и подбор кегля не сходился: две
+    // поправки по половине вылета оставляли строку за полосой набора.
+    // У выключенной по ширине строки он и вовсе слеп — такая строка равна
+    // контейнеру по определению.
+    //
+    // Сумма ширин слов верна в обоих случаях: выключка добавляет пробелы
+    // МЕЖДУ словами, самих слов не меняя. Ею же решается, тянуть ли строку
+    // по ширине, — поэтому замер один на оба вопроса, и вёрстка читается
+    // за один проход вместо двух.
+    const fills = lines.map(line => {
+      const kids = Array.from(line.children) as HTMLElement[];
+      if (!kids.length || line.clientWidth <= 0) return 0;
+      const content = kids.reduce((sum, k) => sum + k.getBoundingClientRect().width, 0);
+      return content / line.clientWidth;
+    });
     const heightRatio = !landscapeWide && box.scrollHeight > fitTo.height
       ? box.scrollHeight / fitTo.height
       : 1;
-    const ratio = Math.max(widthRatio, heightRatio);
 
-    // 0.5 px — порог, ниже которого поправка не стоит лишней перерисовки.
-    if (ratio > 1.002) {
+    // Множитель считается ВСЕГДА, даже когда поправки кончились: иначе
+    // несошедшаяся подгонка молча уехала бы в кэш и застряла там на всю
+    // сессию, а перемерить её было бы уже некому.
+    const scale = fitScale(fills, heightRatio);
+    if (scale > 1 && passRef.current < MAX_FIT_PASSES) {
       passRef.current += 1;
-      setFontSize(f => Math.max(9, f / ratio));
+      setFit(f => f.key === key ? { ...f, fontSize: Math.max(9, f.fontSize / scale) } : f);
       return;
     }
-    passRef.current = 2;
+
+    const next = lines.map((line, i) => lineJustified(fills[i], line.children.length));
+    doneRef.current = true;
+    // `fontSize` здесь — ровно тот, по которому только что мерили: эффект
+    // выполняется в коммите своего рендера, и другого значения в DOM быть
+    // не может.
+    if (scale === 1) rememberFit(key, { fontSize, justified: next });
+    setFit(f => f.key !== key
+      ? f
+      : f.justified.length === next.length && f.justified.every((v, i) => v === next[i])
+        ? f
+        : { ...f, justified: next });
   });
-
-  // Какие строки тянуть по ширине.
-  //
-  // Отдельным эффектом, а не внутри подбора кегля: тот выходит досрочно,
-  // как только кегль устоялся, и замер выключки до него не доходил — все
-  // строки оставались по центру, включая полные.
-  //
-  // Считаем сумму ширин слов: у flex-строки scrollWidth этого не покажет,
-  // потому что растянутая по ширине строка по определению занимает всю
-  // ширину, сколько бы в ней ни было слов.
-  useLayoutEffect(() => {
-    const box = boxRef.current;
-    if (!box || !fontsReady) return;
-    const lines = Array.from(box.children) as HTMLElement[];
-    const next = lines.map(line => {
-      const kids = Array.from(line.children) as HTMLElement[];
-      if (kids.length < 2 || line.clientWidth <= 0) return false;
-      const content = kids.reduce((sum, k) => sum + k.getBoundingClientRect().width, 0);
-      return content / line.clientWidth >= JUSTIFY_FILL;
-    });
-    setJustified(prev =>
-      prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next);
-  }, [fontsReady, fontSize, pageData.page, fitTo?.width, fitTo?.height]);
-
-  // Смена страницы или размера окна — считаем заново от прикидки до
-  // следующего paint, без setState прямо во время render.
-  useLayoutEffect(() => {
-    passRef.current = 0;
-    setFontSize(guess);
-  }, [fitKey, guess]);
 
   return (
     <div
