@@ -9,6 +9,7 @@ import type { DocumentId } from './screens/DocumentScreen';
 import { CosmicLayer } from './components/CosmicLayer';
 import { PaperLayer } from './components/PaperLayer';
 import { StatusBarScrim } from './components/StatusBarScrim';
+import { AudioErrorPlate } from './components/AudioErrorPlate';
 import { MiniPlayer } from './components/MiniPlayer';
 import {
   IosEdgeBackGesture,
@@ -583,6 +584,9 @@ export default function App() {
       {/* Полоска звучащей суры. Только на вкладках: в ленте и мусхафе свой
           плеер, и две панели разом были бы лишними. */}
       <MiniPlayer onOpen={() => navigate({ name: 'player' })} />
+      {/* Отказ звука говорит словами: чтение идёт из сети, и молчаливая
+          остановка читается как поломка приложения. */}
+      <AudioErrorPlate />
       <TabBar
         active={tab}
         onSelect={next => {

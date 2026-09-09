@@ -41,7 +41,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from 'react';
-import { useAyahAudio, type PlaybackMode, type PlaybackRate } from './useAyahAudio';
+import { useAyahAudio, type AudioFailure, type PlaybackMode, type PlaybackRate } from './useAyahAudio';
 import { DEFAULT_RECITER, RECITERS, type ReciterId } from '../lib/reciters';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { bindMediaSessionHandlers } from '../lib/mediaSession';
@@ -57,6 +57,8 @@ export type AudioSession = {
   currentSurah: number | null;
   currentAyah: number | null;
   reciter: ReciterId;
+  /** Последний отказ воспроизведения, о котором надо сказать человеку. */
+  failure: AudioFailure | null;
 };
 
 /** Как идёт текущий аят. Меняется несколько раз в секунду. */
@@ -76,6 +78,7 @@ export type AudioActions = {
   pause: () => void;
   stopAll: () => void;
   cyclePlaybackRate: () => void;
+  dismissFailure: () => void;
   currentMode: () => PlaybackMode;
   getRemainingSeconds: () => number;
   setReciter: (id: ReciterId) => void;
@@ -163,6 +166,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     pause: () => live.current.pause(),
     stopAll: () => live.current.stopAll(),
     cyclePlaybackRate: () => live.current.cyclePlaybackRate(),
+    dismissFailure: () => live.current.dismissFailure(),
     currentMode: () => live.current.currentMode(),
     getRemainingSeconds: () => live.current.getRemainingSeconds(),
     setReciter,
@@ -171,12 +175,13 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const session = useMemo<AudioSession>(() => ({
     activeKey: audio.activeKey,
     audioState: audio.audioState,
+    failure: audio.failure,
     playbackRate: audio.playbackRate,
     currentSurah: audio.currentSurah,
     currentAyah: audio.currentAyah,
     reciter,
   }), [
-    audio.activeKey, audio.audioState, audio.playbackRate,
+    audio.activeKey, audio.audioState, audio.playbackRate, audio.failure,
     audio.currentSurah, audio.currentAyah, reciter,
   ]);
 

@@ -36,6 +36,15 @@ type AudioState = 'idle' | 'loading' | 'playing' | 'paused';
  *  is 1.0; the slower 0.75 sits first so a tap from default goes
  *  faster (more common need) rather than slower. */
 export const PLAYBACK_RATES = [0.75, 1.0, 1.25] as const;
+/** Отказ воспроизведения, о котором надо сказать вслух. */
+export type AudioFailure = {
+  surah: number;
+  ayah: number;
+  lastAyah: number;
+  /** Устройство сообщает, что сети нет вовсе. */
+  offline: boolean;
+};
+
 export type PlaybackRate = typeof PLAYBACK_RATES[number];
 
 const KEY_PLAYBACK_RATE = 'audio.playbackRate';
@@ -330,6 +339,15 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
   // exists for it / nothing is playing. Driven by the same rAF that powers
   // the progress bar, so we don't pay for two loops.
   const [currentWordPos, setCurrentWordPos] = useState<number | null>(null);
+  /**
+   * Последний отказ воспроизведения — чтобы сказать о нём человеку.
+   *
+   * 🔴 Раньше отказ был немым: чтение просто останавливалось. Со стороны
+   * это выглядит как поломка приложения, а не как пропавшая связь, — на
+   * это же указывал рецензент Apple. Здесь запоминается, на чём именно
+   * оборвалось, чтобы плашка могла предложить повтор с того же места.
+   */
+  const [failure, setFailure] = useState<AudioFailure | null>(null);
 
   // Active queue: surah + bounds + current pointer
   const queueRef = useRef<{ surah: number; first: number; last: number; current: number } | null>(null);
@@ -387,6 +405,8 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     ayah: number,
     transition: 'manual' | 'automatic' = 'manual',
   ) => {
+    // Любая новая попытка снимает прежнее сообщение об отказе.
+    setFailure(null);
     const r = reciterRef.current;
     const k = cacheKey(r, surah, ayah);
     const mediaK = mediaCacheKey(r, surah, ayah);
@@ -639,6 +659,14 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       if (audioCache.get(mediaK) === audio) audioCache.delete(mediaK);
       audio.onended = null;
       audio.onerror = null;
+      // Порядок важен: `stopAll` сбрасывает состояние, и отказ ставится
+      // после него, иначе плашка исчезла бы в том же кадре.
+      setFailure({
+        surah,
+        ayah,
+        lastAyah: queueRef.current?.last ?? SURAH_BY_NUMBER[surah]?.ayahs ?? ayah,
+        offline: typeof navigator !== 'undefined' && navigator.onLine === false,
+      });
     };
 
     audio.onended = () => {
@@ -1057,5 +1085,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     prev,
     pause: pauseCurrent,
     stopAll,
+    failure,
+    dismissFailure: () => setFailure(null),
   };
 }
