@@ -23,7 +23,7 @@ import {
 } from '../lib/audioDownloads';
 import { optOutOfAutoDownload } from '../lib/audioAutoDownload';
 import { ayahsInSurah } from '../lib/ayahNumbering';
-import { TOTAL_SURAHS, clearReciter, clearSurah, completeSurahCount, downloadedCount, downloadedInSurah, hasSurahFile, isOfflineSupported, isSurahComplete, subscribeAudioStore, surahFileCount } from '../lib/audioStore';
+import { TOTAL_SURAHS, clearAyahFiles, clearReciter, clearSurah, completeSurahCount, downloadedCount, downloadedInSurah, hasSurahFile, isOfflineSupported, isSurahComplete, subscribeAudioStore, surahFileCount } from '../lib/audioStore';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { settingCard, cardTitle } from './ReadingSettings';
 import { Download, Trash, CheckCircle, Pause, ICON_SIZE } from './icons';
@@ -279,6 +279,43 @@ function ReciterRow({ id, label }: {
           </>
         )}
       </div>
+
+      {/* 🔴 Предложение заменить старую поаятную фонотеку.
+          Владелец 09.09.2026 разрешил предложить это людям.
+
+          У тех, кто качал до 06.09.2026, на диске лежат тысячи поаятных
+          файлов — до 1.4 ГБ, которые больше ничего не дают: играет сплошная
+          запись. Сами мы их не удаляем и никогда не удалим молча: это данные
+          человека, и он их однажды сознательно скачал. Поэтому здесь ровно
+          два шага, и оба делает он сам.
+
+          Шаг первый показывается, пока сплошных записей нет; шаг второй —
+          когда они уже скачаны и старые файлы стали лишними. */}
+      {have > 0 && непрерывно && !running && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+          padding: 'var(--space-snug) 0 0',
+        }}>
+          <span style={{ ...meta_, flex: 1, minWidth: 0 }}>
+            {собрано
+              ? `Старые файлы больше не нужны: ${have} аятов, ≈ ${formatBytes(estimateBytes(id, have))}`
+              : `${have} аятов скачаны по-старому — они играют со стыками`}
+          </span>
+          {собрано ? (
+            <ActionButton
+              label="Освободить"
+              icon={<Trash size={ICON_SIZE.sm} />}
+              onClick={() => { void clearAyahFiles(id); }}
+            />
+          ) : (
+            <ActionButton
+              label="Заменить"
+              icon={<Download size={ICON_SIZE.sm} />}
+              onClick={() => { void startDownload(id, ALL); }}
+            />
+          )}
+        </div>
+      )}
 
       <Meter value={шкала} max={TOTAL_SURAHS} />
 

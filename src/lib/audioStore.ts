@@ -411,6 +411,40 @@ export async function clearReciter(reciter: ReciterId): Promise<void> {
   }
 }
 
+/**
+ * Удалить ТОЛЬКО поаятные файлы чтеца, сохранив сплошные записи сур.
+ *
+ * 🔴 Зачем отдельная функция, а не `clearReciter`.
+ *
+ * Фонотека переехала на сплошные записи 06.09.2026, и у тех, кто качал
+ * раньше, на диске остались 6236 поаятных файлов — до 1.4 ГБ, которые больше
+ * ничего не дают: играет сплошная запись. Владелец 09.09.2026 разрешил
+ * предложить им замену.
+ *
+ * `clearReciter` здесь не годится: он сносит каталог чтеца целиком вместе со
+ * сплошными записями — человек нажал бы «освободить место» и остался бы без
+ * скачанного Корана. Поэтому удаляем только числовые подпапки сур, где лежат
+ * аяты; файлы `surah-N.mp3` лежат рядом и не трогаются.
+ */
+export async function clearAyahFiles(reciter: ReciterId): Promise<void> {
+  maps[reciter] = new Uint8Array(BITMAP_BYTES);
+  emit();
+  await persistNow();
+  if (!native) return;
+  try {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    for (let surah = 1; surah <= TOTAL_SURAHS; surah++) {
+      await Filesystem.rmdir({
+        directory: Directory.LibraryNoCloud,
+        path: `${AUDIO_DIR}/${reciter}/${surah}`,
+        recursive: true,
+      }).catch(() => { /* такой папки могло не быть — не ошибка */ });
+    }
+  } catch {
+    // Плагина нет — отметки всё равно сняты, приложение продолжит работать.
+  }
+}
+
 /** Удалить одну суру. */
 export async function clearSurah(reciter: ReciterId, surah: number): Promise<void> {
   const first = firstGlobalOfSurah(surah);
