@@ -592,12 +592,27 @@ export function ReciterCard({ reciter, onPick }: {
                 fontWeight: 'var(--weight-regular)',
                 letterSpacing: '0.005em',
                 color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                whiteSpace: 'nowrap',
-                textOverflow: 'ellipsis',
                 transition: 'box-shadow 140ms ease, background 140ms ease',
               }}
             >
-              {r.label}
+              {/* 🔴 Имя переносится на вторую строку, а не обрезается.
+                  «Мухаммад Аль-Люхайдан» требует 180 px, а плитка в две
+                  колонки даёт 158: при `nowrap` хвост имени просто срезало
+                  краем, причём без многоточия — `text-overflow` не работает
+                  на прямом потомке flex-контейнера. Имя чтеца обрезать
+                  нельзя: по нему его и выбирают.
+
+                  Обе плитки в ряду тянутся до одной высоты сами: у грид-строк
+                  выравнивание stretch по умолчанию. */}
+              <span style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                lineHeight: 1.2,
+              }}>
+                {r.label}
+              </span>
             </button>
           );
         })}
