@@ -182,7 +182,9 @@ export function SurahPicker({ onSelectSurah, onBookmarks, onAccount, theme, setT
         display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
         height: 'calc(var(--hit-min) + var(--space-tight))',
         padding: '0 var(--space-cozy)',
-        borderRadius: 'var(--radius-control)',
+        // Капсула, а не скруглённый прямоугольник: в iOS 26 поле поиска
+        // именно пилюля, той же формы, что и плавающая панель вкладок.
+        borderRadius: 'var(--radius-pill)',
         background: 'rgb(var(--ink-rgb) / 0.05)',
         border: '1px solid var(--hairline)',
         marginBottom: 'var(--space-margin)',
@@ -434,23 +436,21 @@ function SectionHeading({ text }: { text: string }) {
 
 function JuzHeading({ juz }: { juz: number }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
-      paddingTop: 'var(--space-tight)',
+    <p style={{
+      // 🔴 Без черты справа. В сгруппированных списках iOS заголовок группы —
+      // это просто подпись капителью над островком; линия во всю ширину
+      // осталась от прежней вёрстки и выдавала «не системный» вид.
+      // Владелец 09.09.2026 попросил привести главную к языку iOS 26.
+      margin: 0,
+      padding: '0 var(--space-cozy) var(--space-tight)',
+      fontSize: 'var(--font-caption1)',
+      lineHeight: 'var(--leading-caption1)',
+      letterSpacing: '0.06em',
+      textTransform: 'uppercase',
+      color: 'var(--text-tertiary)',
     }}>
-      <span style={{
-        fontSize: 'var(--font-caption2)',
-        lineHeight: 'var(--leading-caption2)',
-        fontWeight: 'var(--weight-semibold)',
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: 'var(--text-tertiary)',
-        whiteSpace: 'nowrap',
-      }}>
-        Джуз {juz}
-      </span>
-      <span aria-hidden style={{ flex: 1, height: '1px', background: 'var(--hairline)' }} />
-    </div>
+      Джуз {juz}
+    </p>
   );
 }
 

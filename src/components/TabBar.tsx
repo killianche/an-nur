@@ -97,7 +97,9 @@ const BAR_SAFE_TRIM = 14;
 /** Готовая нижняя координата капсулы. */
 export const TAB_BAR_BOTTOM =
   `max(6px, calc(env(safe-area-inset-bottom) - ${BAR_SAFE_TRIM}px))`;
-const BAR_SIDE = 14;
+/* 21 pt — боковой отступ плавающей панели в iOS 26 (сверено по
+   разбору спецификации, learnui.design). Было 14 «на глаз». */
+const BAR_SIDE = 21;
 
 /** Сколько места панель занимает снизу — см. предупреждение в шапке. */
 export const TAB_BAR_HEIGHT = BAR_HEIGHT + BAR_INSET;

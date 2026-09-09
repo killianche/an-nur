@@ -348,21 +348,25 @@ export const Check = ({ size = ICON_SIZE.md, className, style }: Props) => (
  */
 export const Flower = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
   <svg {...stroke(size, className, style)}>
-    {/* 🔴 Две ладони, поднятые в дуа. Имя `Flower` историческое: значок
-        переезжал от цветка к ладони и обратно, переименование задело бы
-        полтора десятка мест импорта.
+    {/* 🔴 Ближайший системный аналог — SF Symbols `hands.sparkles`: две
+        поднятые ладони и искры над ними. Владелец 09.09.2026 попросил
+        «стандартные iOS», и для дуа такой символ у Apple есть буквально.
 
-        Чаша с линией посередине читалась как подкова (снимок 08.09.2026).
-        Две отдельные ладони с большими пальцами наружу дают тот самый жест:
-        силуэт несимметричен по вертикали, и подковой его уже не прочесть. */}
+        Имя `Flower` историческое: значок переезжал от цветка к ладони и
+        обратно, переименование задело бы полтора десятка мест импорта. */}
     <path
-      d="M10.7 19.4c-2.6-.7-4.6-2.6-5.2-5.1l-1-4.2c-.2-.9.9-1.5 1.5-.8l1.9 2.1V6.2c0-1 1.5-1 1.6 0l.6 5.6"
+      d="M10.6 20c-2.4-.7-4.2-2.5-4.8-4.9l-.9-3.9c-.2-.9.8-1.4 1.4-.7l1.7 1.9V8.1c0-.9 1.4-.9 1.5 0l.6 5"
       fill={isFilled ? 'currentColor' : 'none'}
     />
     <path
-      d="M13.3 19.4c2.6-.7 4.6-2.6 5.2-5.1l1-4.2c.2-.9-.9-1.5-1.5-.8l-1.9 2.1V6.2c0-1-1.5-1-1.6 0l-.6 5.6"
+      d="M13.4 20c2.4-.7 4.2-2.5 4.8-4.9l.9-3.9c.2-.9-.8-1.4-1.4-.7l-1.7 1.9V8.1c0-.9-1.4-.9-1.5 0l-.6 5"
       fill={isFilled ? 'currentColor' : 'none'}
     />
+    {/* Искры — как у системного символа: одна крупная, одна мелкая. */}
+    <path d="M12 3.1l.62 1.63L14.25 5.35l-1.63.62L12 7.6l-.62-1.63L9.75 5.35l1.63-.62z"
+      fill={isFilled ? 'currentColor' : 'none'} />
+    <path d="M17.4 5.6l.36.95.95.36-.95.36-.36.95-.36-.95-.95-.36.95-.36z"
+      fill={isFilled ? 'currentColor' : 'none'} />
   </svg>
 );
 
@@ -399,14 +403,41 @@ export const TabAzkar = ({ size = ICON_SIZE.md, isFilled = false, className, sty
   </svg>
 );
 
-/** Михраб — раздел «Намаз»: молитвенная ниша, а не часы. */
-export const TabPrayer = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
-  <svg {...stroke(size, className, style)}>
-    <path d="M5.6 20.2v-7.9a6.4 6.4 0 0 1 12.8 0v7.9"
-      fill={isFilled ? 'currentColor' : 'none'} />
-    <path d="M4.2 20.2h15.6" fill="none" />
-  </svg>
-);
+/**
+ * Часы — раздел «Намаз».
+ *
+ * 🔴 Был михраб, стали часы. Владелец 09.09.2026: «иконки сделать
+ * стандартными iOS». Раздел показывает ВРЕМЯ намаза, и системный символ для
+ * времени — `clock`: круг со стрелками. Михраб красивее и «исламичнее», но
+ * на 25 px читался как арка или надгробие, а не как раздел расписания.
+ *
+ * Прежний михраб лежит в истории (коммит с ним — «нижнее меню iOS 26»),
+ * вернуть — одна строка.
+ */
+export const TabPrayer = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => {
+  const cut = useCutId();
+  return (
+    <svg {...stroke(size, className, style)}>
+      {/* 🔴 В залитом виде стрелки ВЫРЕЗАЮТСЯ маской, а не рисуются белым.
+          Белая обводка поверх заливки работает только на светлой теме: на
+          тёмной заливка сама светлая, и стрелки исчезли бы. Тот же приём
+          применён в значке Корана. */}
+      {isFilled && (
+        <mask id={cut} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+          <rect x="0" y="0" width="24" height="24" fill="white" />
+          <path d="M12 7.3V12l3.1 1.9" fill="none"
+            stroke="black" strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round" />
+        </mask>
+      )}
+      <g mask={isFilled ? `url(#${cut})` : undefined}>
+        <circle cx="12" cy="12" r="8.4" fill={isFilled ? 'currentColor' : 'none'} />
+        {/* Стрелки на 10:10 — так их рисует и Apple: читается «часы», а не
+            круг с крестом. */}
+        {!isFilled && <path d="M12 7.3V12l3.1 1.9" fill="none" />}
+      </g>
+    </svg>
+  );
+};
 
 /** Человек — раздел «Аккаунт». */
 export const Person = ({ size = ICON_SIZE.md, isFilled = false, className, style }: SelectableProps) => (
