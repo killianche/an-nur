@@ -36,13 +36,14 @@
  * что произошло и что будет дальше.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Appearance, Check, DragHandle, ICON_SIZE, MinusCircleFill, Plus,
+  Appearance, EyeOff, ICON_SIZE,
   Typography,
 } from '../components/icons';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
+import { SettingsSheet } from '../components/ReadingSettings';
 import { TasbihPill } from '../components/DevotionalBits';
 import { azkarFontConfig, type AzkarFontId } from '../lib/azkarFonts';
 import {
@@ -56,52 +57,22 @@ import type { Theme } from '../hooks/useTheme';
 import { loadDuaData, type DuaData, type DuaEntry } from '../lib/dua';
 import { HitArea } from '../components/HitArea';
 import {
-  addToDuaList, insertIntoDuaList, moveInDuaList, onDuaListChange,
-  readDuaList, removeFromDuaList,
-} from '../lib/duaList';
+  readHiddenDua, hideDua, unhideDua, onHiddenDuaChange,
+} from '../lib/duaHidden';
 
 type Props = {
   theme: Theme;
   setTheme: (t: Theme) => void;
 };
-type Mode = 'mine' | 'all';
-
-/**
- * Что показываем при открытии раздела.
- *
- * 🔴 По умолчанию — ВСЕ дуа, а не «мой список».
- *
- * Владелец 08.09.2026: «по умолчанию сделаем, чтобы просто были все дуа, если
- * человек хочет, он может переключиться на избранные». Причина понятна и без
- * него: у нового человека избранного нет вовсе, и раздел открывался пустым —
- * приложение выглядело сломанным ровно в тот момент, когда его показывают
- * впервые.
- *
- * Выбор запоминается: кто переключился на избранные, при следующем открытии
- * снова видит их. Настройка своя, отдельным ключом — с азкарами и Кораном она
- * ничего общего не имеет.
- */
-const DUA_MODE_KEY = 'dua.mode';
-
-function readDuaMode(): Mode {
-  if (typeof window === 'undefined') return 'all';
-  return window.localStorage.getItem(DUA_MODE_KEY) === 'mine' ? 'mine' : 'all';
-}
-
-function writeDuaMode(mode: Mode) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(DUA_MODE_KEY, mode);
-}
 
 /** Дальше задержку не растим: последние карточки не должны ждать. */
 const MAX_STAGGER_MS = 240;
 
 export function DuaScreen({ theme, setTheme }: Props) {
   const [data, setData] = useState<DuaData | null>(null);
-  const [mode, setModeState] = useState<Mode>(readDuaMode);
-  const [editing, setEditing] = useState(false);
+  const [hidden, setHidden] = useState<string[]>(readHiddenDua);
+  const [hiddenOpen, setHiddenOpen] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
-  const [list, setList] = useState<string[]>(readDuaList);
   const [themeOpen, setThemeOpen] = useState(false);
   const [typographyOpen, setTypographyOpen] = useState(false);
   const themeBtnRef = useRef<HTMLButtonElement>(null);
@@ -125,13 +96,7 @@ export function DuaScreen({ theme, setTheme }: Props) {
     return () => { alive = false; };
   }, []);
 
-  useEffect(() => onDuaListChange(() => setList(readDuaList())), []);
-
-  // Выбор режима запоминается — см. `readDuaMode`.
-  const setMode = (next: Mode) => { setModeState(next); writeDuaMode(next); };
-
-  // Правка живёт только в «моём списке»: в витрине нечего переставлять.
-  useEffect(() => { if (mode !== 'mine') setEditing(false); }, [mode]);
+  useEffect(() => onHiddenDuaChange(() => setHidden(readHiddenDua())), []);
 
   const byId = useMemo(() => {
     const map = new Map<string, DuaEntry>();
@@ -139,10 +104,9 @@ export function DuaScreen({ theme, setTheme }: Props) {
     return map;
   }, [data]);
 
-  // Список хранит только id: если дуа исчезло из данных при правке
-  // сборника, запись не показывается, но из хранилища не стирается —
-  // вернётся вместе с текстом.
-  const mine = list.map(id => byId.get(id)).filter((e): e is DuaEntry => !!e);
+  // Скрытые храним по id: если дуа исчезло из сборника, запись просто не
+  // найдётся, но из хранилища не стирается — вернётся вместе с текстом.
+  const скрытые = hidden.map(id => byId.get(id)).filter((e): e is DuaEntry => !!e);
   const total = data?.entries.length ?? 0;
 
   /*
@@ -169,33 +133,30 @@ export function DuaScreen({ theme, setTheme }: Props) {
     if (undoTimer.current) window.clearTimeout(undoTimer.current);
   }, []);
 
-  const remove = useCallback((entry: DuaEntry) => {
-    const index = readDuaList().indexOf(entry.id);
-    removeFromDuaList(entry.id);
-    rememberUndo(entry.id, index < 0 ? 0 : index, entry.title_ru);
+  const скрыть = useCallback((entry: DuaEntry) => {
+    hideDua(entry.id);
+    // Место в списке для отмены не нужно: витрина идёт порядком сборника,
+    // и возвращённое дуа само встаёт на своё место.
+    rememberUndo(entry.id, 0, entry.title_ru);
   }, [rememberUndo]);
 
   /*
-   * Кнопка в витрине только добавляет.
+   * Витрина показывает всё, кроме скрытого.
    *
-   * Раньше она была переключателем и снимала дуа из списка одним
-   * касанием — та же дыра, из-за которой убрали закладку с карточек
-   * «Моего списка».  Убирать теперь можно ровно в одном месте: «Мой
-   * список» → «Изменить».  Одно действие — одно место.
+   * 🔴 Скрытие уже было в этом экране и его СНИМАЛИ — ровно потому, что
+   * вернуть спрятанное было нечем: дуа исчезало навсегда, без единой кнопки.
+   * Владелец 09.09.2026 попросил вернуть скрытие вместе с возвратом: свайп
+   * влево прячет, кнопка в шапке показывает спрятанное. Без этой кнопки
+   * фичу возвращать нельзя — это та же яма.
+   *
+   * Прежний ключ `dua.hidden` намеренно НЕ читается, ключ теперь свой
+   * (`dua.hidden.v1`): у того, кто успел что-то спрятать до снятия фичи, эти
+   * дуа не должны молча исчезнуть снова спустя месяц.
    */
-  const add = useCallback((entry: DuaEntry) => {
-    addToDuaList(entry.id);
-    setUndo(null);
-  }, []);
-
-  // Витрина показывает всё: скрытие дуа снято по решению владельца.
-  // Прежний ключ `dua.hidden` намеренно не читается — иначе у того, кто
-  // успел что-то скрыть, эти дуа остались бы невидимыми навсегда, без
-  // единой кнопки, чтобы их вернуть.
   const shown = useMemo(() => {
-    const all = data?.entries ?? [];
+    const all = (data?.entries ?? []).filter(e => !hidden.includes(e.id));
     return category === null ? all : all.filter(e => e.category === category);
-  }, [data, category]);
+  }, [data, category, hidden]);
 
   return (
     <div style={{
@@ -253,26 +214,36 @@ export function DuaScreen({ theme, setTheme }: Props) {
           Дуа
         </h1>
 
-        {/* «Изменить» стоит в шапке справа, а не отдельной строкой под
-            переключателем: у Apple вход в правку списка живёт именно
-            здесь, и рука тянется туда по привычке. */}
-        {mode === 'mine' && mine.length > 0 && (
+        {/* Кнопка скрытых — маленькая, в правом углу, и только когда есть
+            что показывать. Кнопка, которая ничего не открывает, — лишний
+            орган управления в шапке; пустой список за ней объяснить нечем. */}
+        {скрытые.length > 0 && (
           <button
-            onClick={() => setEditing(v => !v)}
+            onClick={() => setHiddenOpen(true)}
+            aria-label={`Скрытые дуа: ${скрытые.length}`}
+            title="Скрытые дуа"
+            className="icon-btn"
             style={{
-              minHeight: '34px', padding: '0 var(--space-cozy)',
-              borderRadius: 'var(--radius-pill)',
-              border: `1px solid ${editing ? 'var(--text-primary)' : 'var(--hairline)'}`,
-              background: editing
-                ? 'rgb(var(--ink-rgb) / 0.08)'
-                : 'transparent',
-              color: 'var(--text-primary)', cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
-              fontWeight: editing ? 'var(--weight-semibold)' : 'var(--weight-regular)',
-              flexShrink: 0,
+              width: '42px', height: '42px', flexShrink: 0,
+              borderRadius: 'var(--radius-control)',
+              border: '1px solid var(--hairline)',
+              background: 'rgb(var(--ink-rgb) / 0.04)',
+              color: 'var(--text-secondary)',
+              position: 'relative',
             }}
           >
-            {editing ? 'Готово' : 'Изменить'}
+            <EyeOff size={ICON_SIZE.md} />
+            <span style={{
+              position: 'absolute', top: '3px', right: '3px',
+              minWidth: '16px', height: '16px', padding: '0 4px',
+              borderRadius: 'var(--radius-pill)',
+              background: 'var(--text-primary)',
+              color: 'var(--surface)',
+              fontSize: '10px', lineHeight: '16px',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {скрытые.length}
+            </span>
           </button>
         )}
 
@@ -309,170 +280,224 @@ export function DuaScreen({ theme, setTheme }: Props) {
         </button>
       </header>
 
-      <ModeSwitch
-        mode={mode}
-        onChange={setMode}
-        mineCount={mine.length}
-        allCount={data?.entries.length ?? 0}
-      />
-
-      {mode === 'all' && total > 0 && data && data.categories.length > 1 && (
+      {total > 0 && data && data.categories.length > 1 && (
         <CategoryChips data={data} value={category} onChange={setCategory} />
       )}
 
       {!data && <Skeleton />}
 
-      {data && mode === 'mine' && (
-        mine.length === 0
-          ? <EmptyMine hasAny={total > 0} onBrowse={() => setMode('all')} />
-          : editing
-            ? (
-              <EditList items={mine} onRemove={remove} />
-            )
-            : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-margin)' }}>
-                {mine.map((e, i) => (
-                  /*
-                   * Кнопки удаления на карточке чтения нет намеренно.
-                   * Раньше закладка справа сверху убирала дуа одним
-                   * касанием — случайный тап терял собранное молча.
-                   * Убрать можно только через «Изменить», и там в два
-                   * шага.
-                   */
+      {data && (
+        total === 0
+          ? <EmptyAll />
+          : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-margin)' }}>
+              {shown.map((e, i) => (
+                // Свайпом влево карточка уезжает и открывает «Скрыть» —
+                // так убирают строку в списках iOS.
+                <SwipeToHide key={e.id} onHide={() => скрыть(e)}>
                   <DuaCard
-                    key={e.id}
                     entry={e}
-                    ordinal={i + 1}
-                    inList
                     delay={Math.min(i * 40, MAX_STAGGER_MS)}
                     prefs={prefs}
                     count={counts[e.id] ?? 0}
                     onCount={() => inc(e.id)}
                     onResetCount={() => reset(e.id)}
                   />
-                ))}
-              </div>
-            )
-      )}
-
-      {data && mode === 'all' && (
-        total === 0
-          ? <EmptyAll />
-          : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-margin)' }}>
-              {shown.map((e, i) => (
-                <DuaCard
-                  key={e.id}
-                  entry={e}
-                  inList={list.includes(e.id)}
-                  delay={Math.min(i * 40, MAX_STAGGER_MS)}
-                  onAdd={() => add(e)}
-                  prefs={prefs}
-                  count={counts[e.id] ?? 0}
-                  onCount={() => inc(e.id)}
-                  onResetCount={() => reset(e.id)}
-                />
+                </SwipeToHide>
               ))}
             </div>
           )
       )}
 
+      {hiddenOpen && (
+        <HiddenSheet
+          items={скрытые}
+          onReturn={id => unhideDua(id)}
+          onClose={() => setHiddenOpen(false)}
+        />
+      )}
+
       {undo && (
         <UndoBar
           title={undo.title}
-          onUndo={() => { insertIntoDuaList(undo.id, undo.index); setUndo(null); }}
+          onUndo={() => { unhideDua(undo.id); setUndo(null); }}
           onDismiss={() => setUndo(null)}
         />
       )}
     </div>
   );
 }
-
 /**
- * Переключатель с едущей подложкой.
+ * SwipeToHide — свайп влево открывает «Скрыть», как строка списка в iOS.
  *
- * Подложка, а не две перекрашиваемые кнопки: она показывает, что
- * состояния ровно два и они рядом.  Едет `transform`, а не `left`: это
- * композиторное свойство и оно не вызывает пересчёт вёрстки.
+ * ── Почему свайп, а не кнопка на карточке ─────────────────────────────
+ *
+ * Владелец 09.09.2026 попросил именно системный жест. У него есть и довод
+ * помимо привычки: кнопка «скрыть» на каждой карточке — это постоянно
+ * видимое разрушительное действие рядом с текстом дуа. Свайп прячет его до
+ * момента, когда человек сам за ним потянулся.
+ *
+ * ── Что здесь важно и легко сломать ───────────────────────────────────
+ *
+ * 🔴 Вертикальная прокрутка должна остаться. Пока не ясно, куда ведёт палец,
+ * жест не перехватывается: направление решается по первому заметному
+ * смещению, и если оно вертикальное — карточка не двигается вовсе.
+ *
+ * 🔴 Полный свайп прячет сразу. Так ведёт себя и системный список: увёл
+ * далеко — действие применилось, останавливаться и целиться в кнопку не
+ * нужно.
  */
-function ModeSwitch({ mode, onChange, mineCount, allCount }: {
-  mode: Mode;
-  onChange: (m: Mode) => void;
-  mineCount: number;
-  allCount: number;
+function SwipeToHide({ onHide, children }: {
+  onHide: () => void;
+  children: ReactNode;
 }) {
-  const items: { id: Mode; label: string; count: number }[] = [
-    { id: 'mine', label: 'Мой список', count: mineCount },
-    { id: 'all',  label: 'Все дуа',    count: allCount },
-  ];
-  const index = items.findIndex(i => i.id === mode);
+  const ШИРИНА = 104;   // ширина открытой кнопки
+  const ПОРОГ = 44;     // после этого кнопка залипает открытой
+  const ПОЛНЫЙ = 200;   // после этого прячем сразу, не дожидаясь нажатия
+
+  const [dx, setDx] = useState(0);
+  const [тянут, setТянут] = useState(false);
+  const старт = useRef<{ x: number; y: number; dx0: number } | null>(null);
+  const ось = useRef<'нет' | 'по-горизонтали' | 'по-вертикали'>('нет');
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    старт.current = { x: t.clientX, y: t.clientY, dx0: dx };
+    ось.current = 'нет';
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    const s = старт.current;
+    if (!s || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const пх = t.clientX - s.x;
+    const пу = t.clientY - s.y;
+
+    if (ось.current === 'нет') {
+      if (Math.abs(пх) < 8 && Math.abs(пу) < 8) return;
+      ось.current = Math.abs(пх) > Math.abs(пу) ? 'по-горизонтали' : 'по-вертикали';
+    }
+    if (ось.current !== 'по-горизонтали') return;
+
+    setТянут(true);
+    // Вправо дальше нуля не пускаем: скрывать нечего, а резинка вправо
+    // читалась бы как «сейчас что-то появится слева».
+    setDx(Math.max(-ПОЛНЫЙ - 40, Math.min(0, s.dx0 + пх)));
+  };
+
+  const onTouchEnd = () => {
+    старт.current = null;
+    setТянут(false);
+    if (-dx >= ПОЛНЫЙ) { setDx(0); onHide(); return; }
+    setDx(-dx >= ПОРОГ ? -ШИРИНА : 0);
+  };
 
   return (
-    <div
-      role="tablist"
-      style={{
-        position: 'relative',
-        display: 'flex',
-        padding: 'var(--space-tight)',
-        borderRadius: 'var(--radius-shell)',
-        background: 'rgb(var(--ink-rgb) / 0.05)',
-        border: '1px solid var(--hairline)',
-        marginBottom: 'var(--space-margin)',
-      }}
-    >
-      <span
-        aria-hidden
+    <div style={{
+      position: 'relative',
+      borderRadius: 'var(--radius-card)',
+      overflow: 'hidden',
+      // Вертикальную прокрутку страницы отдаём системе, горизонталь берём себе.
+      touchAction: 'pan-y',
+    }}>
+      <button
+        onClick={() => { setDx(0); onHide(); }}
+        aria-label="Скрыть"
         style={{
-          position: 'absolute',
-          top: 'var(--space-tight)', bottom: 'var(--space-tight)',
-          left: 'var(--space-tight)',
-          width: 'calc(50% - var(--space-tight))',
-          borderRadius: 'var(--radius-card)',
-          background: 'var(--surface)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.16), 0 4px 12px rgba(0,0,0,0.06)',
-          transform: `translateX(${index * 100}%)`,
-          transition: 'transform 0.26s cubic-bezier(0.22,1,0.36,1)',
+          position: 'absolute', top: 0, right: 0, bottom: 0,
+          width: `${ШИРИНА}px`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '6px',
+          border: 'none',
+          background: 'rgb(var(--ink-rgb) / 0.10)',
+          color: 'var(--text-primary)',
+          fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
+          cursor: 'pointer',
+          WebkitTapHighlightColor: 'transparent',
         }}
-      />
-      {items.map(it => {
-        const on = it.id === mode;
-        return (
-          <button
-            key={it.id}
-            role="tab"
-            aria-selected={on}
-            onClick={() => onChange(it.id)}
-            style={{
-              position: 'relative',
-              flex: 1, minHeight: '38px',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              gap: 'var(--space-snug)',
-              border: 'none', background: 'transparent',
-              color: on ? 'var(--text-primary)' : 'var(--text-secondary)',
-              fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
-              fontWeight: on ? 'var(--weight-semibold)' : 'var(--weight-regular)',
-              cursor: 'pointer', transition: 'color 0.2s ease',
-              WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            {it.label}
-            {it.count > 0 && (
-              <span style={{
-                fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-regular)',
-                color: on ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-                fontVariantNumeric: 'tabular-nums',
-              }}>
-                {it.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
+      >
+        <EyeOff size={ICON_SIZE.sm} />
+        Скрыть
+      </button>
+
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
+        style={{
+          transform: `translate3d(${dx}px, 0, 0)`,
+          transition: тянут ? 'none' : 'transform 220ms var(--ease-panel)',
+          willChange: 'transform',
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
 
-/** Фильтр по подборкам — горизонтальной лентой, чтобы не съедать высоту. */
+/**
+ * HiddenSheet — что спрятано и как вернуть.
+ *
+ * Открывается кнопкой в шапке. Без неё скрытие делать нельзя: прежняя
+ * редакция этого экрана прятала дуа без единого способа вернуть, и фичу
+ * пришлось снимать целиком.
+ */
+function HiddenSheet({ items, onReturn, onClose }: {
+  items: DuaEntry[];
+  onReturn: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <SettingsSheet onClose={onClose} title="Скрытые дуа">
+      <div style={{ display: 'grid', gap: 'var(--space-snug)' }}>
+        {items.length === 0 && (
+          <p style={{
+            margin: 0, padding: 'var(--space-cozy) 0',
+            fontSize: 'var(--font-subhead)', color: 'var(--text-tertiary)',
+          }}>
+            Ничего не скрыто.
+          </p>
+        )}
+        {items.map(e => (
+          <div key={e.id} style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
+            minHeight: '48px',
+            padding: '0 var(--space-cozy)',
+            borderRadius: 'var(--radius-control)',
+            border: '1px solid var(--hairline)',
+            background: 'rgb(var(--ink-rgb) / 0.03)',
+          }}>
+            <span style={{
+              flex: 1, minWidth: 0,
+              fontSize: 'var(--font-subhead)', color: 'var(--text-primary)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {e.title_ru}
+            </span>
+            <button
+              onClick={() => onReturn(e.id)}
+              style={{
+                flexShrink: 0, minHeight: '34px', padding: '0 var(--space-cozy)',
+                borderRadius: 'var(--radius-pill)',
+                border: '1px solid var(--hairline-strong)',
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: 'var(--font-footnote)',
+              }}
+            >
+              Вернуть
+            </button>
+          </div>
+        ))}
+      </div>
+    </SettingsSheet>
+  );
+}
+
 function CategoryChips({ data, value, onChange }: {
   data: DuaData;
   value: string | null;
@@ -545,16 +570,11 @@ function CategoryChips({ data, value, onChange }: {
  * нет вовсе.  Рисовать кнопку, которой нечего проиграть, — обман.
  */
 function DuaCard({
-  entry, ordinal, inList, delay, onAdd,
+  entry, delay,
   prefs, count, onCount, onResetCount,
 }: {
   entry: DuaEntry;
-  ordinal?: number;
-  inList: boolean;
   delay: number;
-  /** Добавить в мой список.  Без него кнопки нет — так карточка в
-   *  «Моём списке» остаётся без действий над списком. */
-  onAdd?: () => void;
   prefs: DuaPrefs;
   count: number;
   onCount: () => void;
@@ -583,21 +603,6 @@ function DuaCard({
         display: 'flex', alignItems: 'flex-start', gap: 'var(--space-cozy)',
         padding: 'var(--space-margin) var(--space-margin) var(--space-cozy)',
       }}>
-        {ordinal !== undefined && (
-          <span style={{
-            flexShrink: 0,
-            width: '24px', height: '24px', borderRadius: 'var(--radius-pill)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            border: '1px solid var(--hairline)',
-            fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-semibold)',
-            color: 'var(--text-tertiary)',
-            fontVariantNumeric: 'tabular-nums',
-            marginTop: '1px',
-          }}>
-            {ordinal}
-          </span>
-        )}
-
         <h3 style={{
           flex: 1, minWidth: 0, margin: 0,
           fontSize: 'var(--font-subhead)', fontWeight: 'var(--weight-semibold)',
@@ -607,42 +612,6 @@ function DuaCard({
           {entry.title_ru}
         </h3>
 
-        {onAdd && (
-          /*
-           * Крупный «+» вместо прежней закладки — решение владельца.
-           * Плюс прямо говорит, что произойдёт: дуа добавится в список.
-           * Закладка этого не говорила, её принимали за «отметить».
-           *
-           * Когда дуа уже в списке — галочка, и кнопка не нажимается.
-           * Убрать можно ровно в одном месте: «Мой список» →
-           * «Изменить».  Иначе вернулась бы потеря по случайному
-           * касанию, из-за которой закладку и убрали.
-           */
-          <button
-            onClick={inList ? undefined : onAdd}
-            disabled={inList}
-            aria-label={inList ? 'Уже в вашем списке' : `Добавить «${entry.title_ru}» в мой список`}
-            title={inList ? 'Уже в вашем списке' : 'Добавить в мой список'}
-            style={{
-              position: 'relative',
-              flexShrink: 0,
-              width: '36px', height: '36px', borderRadius: 'var(--radius-pill)',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              border: `1px solid ${inList ? 'transparent' : 'var(--hairline-strong)'}`,
-              background: inList
-                ? 'rgb(var(--ink-rgb) / 0.07)'
-                : 'rgb(var(--ink-rgb) / 0.05)',
-              color: inList ? 'var(--text-tertiary)' : 'var(--text-primary)',
-              cursor: inList ? 'default' : 'pointer',
-              marginTop: '-3px', marginRight: '-2px',
-              WebkitTapHighlightColor: 'transparent',
-              transition: 'background 0.18s ease, color 0.18s ease',
-            }}
-          >
-            <HitArea />
-            {inList ? <Check size={ICON_SIZE.md} /> : <Plus size={ICON_SIZE.md} />}
-          </button>
-        )}
       </div>
 
       <Rule />
@@ -752,228 +721,6 @@ function Rule() {
     />
   );
 }
-
-/**
- * Список в режиме правки — с перетаскиванием за хват.
- *
- * ── Почему перетаскивание, а не стрелки ───────────────────────────────
- *
- * Стрелки были моей самоделкой: у Apple порядок в списке меняют
- * перетаскиванием за хват из трёх полос справа.  Стрелками десять
- * позиций переставляются десятью нажатиями, перетаскиванием — одним
- * движением.
- *
- * Тянуть можно только за хват: `touch-action: none` стоит на нём одном,
- * поэтому за остальную площадь строки страница по-прежнему
- * прокручивается.  Если бы захват работал по всей строке, список
- * перестал бы скроллиться.
- *
- * Стрелки клавиатуры на хвате оставлены для доступности — так порядок
- * меняется и без мыши, и у Apple это работает так же.
- *
- * ── Почему удаление в два шага ─────────────────────────────────────────
- *
- * Минус слева ничего не удаляет: он открывает кнопку «Удалить».
- * Удаляет только второе касание.  Это тот самый порядок, что у Apple в
- * списках, и он защищает от случайного касания надёжнее диалога —
- * диалог люди закрывают не читая.
- */
-function EditList({ items, onRemove }: {
-  items: DuaEntry[];
-  onRemove: (entry: DuaEntry) => void;
-}) {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dragDy, setDragDy] = useState(0);
-  // Какая строка раскрыла кнопку «Удалить».  Одна за раз: две открытые
-  // красные кнопки на экране — приглашение промахнуться.
-  const [armed, setArmed] = useState<string | null>(null);
-
-  const startY = useRef(0);
-
-  const rowsNow = () => Array.from(
-    boxRef.current?.querySelectorAll<HTMLElement>('[data-dua-row]') ?? [],
-  );
-
-  const onPointerDown = (id: string) => (e: React.PointerEvent) => {
-    e.preventDefault();
-    // Захват указателя нужен, чтобы палец, ушедший за пределы хвата,
-    // продолжал тянуть строку.  В try, потому что на неактивном
-    // указателе браузер бросает NotFoundError, и падение обработчика
-    // сорвало бы весь жест.
-    try { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* не критично */ }
-    setDragId(id);
-    setDragDy(0);
-    setArmed(null);
-    startY.current = e.clientY;
-  };
-
-  const onPointerMove = (id: string) => (e: React.PointerEvent) => {
-    if (dragId !== id) return;
-    setDragDy(e.clientY - startY.current);
-
-    // Куда переносить: строка, чью середину пересёк палец.  Пересчитываем
-    // из DOM на каждом движении — после переноса порядок и координаты
-    // меняются, кэшировать нельзя.
-    const rows = rowsNow();
-    const from = rows.findIndex(r => r.dataset.duaRow === id);
-    if (from === -1) return;
-    let to = from;
-    for (let i = 0; i < rows.length; i++) {
-      if (i === from) continue;
-      const r = rows[i].getBoundingClientRect();
-      const middle = r.top + r.height / 2;
-      if (i < from && e.clientY < middle) { to = i; break; }
-      if (i > from && e.clientY > middle) to = i;
-    }
-    if (to !== from) {
-      moveInDuaList(id, to - from);
-      // Точку отсчёта переносим вместе со строкой, иначе смещение
-      // накапливается и строка «убегает» от пальца.
-      startY.current = e.clientY;
-      setDragDy(0);
-    }
-  };
-
-  const endDrag = () => { setDragId(null); setDragDy(0); };
-
-  const onHandleKey = (id: string) => (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowUp')   { e.preventDefault(); moveInDuaList(id, -1); }
-    if (e.key === 'ArrowDown') { e.preventDefault(); moveInDuaList(id, 1); }
-  };
-
-  return (
-    <div
-      ref={boxRef}
-      style={{
-        display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)',
-        gap: 'var(--space-snug)',
-      }}
-    >
-      {items.map((e, i) => {
-        const dragging = dragId === e.id;
-        return (
-          <div
-            key={e.id}
-            data-dua-row={e.id}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
-              minHeight: '56px', padding: 'var(--space-snug)',
-              borderRadius: 'var(--radius-card)',
-              border: `1px solid ${dragging ? 'var(--hairline-strong)' : 'var(--hairline)'}`,
-              background: 'var(--surface)',
-              overflow: 'hidden',
-              // Поднимаем перетаскиваемую строку над остальными: без
-              // этого непонятно, что именно ты держишь.
-              transform: dragging ? `translateY(${dragDy}px) scale(1.015)` : 'none',
-              boxShadow: dragging ? '0 10px 26px rgba(0,0,0,0.28)' : 'none',
-              zIndex: dragging ? 2 : 1,
-              position: 'relative',
-              transition: dragging
-                ? 'box-shadow 0.18s ease'
-                : 'transform 0.2s cubic-bezier(0.22,1,0.36,1), box-shadow 0.18s ease',
-              touchAction: 'pan-y',
-            }}
-          >
-            <button
-              onClick={() => setArmed(a => (a === e.id ? null : e.id))}
-              aria-label={armed === e.id ? 'Отменить удаление' : `Удалить ${e.title_ru}`}
-              aria-expanded={armed === e.id}
-              style={{
-                position: 'relative',
-                flexShrink: 0,
-                width: '34px', height: '34px', borderRadius: 'var(--radius-pill)',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                border: 'none', background: 'transparent',
-                color: 'var(--danger)', cursor: 'pointer',
-                WebkitTapHighlightColor: 'transparent',
-                // Поворот минуса — тот же знак, что у Apple: «нажатие
-                // принято, подтверди справа».
-                transform: armed === e.id ? 'rotate(90deg)' : 'none',
-                transition: 'transform 0.22s cubic-bezier(0.22,1,0.36,1)',
-              }}
-            >
-              <HitArea />
-              <MinusCircleFill size={ICON_SIZE.md} />
-            </button>
-
-            <span style={{
-              flexShrink: 0,
-              width: '22px', height: '22px', borderRadius: 'var(--radius-pill)',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              background: 'rgb(var(--ink-rgb) / 0.07)',
-              fontSize: 'var(--font-caption2)', fontWeight: 'var(--weight-semibold)',
-              color: 'var(--text-secondary)',
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {i + 1}
-            </span>
-
-            <span style={{
-              flex: 1, minWidth: 0,
-              fontSize: 'var(--font-subhead)', fontWeight: 'var(--weight-regular)',
-              color: 'var(--text-primary)',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {e.title_ru}
-            </span>
-
-            {armed === e.id ? (
-              <button
-                onClick={() => { setArmed(null); onRemove(e); }}
-                style={{
-                  flexShrink: 0, minHeight: '34px', padding: '0 var(--space-cozy)',
-                  borderRadius: 'var(--radius-pill)', border: 'none',
-                  background: 'var(--danger)',
-                  color: '#fff', cursor: 'pointer',
-                  fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
-                  fontWeight: 'var(--weight-semibold)',
-                  animation: 'card-in 0.18s ease both',
-                }}
-              >
-                Удалить
-              </button>
-            ) : (
-              <button
-                onPointerDown={onPointerDown(e.id)}
-                onPointerMove={onPointerMove(e.id)}
-                onPointerUp={endDrag}
-                onPointerCancel={endDrag}
-                onKeyDown={onHandleKey(e.id)}
-                aria-label={`${e.title_ru}: изменить порядок`}
-                style={{
-                  flexShrink: 0,
-                  width: '38px', height: '38px', borderRadius: 'var(--radius-control)',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  border: 'none', background: 'transparent',
-                  color: 'var(--text-tertiary)',
-                  cursor: dragging ? 'grabbing' : 'grab',
-                  // Только на хвате: за остальную площадь строки страница
-                  // должна прокручиваться как обычно.
-                  touchAction: 'none',
-                  WebkitTapHighlightColor: 'transparent',
-                }}
-              >
-                <DragHandle size={ICON_SIZE.md} />
-              </button>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
- * Всплывашка отмены.
- *
- * Портал в body: экран задаёт свой контекст наложения, и без портала
- * всплывашка уехала бы под панель вкладок — та же ловушка, что была с
- * листом городов на экране намаза.
- *
- * Живёт шесть секунд.  Меньше — не успеть прочитать и дотянуться,
- * больше — начинает мешать.
- */
 function UndoBar({ title, onUndo, onDismiss }: {
   title: string;
   onUndo: () => void;
@@ -1039,14 +786,6 @@ function UndoBar({ title, onUndo, onDismiss }: {
     document.body,
   );
 }
-
-/**
- * Розетка — та же форма, что обрамляет номер аята в мусхафе.
- *
- * Вместо иконки из общего набора: пустое состояние — единственное
- * место, где у раздела есть возможность выглядеть своим, а не
- * «экраном приложения».
- */
 function Rosette({ size = 76 }: { size?: number }) {
   const petals = Array.from({ length: 8 }, (_, i) => (i * 360) / 8);
   return (
@@ -1077,18 +816,6 @@ function Rosette({ size = 76 }: { size?: number }) {
         <circle cx="50" cy="50" r="3" fill="currentColor" stroke="none" />
       </g>
     </svg>
-  );
-}
-
-function EmptyMine({ hasAny, onBrowse }: { hasAny: boolean; onBrowse: () => void }) {
-  return (
-    <EmptyShell
-      title="Здесь будет ваш порядок"
-      text={hasAny
-        ? 'Отметьте закладкой дуа, которые читаете часто. Они соберутся здесь в том порядке, в каком вы их читаете, — порядок можно менять.'
-        : 'Сюда попадут дуа, которые вы отметите закладкой. Сначала в разделе должны появиться сами тексты.'}
-      action={hasAny ? { label: 'Смотреть все дуа', onClick: onBrowse } : undefined}
-    />
   );
 }
 

@@ -858,71 +858,47 @@ group('Города намаза', () => {
   check('потолок списка разумный', MAX_CITIES >= 4 && MAX_CITIES <= 20, true);
 });
 
-// ─── Мой список дуа ───────────────────────────────────────────────────
+// ─── Скрытые дуа ──────────────────────────────────────────────────────
 //
-// Порядок в списке — порядок чтения, его задаёт человек. Молчаливая
-// потеря порядка или дубль после перезахода на экран не видны в типах.
-const duaMod = await import(pathToFileURL(resolve(ROOT, 'src/lib/duaList.ts')).href);
-const {
-  readDuaList, writeDuaList, addToDuaList, removeFromDuaList,
-  toggleInDuaList, moveInDuaList, isInDuaList, clearDuaList,
-  insertIntoDuaList,
-} = duaMod;
+// Раздел дуа переделан 09.09.2026: «мой список» убран совсем, вместо него
+// витрина со скрытием свайпом. Модель обратная прежней — раньше человек
+// собирал подборку и видел пустой экран, теперь видит всё и убирает лишнее.
+//
+// 🔴 Скрытие в этом экране УЖЕ БЫЛО и его снимали: спрятанное дуа исчезало
+// навсегда, вернуть было нечем. Поэтому главное свойство здесь — обратимость,
+// и оно проверяется тестом, а не обещанием.
+const скрытыеМод = await import(pathToFileURL(resolve(ROOT, 'src/lib/duaHidden.ts')).href);
+const { readHiddenDua, hideDua, unhideDua, isDuaHidden } = скрытыеМод;
 
-group('Мой список дуа', () => {
-  localStorage.removeItem('dua.list');
-  check('пустой список на старте', readDuaList(), []);
+group('Скрытые дуа', () => {
+  localStorage.removeItem('dua.hidden.v1');
+  check('на старте не скрыто ничего', readHiddenDua(), []);
 
-  addToDuaList('dua-002');
-  addToDuaList('dua-001');
-  check('порядок — тот, в котором добавляли', readDuaList(), ['dua-002', 'dua-001']);
-
-  addToDuaList('dua-002');
-  check('повторное добавление не плодит дубль', readDuaList(), ['dua-002', 'dua-001']);
-
+  hideDua('dua-002');
+  check('скрытие запоминается', readHiddenDua(), ['dua-002']);
   check('принадлежность проверяется',
-    [isInDuaList('dua-001'), isInDuaList('dua-999')], [true, false]);
+    [isDuaHidden('dua-002'), isDuaHidden('dua-001')], [true, false]);
 
-  check('переключатель снимает', toggleInDuaList('dua-002'), false);
-  check('и список сократился', readDuaList(), ['dua-001']);
-  check('переключатель возвращает', toggleInDuaList('dua-002'), true);
-  check('в конец, а не на прежнее место', readDuaList(), ['dua-001', 'dua-002']);
+  hideDua('dua-002');
+  check('повторное скрытие не плодит дубль', readHiddenDua(), ['dua-002']);
 
-  addToDuaList('dua-003');
-  moveInDuaList('dua-003', -1);
-  check('перестановка вверх', readDuaList(), ['dua-001', 'dua-003', 'dua-002']);
-  moveInDuaList('dua-001', -1);
-  check('за край не уезжает', readDuaList(), ['dua-001', 'dua-003', 'dua-002']);
-  moveInDuaList('dua-002', 1);
-  check('и за нижний тоже', readDuaList(), ['dua-001', 'dua-003', 'dua-002']);
+  // Главное свойство: скрытое возвращается.
+  unhideDua('dua-002');
+  check('возврат работает', readHiddenDua(), []);
+  unhideDua('dua-002');
+  check('возврат несуществующего безвреден', readHiddenDua(), []);
 
-  removeFromDuaList('dua-003');
-  check('удаление работает', readDuaList(), ['dua-001', 'dua-002']);
+  // Старый ключ НЕ читается: у того, кто прятал дуа до снятия фичи, они не
+  // должны молча исчезнуть снова спустя месяц.
+  localStorage.setItem('dua.hidden', '["dua-777"]');
+  check('прежний ключ не подхватывается', readHiddenDua(), []);
 
-  // Хранилище чинится, а не роняет экран.
-  localStorage.setItem('dua.list', 'не json');
-  check('битое хранилище даёт пустой список', readDuaList(), []);
-  localStorage.setItem('dua.list', '["a", "a", 5, null, "b"]');
-  check('мусор и дубли отбрасываются', readDuaList(), ['a', 'b']);
-
-  clearDuaList();
-  check('очистка работает', readDuaList(), []);
-
-  // Возврат после удаления обязан ставить дуа на прежнее место: иначе
-  // «Вернуть» ломает порядок чтения и отмена перестаёт быть отменой.
-  writeDuaList(['a', 'b', 'c']);
-  removeFromDuaList('b');
-  check('удалили середину', readDuaList(), ['a', 'c']);
-  insertIntoDuaList('b', 1);
-  check('вернули на своё место', readDuaList(), ['a', 'b', 'c']);
-
-  insertIntoDuaList('z', 99);
-  check('индекс за концом зажимается', readDuaList(), ['a', 'b', 'c', 'z']);
-  insertIntoDuaList('z', -5);
-  check('и за началом тоже, без дубля', readDuaList(), ['z', 'a', 'b', 'c']);
-  insertIntoDuaList('a', 0);
-  check('повторная вставка переносит, а не дублирует', readDuaList(), ['a', 'z', 'b', 'c']);
-  clearDuaList();
+  // Битое хранилище не роняет экран.
+  localStorage.setItem('dua.hidden.v1', 'не json');
+  check('битое хранилище даёт пустой список', readHiddenDua(), []);
+  localStorage.setItem('dua.hidden.v1', '["a", 5, null, "b"]');
+  check('мусор отбрасывается', readHiddenDua(), ['a', 'b']);
+  localStorage.removeItem('dua.hidden.v1');
 });
 
 // ─── Стек экранов ─────────────────────────────────────────────────────
