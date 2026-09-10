@@ -46,10 +46,23 @@ if (группы.data.length === 0) {
 const пауза = мс => new Promise(r => setTimeout(r, мс));
 
 async function найтиГотовые() {
+  const нужный = process.argv[2];
   for (let попытка = 1; попытка <= 10; попытка++) {
-    const ответ = await ascGet(`/v1/apps/${APP}/builds`, credentials, { limit: 20 });
+    // 🔴 Точный фильтр по номеру сборки, а не «первые двадцать».
+    //
+    // `/v1/apps/{id}/builds` без сортировки отдаёт сборки в произвольном
+    // порядке: 10.09.2026 первые десять пришли как «2, 1, 26, 6, 8, 16, 15,
+    // 14, 7, 13». Пока сборок было меньше двадцати, это не мешало; с 32-й
+    // нужная просто не попадала в выдачу. Сборка 31 стояла обработанной и
+    // ни к одной группе не привязанной, а скрипт её не видел.
+    //
+    // Похоже, именно это и было «недостоверным эндпоинтом» из комментария
+    // выше: сборку «теряли» не из-за задержки Apple, а из-за порядка выдачи.
+    // Повторы оставлены — задержка обработки у Apple бывает и на самом деле.
+    const ответ = await ascGet('/v1/builds', credentials, нужный
+      ? { 'filter[app]': APP, 'filter[version]': String(нужный), limit: 5 }
+      : { 'filter[app]': APP, sort: '-uploadedDate', limit: 20 });
     const список = ответ.data.filter(b => b.attributes.processingState === 'VALID');
-    const нужный = process.argv[2];
     if (!нужный ? список.length > 0
       : список.some(b => b.attributes.version === String(нужный))) return список;
     if (попытка < 10) {

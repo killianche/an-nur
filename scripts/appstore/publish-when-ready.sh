@@ -39,7 +39,9 @@ build="${1:?укажите номер сборки}"
   node --input-type=module -e "
 import { credentialsFromEnv, ascGet } from './scripts/appstore/asc-client.mjs';
 const c = credentialsFromEnv();
-const b = await ascGet('/v1/apps/6802455200/builds', c, { limit: 20 });
+// Точный фильтр по номеру: список без сортировки идёт в произвольном
+// порядке, и с 32-й сборки нужная переставала попадать в первые двадцать.
+const b = await ascGet('/v1/builds', c, { 'filter[app]': '6802455200', 'filter[version]': '${build}', limit: 5 });
 const x = b.data.find(v => v.attributes.version === '${build}');
 console.log(x ? x.attributes.processingState : 'нет');
 " 2>/dev/null
