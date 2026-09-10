@@ -376,29 +376,26 @@ function SurahList({ surahs, onSelect, grouped = true }: {
   const звучит = audioState === 'playing' ? currentSurah : null;
 
   return (
-    <div style={{ display: 'grid', gap: 'var(--space-margin)' }}>
+    <div style={{ display: 'grid', gap: 'var(--space-section)' }}>
       {секции.map(({ juz, items }) => (
         <section key={juz || 'all'} style={{ display: 'grid', gap: 'var(--space-snug)' }}>
           {juz > 0 && <JuzHeading juz={juz} />}
-          {/* 🔴 ОДИН столбец, сгруппированным островком — как список в iOS.
-              Владелец 08.09.2026: «раньше они были в один столбец просто,
-              сделай так же, просто оставь джузы».
+          {/* 🔴 Островка с заливкой больше НЕТ.
+              Владелец 10.09.2026: «не нравится, как суры написаны, тёмный фон
+              не нравится». Заливка была `rgb(ink / 0.04)` — на светлой теме
+              это серый прямоугольник на белом листе, и весь экран читался
+              как набор серых плашек, а не как оглавление книги.
 
-              Две колонки продержались два дня и оба раза были названы плохими,
-              и причина у этого не вкусовая: в 175 px не помещается ни смысл
-              суры, ни длинное название, а у джузов 3, 4, 6, 7 подряд идёт по
-              одной суре — правая колонка пустовала. Один столбец снимает обе
-              беды сразу: каждой строке достаётся вся ширина.
+              Строки теперь лежат прямо на фоне, разделённые волоском с
+              отступом слева. Это тот же приём, что в списках «Музыки» и
+              «Подкастов»: содержимое несёт себя само, а фон не спорит с
+              текстом. Заодно исчезла рамка — на светлой теме она давала
+              вторую линию рядом с волоском.
 
-              Строки живут в одном скруглённом островке с волосками между
-              ними — это стандартная сгруппированная таблица iOS, и она же
-              честно показывает, что джуз это один блок, а не россыпь. */}
-          <div style={{
-            borderRadius: '16px',
-            overflow: 'hidden',
-            background: 'rgb(var(--ink-rgb) / 0.04)',
-            border: '1px solid var(--hairline)',
-          }}>
+              Один столбец сохранён намеренно (владелец 08.09.2026): в 175 px
+              не помещается ни смысл суры, ни длинное название, а у джузов
+              3, 4, 6, 7 подряд идёт по одной суре — вторая колонка пустовала. */}
+          <div>
             {items.map((m, i) => (
               <SurahRow
                 key={m.number}
@@ -494,10 +491,36 @@ function JuzHeading({ juz }: { juz: number }) {
  * ведёт себя сгруппированная таблица в iOS: разделитель начинается под
  * текстом, а не под иконкой.
  */
+/**
+ * Не больше двух строк — и перенос, а не многоточие.
+ *
+ * 🔴 Замер по всем 114 сурам: при одной строке с многоточием на 390 px
+ * обрезались 3 подписи («Семейство Имрана · 200 а…»), а на 320 px — 41
+ * подпись и 7 имён. Обрезанное имя суры — это потерянный смысл строки, и
+ * одна строка подписи не стоит того. Строка, которой не хватило места,
+ * становится выше на строку текста; остальные не меняются.
+ */
+const TWO_LINES = {
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  // Переносим по словам, а не внутри слова: `anywhere` разрешал рвать
+  // русское слово посередине ради лишнего символа на строке.
+  overflowWrap: 'break-word',
+  // Две строки выравниваются по длине: иначе на второй оставалось одно
+  // слово, и строка выглядела оборванной.
+  textWrap: 'balance',
+} as const;
+
+/** Ширина колонки номеров и высота строки — в одном месте: их использует и волосок. */
+const NUMBER_COLUMN = 26;
+const ROW_HEIGHT = 64;
+
 function SurahRow({ meta, onClick, last = false, sounding = false }: {
   meta: SurahMeta;
   onClick: () => void;
-  /** Последняя в островке — под ней волоска нет. */
+  /** Последняя в разделе — под ней волоска нет. */
   last?: boolean;
   /** Звучит ли именно эта сура. Приходит сверху: подписка на звук одна на
    *  весь список, иначе перерисовывались бы все 114 строк. */
@@ -512,7 +535,14 @@ function SurahRow({ meta, onClick, last = false, sounding = false }: {
         position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        background: pressed ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent',
+        // Подсветка нажатия скруглена и не доходит до краёв: без островка
+        // прямоугольник во всю ширину выглядел бы как вернувшаяся плашка.
+        borderRadius: 'var(--radius-control)',
+        background: pressed
+          ? 'rgb(var(--ink-rgb) / 0.05)'
+          : sounding
+            ? 'rgb(var(--ink-rgb) / 0.03)'
+            : 'transparent',
         transition: 'background var(--dur-fast) var(--ease-standard)',
       }}
     >
@@ -524,65 +554,81 @@ function SurahRow({ meta, onClick, last = false, sounding = false }: {
         onPointerCancel={() => setPressed(false)}
         style={{
           flex: 1, minWidth: 0,
-          display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
-          padding: 'var(--space-snug) 0 var(--space-snug) var(--space-cozy)',
-          minHeight: '62px',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-cozy)',
+          padding: 'var(--space-cozy) 0',
+          minHeight: `${ROW_HEIGHT}px`,
           border: 'none', background: 'transparent',
           cursor: 'pointer', textAlign: 'left',
           fontFamily: 'inherit', color: 'inherit',
           WebkitTapHighlightColor: 'transparent',
         }}
       >
-        {/* Номер в ромбе — розетка мусхафа. */}
+        {/* 🔴 Номер — просто цифра, без ромба.
+            Ромб-розетка был декорацией: на 28 px он читался как значок, а не
+            как номер, и вместе с заливкой островка добавлял экрану третий
+            графический слой. В колонке одинаковой ширины с табличными
+            цифрами номера выстраиваются по правому краю сами, и глаз идёт
+            по списку без зацепок. */}
         <span aria-hidden style={{
           flexShrink: 0,
-          width: '28px', height: '28px',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          transform: 'rotate(45deg)',
-          border: '1px solid var(--hairline-strong)',
-          borderRadius: '9px',
+          width: `${NUMBER_COLUMN}px`,
+          textAlign: 'right',
+          fontSize: 'var(--font-footnote)',
+          lineHeight: 'var(--leading-footnote)',
+          fontWeight: 'var(--weight-semibold)',
+          color: sounding ? 'var(--text-primary)' : 'var(--text-tertiary)',
+          fontVariantNumeric: 'tabular-nums',
         }}>
-          <span style={{
-            transform: 'rotate(-45deg)',
-            fontSize: 'var(--font-caption2)',
-            fontWeight: 'var(--weight-semibold)',
-            color: 'var(--text-secondary)',
-            fontVariantNumeric: 'tabular-nums',
-          }}>
-            {meta.number}
-          </span>
+          {meta.number}
         </span>
 
-        <span style={{ flex: 1, minWidth: 0, display: 'grid', gap: '1px' }}>
+        <span style={{ flex: 1, minWidth: 0, display: 'grid', gap: '2px' }}>
+          {/* Имя суры выросло с 15 px до 17 — это базовый кегль системы, и
+              именно по нему человек ищет суру. Прежние 15 полужирных рядом
+              с 11-пиксельной подписью читались как заголовок карточки, а не
+              как строка оглавления. */}
           <span style={{
-            fontSize: 'var(--font-subhead)',
-            lineHeight: 'var(--leading-subhead)',
+            fontSize: 'var(--font-body)',
+            lineHeight: 'var(--leading-body)',
             fontWeight: 'var(--weight-semibold)',
             color: 'var(--text-primary)',
             letterSpacing: 'var(--tracking-tight)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            ...TWO_LINES,
           }}>
             {meta.transliteration}
           </span>
+          {/* Подпись — 13 px вместо 11: 11 это нижняя граница шкалы, она для
+              счётчиков и меток, а не для строки, которую читают. */}
           <span style={{
-            fontSize: 'var(--font-caption2)',
-            lineHeight: 'var(--leading-caption2)',
+            fontSize: 'var(--font-footnote)',
+            lineHeight: 'var(--leading-footnote)',
             color: 'var(--text-tertiary)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            ...TWO_LINES,
           }}>
-            {meta.russian} · {meta.ayahs} {ayahWord(meta.ayahs)}
+            {/* Два неразрывных пробела, и оба по делу. Число склеено с
+                «аятов»: при переносе «200» оставалось на первой строке, а
+                «аятов» уезжало на вторую. Точка-разделитель склеена с
+                предыдущим словом: иначе вторая строка начиналась с «· 7
+                аятов», а разделитель по правилам набора остаётся в конце
+                строки. */}
+            {`${meta.russian}\u00A0· ${meta.ayahs}\u00A0${ayahWord(meta.ayahs)}`}
           </span>
         </span>
 
+        {/* Арабское название — единственное украшение строки, и теперь оно
+            им и работает: крупнее прежнего и заметнее по тону. */}
         <span
           dir="rtl"
           lang="ar"
           style={{
             flexShrink: 0,
-            maxWidth: '38%',
+            maxWidth: '34%',
+            paddingInlineStart: 'var(--space-snug)',
             fontFamily: "'KFGQPC Uthmanic Hafs v22', serif",
-            fontSize: 'var(--font-title3)',
-            lineHeight: 1.25,
+            // От ширины экрана: на 320 px полные 22 px отъедали у имени
+            // столько места, что обрезались 7 названий и 41 подпись из 114.
+            fontSize: 'clamp(17px, 5.4vw, 22px)',
+            lineHeight: 1.3,
             color: 'var(--text-secondary)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}
@@ -602,18 +648,20 @@ function SurahRow({ meta, onClick, last = false, sounding = false }: {
         className="icon-btn"
         style={{
           flexShrink: 0,
-          width: '44px', height: '44px',
-          marginRight: 'var(--space-tight)',
+          width: '40px', height: '40px',
+          marginInlineStart: 'var(--space-tight)',
           color: sounding ? 'var(--text-primary)' : 'var(--text-tertiary)',
         }}
       >
         {sounding ? <Pause size={ICON_SIZE.sm} /> : <Play size={ICON_SIZE.sm} />}
       </button>
 
-      {/* Волосок между строками — с отступом слева, как в списках iOS. */}
+      {/* Волосок начинается там же, где имя суры: колонка номеров остаётся
+          свободной, и список читается как один столбец, а не как таблица. */}
       {!last && (
         <span aria-hidden style={{
-          position: 'absolute', left: 'calc(var(--space-cozy) + 28px + var(--space-snug))',
+          position: 'absolute',
+          left: `calc(${NUMBER_COLUMN}px + var(--space-cozy))`,
           right: 0, bottom: 0, height: '1px',
           background: 'var(--hairline)',
         }} />
