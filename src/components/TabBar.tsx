@@ -166,7 +166,13 @@ export function TabBar({ active, onSelect }: {
               type="button"
               onClick={() => {
                 if (tab.id === active) {
-                  if (tab.id !== 'quran') return;
+                  // Двойной тап по активной вкладке возвращает длинный
+                  // список наверх. «Коран» — оглавление из 114 сур, «Дуа» —
+                  // сборник, который листают вниз (владелец 10.09.2026:
+                  // «дважды кликаю на кнопку дуа — пускай прокручивается
+                  // вверх»). Экраны прокручивают само окно, поэтому
+                  // обработчик в App один на обе.
+                  if (tab.id !== 'quran' && tab.id !== 'dua') return;
                   const now = performance.now();
                   const previous = lastActiveTapRef.current;
                   const isDoubleTap = previous?.id === tab.id

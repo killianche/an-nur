@@ -37,11 +37,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { GLASS_BLUR } from '../lib/glass';
 import { createPortal } from 'react-dom';
-import {
-  Appearance, EyeOff, ICON_SIZE,
-  Typography,
-} from '../components/icons';
+import { Appearance, EyeOff, ICON_SIZE, Typography, More, Eye } from '../components/icons';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
 import { SettingsSheet } from '../components/ReadingSettings';
 import { TasbihPill } from '../components/DevotionalBits';
@@ -145,9 +143,10 @@ export function DuaScreen({ theme, setTheme }: Props) {
    *
    * 🔴 Скрытие уже было в этом экране и его СНИМАЛИ — ровно потому, что
    * вернуть спрятанное было нечем: дуа исчезало навсегда, без единой кнопки.
-   * Владелец 09.09.2026 попросил вернуть скрытие вместе с возвратом: свайп
-   * влево прячет, кнопка в шапке показывает спрятанное. Без этой кнопки
-   * фичу возвращать нельзя — это та же яма.
+   * Владелец 09.09.2026 попросил вернуть скрытие вместе с возвратом, а
+   * 10.09.2026 — делать это не свайпом, а меню «три точки» на карточке:
+   * «Скрыть» в витрине, «Вернуть» в скрытых. Кнопка в шапке показывает
+   * спрятанное. Без неё фичу возвращать нельзя — это та же яма.
    *
    * Прежний ключ `dua.hidden` намеренно НЕ читается, ключ теперь свой
    * (`dua.hidden.v1`): у того, кто успел что-то спрятать до снятия фичи, эти
@@ -220,6 +219,7 @@ export function DuaScreen({ theme, setTheme }: Props) {
         {скрытые.length > 0 && (
           <button
             onClick={() => setHiddenOpen(true)}
+            // Число скрытых — только для экранного диктора: на экране его нет.
             aria-label={`Скрытые дуа: ${скрытые.length}`}
             title="Скрытые дуа"
             className="icon-btn"
@@ -229,21 +229,14 @@ export function DuaScreen({ theme, setTheme }: Props) {
               border: '1px solid var(--hairline)',
               background: 'rgb(var(--ink-rgb) / 0.04)',
               color: 'var(--text-secondary)',
-              position: 'relative',
             }}
           >
+            {/* 🔴 Без счётчика. Владелец 10.09.2026: «эти цифры не нужны,
+                чтобы глаза не мозолил». Кружок с числом — это язык
+                уведомлений: он зовёт открыть и сбросить, а скрытые дуа
+                ничего не ждут. Сама кнопка и так появляется только когда
+                скрытое есть. */}
             <EyeOff size={ICON_SIZE.md} />
-            <span style={{
-              position: 'absolute', top: '3px', right: '3px',
-              minWidth: '16px', height: '16px', padding: '0 4px',
-              borderRadius: 'var(--radius-pill)',
-              background: 'var(--text-primary)',
-              color: 'var(--surface)',
-              fontSize: '10px', lineHeight: '16px',
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {скрытые.length}
-            </span>
           </button>
         )}
 
@@ -292,18 +285,23 @@ export function DuaScreen({ theme, setTheme }: Props) {
           : (
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-margin)' }}>
               {shown.map((e, i) => (
-                // Свайпом влево карточка уезжает и открывает «Скрыть» —
-                // так убирают строку в списках iOS.
-                <SwipeToHide key={e.id} onHide={() => скрыть(e)}>
-                  <DuaCard
-                    entry={e}
-                    delay={Math.min(i * 40, MAX_STAGGER_MS)}
-                    prefs={prefs}
-                    count={counts[e.id] ?? 0}
-                    onCount={() => inc(e.id)}
-                    onResetCount={() => reset(e.id)}
-                  />
-                </SwipeToHide>
+                <DuaCard
+                  key={e.id}
+                  entry={e}
+                  delay={Math.min(i * 40, MAX_STAGGER_MS)}
+                  prefs={prefs}
+                  count={counts[e.id] ?? 0}
+                  onCount={() => inc(e.id)}
+                  onResetCount={() => reset(e.id)}
+                  menu={
+                    <CardMenu
+                      title={e.title_ru}
+                      label="Скрыть"
+                      icon={<EyeOff size={ICON_SIZE.sm} />}
+                      onAction={() => скрыть(e)}
+                    />
+                  }
+                />
               ))}
             </div>
           )
@@ -328,132 +326,156 @@ export function DuaScreen({ theme, setTheme }: Props) {
   );
 }
 /**
- * SwipeToHide — свайп влево открывает «Скрыть», как строка списка в iOS.
+ * CardMenu — три точки и всплывающее меню с одним действием.
  *
- * ── Почему свайп, а не кнопка на карточке ─────────────────────────────
+ * ── Почему меню, а не свайп ───────────────────────────────────────────
  *
- * Владелец 09.09.2026 попросил именно системный жест. У него есть и довод
- * помимо привычки: кнопка «скрыть» на каждой карточке — это постоянно
- * видимое разрушительное действие рядом с текстом дуа. Свайп прячет его до
- * момента, когда человек сам за ним потянулся.
+ * Владелец 10.09.2026 попросил убрать скрытие свайпом и поставить в угол
+ * карточки три точки. Свайп был невидим — о нём нужно знать заранее, — и
+ * спорил с системным «назад», для чего пришлось вырезать полосу у края.
+ * Кнопка видна сразу и ни с чем не спорит.
  *
- * ── Что здесь важно и легко сломать ───────────────────────────────────
+ * ── Почему через портал ───────────────────────────────────────────────
  *
- * 🔴 Вертикальная прокрутка должна остаться. Пока не ясно, куда ведёт палец,
- * жест не перехватывается: направление решается по первому заметному
- * смещению, и если оно вертикальное — карточка не двигается вовсе.
+ * У карточки `overflow: hidden` и анимация появления на `transform`. Внутри
+ * такого предка всплывающее окно обрезалось бы краем карточки, а
+ * `position: fixed` отсчитывался бы от карточки, а не от экрана. Меню
+ * рисуется в `body` и ставится по прямоугольнику кнопки.
  *
- * 🔴 Возврат назад важнее скрытия. Системный жест «назад» начинается у ЛЕВОГО
- * края и ведёт вправо. Поэтому здесь два ограничения, и оба обязательны:
- *
- *   • касание, начатое в полосе у левого края, не берётся вовсе — там
- *     распоряжается «назад», и спорить с ним нельзя;
- *   • из закрытого состояния жест берётся, только если тянут ВЛЕВО. Движение
- *     вправо посреди карточки к скрытию отношения не имеет, и перехватывать
- *     его незачем.
- *
- * Уже открытую карточку вправо закрывать можно — там жест наш, и «назад» в
- * это время не начинается: палец не у края.
- *
- * 🔴 Полный свайп прячет сразу. Так ведёт себя и системный список: увёл
- * далеко — действие применилось, останавливаться и целиться в кнопку не
- * нужно.
+ * Закрывается касанием мимо, прокруткой и Escape; при открытии фокус
+ * переходит на пункт — для клавиатуры и экранного диктора.
  */
-function SwipeToHide({ onHide, children }: {
-  onHide: () => void;
-  children: ReactNode;
+function CardMenu({ title, label, icon, onAction }: {
+  /** Название карточки — для подписи кнопки у экранного диктора. */
+  title: string;
+  label: string;
+  icon: ReactNode;
+  onAction: () => void;
 }) {
-  const ШИРИНА = 104;   // ширина открытой кнопки
-  const ПОРОГ = 44;     // после этого кнопка залипает открытой
-  const ПОЛНЫЙ = 200;   // после этого прячем сразу, не дожидаясь нажатия
-  /** Полоса у левого края, где распоряжается системный жест «назад». */
-  const КРАЙ = 32;
+  const [place, setPlace] = useState<{ top: number; right: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const itemRef = useRef<HTMLButtonElement>(null);
+  /** Меню открыли с клавиатуры — тогда и только тогда переводим фокус. */
+  const сКлавиатуры = useRef(false);
+  const open = place !== null;
 
-  const [dx, setDx] = useState(0);
-  const [тянут, setТянут] = useState(false);
-  const старт = useRef<{ x: number; y: number; dx0: number } | null>(null);
-  const ось = useRef<'нет' | 'по-горизонтали' | 'по-вертикали'>('нет');
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length !== 1) return;
-    const t = e.touches[0];
-    // У левого края жест не берём вовсе — там «назад».
-    if (t.clientX <= КРАЙ) { старт.current = null; return; }
-    старт.current = { x: t.clientX, y: t.clientY, dx0: dx };
-    ось.current = 'нет';
+  const toggle = (сКлавы: boolean) => {
+    if (open) { setPlace(null); return; }
+    сКлавиатуры.current = сКлавы;
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    // Меню высотой в один пункт: 52 px с полями. Не влезает под кнопку —
+    // открываем над ней, чтобы нижнюю карточку не прятала панель вкладок.
+    const высота = 52;
+    const снизу = r.bottom + 6;
+    const top = снизу + высота > window.innerHeight - 96 ? r.top - высота - 6 : снизу;
+    setPlace({ top, right: Math.max(8, window.innerWidth - r.right) });
   };
 
-  const onTouchMove = (e: React.TouchEvent) => {
-    const s = старт.current;
-    if (!s || e.touches.length !== 1) return;
-    const t = e.touches[0];
-    const пх = t.clientX - s.x;
-    const пу = t.clientY - s.y;
-
-    if (ось.current === 'нет') {
-      if (Math.abs(пх) < 8 && Math.abs(пу) < 8) return;
-      const горизонталь = Math.abs(пх) > Math.abs(пу);
-      // Влево — открываем; вправо берём только если уже открыто (закрываем).
-      const наше = пх < 0 || s.dx0 < 0;
-      ось.current = горизонталь && наше ? 'по-горизонтали' : 'по-вертикали';
-    }
-    if (ось.current !== 'по-горизонтали') return;
-
-    setТянут(true);
-    // Вправо дальше нуля не пускаем: скрывать нечего, а резинка вправо
-    // читалась бы как «сейчас что-то появится слева».
-    setDx(Math.max(-ПОЛНЫЙ - 40, Math.min(0, s.dx0 + пх)));
-  };
-
-  const onTouchEnd = () => {
-    старт.current = null;
-    setТянут(false);
-    if (-dx >= ПОЛНЫЙ) { setDx(0); onHide(); return; }
-    setDx(-dx >= ПОРОГ ? -ШИРИНА : 0);
-  };
+  useEffect(() => {
+    if (!open) return;
+    // 🔴 Фокус — только тем, кто пришёл с клавиатуры. После касания
+    // программный фокус рисовал вокруг пункта жирную рамку фокуса
+    // (снимок 10.09.2026): пальцу она не нужна, а выглядит как ошибка.
+    if (сКлавиатуры.current) itemRef.current?.focus({ preventScroll: true });
+    const мимо = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (menuRef.current?.contains(t) || btnRef.current?.contains(t)) return;
+      setPlace(null);
+    };
+    const клавиша = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setPlace(null);
+      btnRef.current?.focus({ preventScroll: true });
+    };
+    // Меню стоит по координатам кнопки; при прокрутке оно бы от неё уехало.
+    const прокрутка = () => setPlace(null);
+    document.addEventListener('pointerdown', мимо, true);
+    document.addEventListener('keydown', клавиша);
+    window.addEventListener('scroll', прокрутка, { passive: true, capture: true });
+    return () => {
+      document.removeEventListener('pointerdown', мимо, true);
+      document.removeEventListener('keydown', клавиша);
+      window.removeEventListener('scroll', прокрутка, { capture: true } as EventListenerOptions);
+    };
+  }, [open]);
 
   return (
-    <div style={{
-      position: 'relative',
-      borderRadius: 'var(--radius-card)',
-      overflow: 'hidden',
-      // Вертикальную прокрутку страницы отдаём системе, горизонталь берём себе.
-      touchAction: 'pan-y',
-    }}>
+    <>
       <button
-        onClick={() => { setDx(0); onHide(); }}
-        aria-label="Скрыть"
+        ref={btnRef}
+        type="button"
+        // У клика с клавиатуры (Enter, пробел) `detail` равен нулю, у
+        // касания и мыши — числу нажатий.
+        onClick={e => toggle(e.detail === 0)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Действия: ${title}`}
+        className="icon-btn"
         style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0,
-          width: `${ШИРИНА}px`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          gap: '6px',
-          border: 'none',
-          background: 'rgb(var(--ink-rgb) / 0.10)',
-          color: 'var(--text-primary)',
-          fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
-          cursor: 'pointer',
-          WebkitTapHighlightColor: 'transparent',
+          flexShrink: 0,
+          // Попадание 40 px, а на вид — только точки: отрицательные поля
+          // возвращают карточке её отступы, и шапка не становится выше.
+          width: '40px', height: '40px',
+          margin: '-10px -10px -10px 0',
+          borderRadius: 'var(--radius-pill)',
+          color: open ? 'var(--text-primary)' : 'var(--text-tertiary)',
+          background: open ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent',
         }}
       >
-        <EyeOff size={ICON_SIZE.sm} />
-        Скрыть
+        <More size={ICON_SIZE.sm} />
       </button>
-
-      <div
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onTouchCancel={onTouchEnd}
-        style={{
-          transform: `translate3d(${dx}px, 0, 0)`,
-          transition: тянут ? 'none' : 'transform 220ms var(--ease-panel)',
-          willChange: 'transform',
-        }}
-      >
-        {children}
-      </div>
-    </div>
+      {place && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={title}
+          className="liquid-glass"
+          style={{
+            ...GLASS_BLUR,
+            position: 'fixed',
+            top: `${place.top}px`,
+            right: `${place.right}px`,
+            // Поверх всего, включая лист скрытых и плашку отмены: меню
+            // живёт секунды и обязано быть видно целиком. На 60 пункт
+            // «Вернуть» уходил под плашку отмены (снимок 10.09.2026).
+            zIndex: 1000,
+            minWidth: '196px',
+            padding: 'var(--space-tight)',
+            borderRadius: '14px',
+            animation: 'card-in 0.16s cubic-bezier(0.22,1,0.36,1) both',
+          }}
+        >
+          <button
+            ref={itemRef}
+            type="button"
+            role="menuitem"
+            onClick={() => { setPlace(null); onAction(); }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 'var(--space-cozy)',
+              width: '100%', minHeight: '44px',
+              padding: '0 var(--space-cozy)',
+              border: 'none', borderRadius: '10px',
+              background: 'transparent',
+              color: 'var(--text-primary)',
+              fontFamily: 'inherit',
+              fontSize: 'var(--font-body)',
+              textAlign: 'left',
+              cursor: 'pointer',
+            }}
+          >
+            {/* Как в системных меню iOS: подпись слева, значок справа. */}
+            <span>{label}</span>
+            <span aria-hidden style={{ display: 'inline-flex', color: 'var(--text-secondary)' }}>
+              {icon}
+            </span>
+          </button>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -484,7 +506,7 @@ function HiddenSheet({ items, onReturn, onClose }: {
           <div key={e.id} style={{
             display: 'flex', alignItems: 'center', gap: 'var(--space-snug)',
             minHeight: '48px',
-            padding: '0 var(--space-cozy)',
+            padding: '0 var(--space-tight) 0 var(--space-cozy)',
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--hairline)',
             background: 'rgb(var(--ink-rgb) / 0.03)',
@@ -496,20 +518,15 @@ function HiddenSheet({ items, onReturn, onClose }: {
             }}>
               {e.title_ru}
             </span>
-            <button
-              onClick={() => onReturn(e.id)}
-              style={{
-                flexShrink: 0, minHeight: '34px', padding: '0 var(--space-cozy)',
-                borderRadius: 'var(--radius-pill)',
-                border: '1px solid var(--hairline-strong)',
-                background: 'transparent',
-                color: 'var(--text-primary)',
-                cursor: 'pointer', fontFamily: 'inherit',
-                fontSize: 'var(--font-footnote)',
-              }}
-            >
-              Вернуть
-            </button>
+            {/* Возврат тем же жестом, что и скрытие: три точки → «Вернуть».
+                Владелец 10.09.2026: «из скрытых возвращается примерно таким
+                же образом». Одно действие — одно место и один вид. */}
+            <CardMenu
+              title={e.title_ru}
+              label="Вернуть"
+              icon={<Eye size={ICON_SIZE.sm} />}
+              onAction={() => onReturn(e.id)}
+            />
           </div>
         ))}
       </div>
@@ -590,7 +607,7 @@ function CategoryChips({ data, value, onChange }: {
  */
 function DuaCard({
   entry, delay,
-  prefs, count, onCount, onResetCount,
+  prefs, count, onCount, onResetCount, menu,
 }: {
   entry: DuaEntry;
   delay: number;
@@ -598,6 +615,8 @@ function DuaCard({
   count: number;
   onCount: () => void;
   onResetCount: () => void;
+  /** Три точки в правом верхнем углу — действия с карточкой. */
+  menu?: ReactNode;
 }) {
   const font = azkarFontConfig(prefs.arabicFont);
   const repeat = entry.repeat && entry.repeat > 1 ? entry.repeat : null;
@@ -630,7 +649,7 @@ function DuaCard({
         }}>
           {entry.title_ru}
         </h3>
-
+        {menu}
       </div>
 
       <Rule />

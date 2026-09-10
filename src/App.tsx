@@ -592,7 +592,7 @@ export default function App() {
         onSelect={next => {
           if (next === tab) {
             // TabBar вызывает этот путь только после двух быстрых тапов
-            // по активной вкладке «Коран» — прокручиваем список сур к началу.
+            // по активной вкладке «Коран» или «Дуа» — прокручиваем к началу.
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
           }

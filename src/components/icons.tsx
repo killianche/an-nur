@@ -322,6 +322,28 @@ export const EyeOff = ({ size = ICON_SIZE.md, className, style }: Props) => (
   </svg>
 );
 
+/** Глаз — «вернуть»: снова показать скрытое. Пара к EyeOff. */
+export const Eye = ({ size = ICON_SIZE.md, className, style }: Props) => (
+  <svg {...stroke(size, className, style)}>
+    <path d="M3 12s3.6-6 9-6 9 6 9 6-3.6 6-9 6-9-6-9-6Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+/**
+ * Три точки — «ещё действия», как SF Symbols `ellipsis`.
+ *
+ * Точки залиты, а не обведены: обведённый кружок радиуса 1.75 при штрихе
+ * 1.75 превращается в кляксу с дыркой, а залитый читается точкой.
+ */
+export const More = ({ size = ICON_SIZE.md, className, style }: Props) => (
+  <svg {...solid(size, className, style)}>
+    <circle cx="5.5" cy="12" r="1.75" />
+    <circle cx="12" cy="12" r="1.75" />
+    <circle cx="18.5" cy="12" r="1.75" />
+  </svg>
+);
+
 /** Галочка без круга — «уже добавлено». */
 export const Check = ({ size = ICON_SIZE.md, className, style }: Props) => (
   <svg {...stroke(size, className, style)}>
