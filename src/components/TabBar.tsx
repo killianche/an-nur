@@ -18,7 +18,7 @@
 import { useRef, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
-import { TabQuran, TabAzkar, TabPrayer, Flower } from './icons';
+import { TabQuran, TabAzkar, TabPrayer, TabDua } from './icons';
 import { GLASS_BLUR } from '../lib/glass';
 
 /**
@@ -56,7 +56,7 @@ const TAB_ICON = 25;
 const TABS: { id: TabId; label: string; icon: (selected: boolean) => ReactNode }[] = [
   { id: 'quran', label: 'Коран', icon: selected => <TabQuran size={TAB_ICON} isFilled={selected} /> },
   { id: 'azkar', label: 'Азкары', icon: selected => <TabAzkar size={TAB_ICON} isFilled={selected} /> },
-  { id: 'dua', label: 'Дуа', icon: selected => <Flower size={TAB_ICON} isFilled={selected} /> },
+  { id: 'dua', label: 'Дуа', icon: selected => <TabDua size={TAB_ICON} isFilled={selected} /> },
   { id: 'prayer', label: 'Намаз', icon: selected => <TabPrayer size={TAB_ICON} isFilled={selected} /> },
 ];
 
