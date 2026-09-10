@@ -31,20 +31,25 @@ import { DEFAULT_QCF_EDITION, type QcfEdition } from './qcf4';
 export const MUSHAF_PAGES = 604;
 
 /**
- * Открытая и соседние страницы в порядке приоритета отрисовки.
+ * Страницы, которые держим смонтированными вокруг текущей.
  *
- * Полноэкранный режим держит это маленькое окно смонтированным: текущая
- * страница видима, соседние уже получили данные, шрифты и рассчитанный кегль.
- * Поэтому свайп меняет только видимость готовых слоёв, а не строит 15 строк
- * Корана в момент, когда палец уже отпущен.
+ * Порядок — текущая, потом по возрастанию расстояния: следующая, предыдущая,
+ * через одну вперёд, через одну назад. Радиус 1 — три слоя, как было всегда.
+ *
+ * Радиус 2 нужен быстрому листанию (владелец 10.09.2026: «когда быстро
+ * листаю несколько страниц, до сих пор дёргается»). С одним соседом каждая
+ * смена страницы монтировала нового дальнего соседа прямо в `flushSync`
+ * внутри касания — синхронная сборка страницы Корана посреди жеста. Когда
+ * соседи через одну уже готовы, смена страницы только двигает слои.
  */
-export function mushafPageWindow(page: number): number[] {
+export function mushafPageWindow(page: number, radius = 1): number[] {
   const current = Math.min(MUSHAF_PAGES, Math.max(1, Math.round(page)));
-  return [
-    current,
-    current < MUSHAF_PAGES ? current + 1 : null,
-    current > 1 ? current - 1 : null,
-  ].filter((candidate): candidate is number => candidate != null);
+  const out = [current];
+  for (let d = 1; d <= radius; d++) {
+    if (current + d <= MUSHAF_PAGES) out.push(current + d);
+    if (current - d >= 1) out.push(current - d);
+  }
+  return out;
 }
 
 /** Сквозной номер первого аята каждой из 604 страниц. */

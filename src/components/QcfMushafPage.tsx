@@ -78,6 +78,19 @@ type Props = {
   onAyahTap?: (verseKey: string) => void;
   /** Горизонтальный режим: вписываем по ширине и прокручиваем по высоте. */
   landscapeWide?: boolean;
+  /**
+   * Слой через одну страницу от текущей — замер можно отложить в простой.
+   *
+   * 🔴 ТОЛЬКО для расстояния 2 и дальше. 09.09.2026 отсрочку уже вводили для
+   * всех невидимых слоёв и сняли по ревью: соседний лист (расстояние 1) едет
+   * за пальцем и виден весь жест, и неподобранная страница въехала бы в кадр
+   * обрезанной. Лист через одну за один жест не виден: протяжка пальцем
+   * ограничена шагом (MushafScreen, `onTouchMove`), так что в кадр въезжает
+   * только сосед. А когда лист через одну сам становится соседом, флаг
+   * снимается, и замер (если простоя так и не случилось) идёт синхронно, до
+   * отрисовки.
+   */
+  deferMeasure?: boolean;
   variant?: MushafFontId;
   tajweedPageData?: TajweedPageData | null;
   tajweedFontReady?: boolean;
@@ -145,6 +158,51 @@ const fitCache = new Map<string, PageFit>();
 /** Больше окна листания на порядок — хватает на долгую сессию чтения. */
 const FIT_CACHE_LIMIT = 64;
 
+/** Листание идёт: палец ведёт лист или лист летит (у дорожки стоит `data-turning`). */
+function pagerBusy(): boolean {
+  return !!document.querySelector('.mushaf-page-track[data-turning]');
+}
+
+/**
+ * Отложить работу до простоя — и до конца листания.
+ *
+ * 🔴 `requestIdleCallback` в Safari, по всей видимости, не выпущен (за
+ * экспериментальным флагом), то есть на iPhone почти всегда работает запасной
+ * таймер. Простой таймер попадал бы замером дальней страницы — синхронный
+ * перерендер и чтение прямоугольника у каждого слова — прямо в следующий жест
+ * (ревью 10.09.2026). Поэтому и в запасной ветке, и после простоя замер ждёт,
+ * пока лист не встанет. Верхняя граница — две секунды: страница всё равно
+ * должна быть готова до того, как станет соседом.
+ */
+function whenIdle(run: () => void): () => void {
+  const w = window as Window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  const deadline = performance.now() + 2000;
+  let cancelled = false;
+  let idle = 0;
+  let timer = 0;
+  const attempt = () => {
+    if (cancelled) return;
+    if (pagerBusy() && performance.now() < deadline) {
+      timer = window.setTimeout(attempt, 120);
+      return;
+    }
+    run();
+  };
+  if (typeof w.requestIdleCallback === 'function') {
+    idle = w.requestIdleCallback(attempt, { timeout: 600 });
+  } else {
+    timer = window.setTimeout(attempt, 60);
+  }
+  return () => {
+    cancelled = true;
+    if (idle) w.cancelIdleCallback?.(idle);
+    if (timer) clearTimeout(timer);
+  };
+}
+
 function rememberFit(key: string, fit: PageFit) {
   // Сначала снимаем прежнюю запись: перезапись существующего ключа не
   // должна вытеснять чужую подгонку.
@@ -166,6 +224,7 @@ export const QcfMushafPage = memo(function QcfMushafPage({
   selectedVerseKey = null,
   onAyahTap,
   landscapeWide = false,
+  deferMeasure = false,
   variant = 'qcf-v4',
   tajweedPageData = null,
   tajweedFontReady = false,
@@ -242,6 +301,11 @@ export const QcfMushafPage = memo(function QcfMushafPage({
   const keyRef = useRef(fitKey);
   /** Замер для текущего ключа закончен — вёрстку больше не трогаем. */
   const doneRef = useRef(!!cachedFit);
+  /** Отложенный замер дальнего слоя: отмена, для какого места, разрешён ли. */
+  const cancelDefer = useRef<(() => void) | null>(null);
+  const scheduledKey = useRef<string | null>(null);
+  const idleGranted = useRef<string | null>(null);
+  const [, bumpIdle] = useState(0);
 
   if (keyRef.current !== fitKey) {
     keyRef.current = fitKey;
@@ -268,14 +332,47 @@ export const QcfMushafPage = memo(function QcfMushafPage({
    */
   const justified = fit.key === fitKey ? fit.justified : cachedFit?.justified ?? [];
 
+  useLayoutEffect(() => () => {
+    cancelDefer.current?.();
+    cancelDefer.current = null;
+  }, []);
+
   // Подбор кегля и выключки. Без списка зависимостей: каждая поправка —
   // это новый рендер, после которого вёрстку надо перемерить.
   useLayoutEffect(() => {
-    if (doneRef.current) return;
+    if (doneRef.current) {
+      // Подгонка уже есть (из кэша или синхронным замером) — отложенный
+      // замер больше не нужен: его колбэк всё равно разбудил бы лишний
+      // полный перерендер страницы, возможно посреди жеста.
+      if (cancelDefer.current) { cancelDefer.current(); cancelDefer.current = null; scheduledKey.current = null; }
+      return;
+    }
     if (!fitTo || !boxRef.current) return;
     // Мерить по запасному шрифту нельзя — метрики другие, кегль выйдет
     // неверным, а после подмены страница не впишется.
     if (!fontsReady) return;
+
+    // Дальний слой ждёт простоя. Когда простой случится, колбэк не мерит
+    // сам, а разрешает замер и будит рендер: мерить можно только в фазе
+    // вёрстки, где DOM уже соответствует кеглю этого рендера.
+    if (deferMeasure && idleGranted.current !== fitKey) {
+      if (scheduledKey.current !== fitKey) {
+        cancelDefer.current?.();
+        scheduledKey.current = fitKey;
+        const ждём = fitKey;
+        cancelDefer.current = whenIdle(() => {
+          cancelDefer.current = null;
+          scheduledKey.current = null;
+          if (keyRef.current !== ждём) return;
+          idleGranted.current = ждём;
+          bumpIdle(t => t + 1);
+        });
+      }
+      return;
+    }
+
+    // Меряем сейчас — отложенный замер, если он был назначен, отменяем.
+    if (cancelDefer.current) { cancelDefer.current(); cancelDefer.current = null; scheduledKey.current = null; }
 
     const box = boxRef.current;
     const key = fitKey;
