@@ -43,6 +43,8 @@ import {
   useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, memo,
   type ReactNode, type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { FastScrubber, isScrubbing } from '../components/FastScrubber';
+import { FAST_SCROLL } from '../lib/fastScroll';
 import { useQuranSources } from '../content/quran-sources-lazy';
 import { SURAH_BY_NUMBER } from '../content/surahs';
 import { useAudioActions, useAudioState, useAudioTick } from '../hooks/AudioProvider';
@@ -236,6 +238,9 @@ export function SurahScreen({
     readerTapRef.current = null;
     if (!start || start.pointerId !== e.pointerId || start.moved) return;
     if (performance.now() - start.startedAt > 340) return;
+    // Удержание у края включило быструю прокрутку — это не тап, даже если
+    // палец отпустили, не сдвинув: панели прятать никто не просил.
+    if (isScrubbing()) return;
     // Панель переключает только «необработанный» тап — так же, как у
     // системного hidesBarsOnTap. Касание, которое ГАСИТ прокрутку, тапом
     // не считается: в WKWebView оно даёт полноценные pointerdown/up (клик
@@ -625,6 +630,9 @@ export function SurahScreen({
   }, []);
   useEffect(() => {
     if (!autoScrollRef.current) return;
+    // Пока палец ведёт быструю прокрутку, звучащий аят не уносит страницу
+    // к себе: иначе в пузыре один номер, а на экране другой.
+    if (isScrubbing()) return;
     const ayah  = audio.currentAyah;
     const surah = audio.currentSurah;
     if (!ayah || !surah || surah !== surahNumber) return;
@@ -715,6 +723,64 @@ export function SurahScreen({
     setPendingJump(ayahNum);
   }, []);
   const closeJump = useCallback(() => setJumpOpen(false), []);
+
+  // ── Быстрая прокрутка по аятам ──────────────────────────────────────
+  //
+  // Если аят уже в DOM — прыгаем прямо к нему, мимо состояния React:
+  // протяжка идёт каждый кадр, и `jumpToAyahNumber` на каждом шаге
+  // перерисовывал бы весь экран суры. Через него — только когда аят ещё не
+  // домонтирован: там он и нужен, он поднимает границу монтирования и
+  // дожидается узла.
+  const scrubToAyah = useCallback((n: number, final: boolean) => {
+    const el = document.querySelector<HTMLElement>(`[data-ayah-anchor="${n}"]`);
+    if (el) {
+      // 🔴 Прямой прыжок отменяет отложенный. Иначе (ревью 10.09.2026):
+      // протянул до 160, которого ещё нет, — ушёл отложенный прыжок; вернул
+      // палец на 120, который есть, — прыгнули прямо; отпустил — через
+      // 100 мс опрос нашёл 160 и увёз страницу туда. Пузырь показывал 120.
+      // Только если он есть: протяжка идёт каждый кадр, и лишний setState
+      // на каждом шаге будил бы рендер всего экрана суры.
+      if (pendingJumpRef.current != null) setPendingJump(null);
+      el.scrollIntoView({ behavior: 'auto', block: 'start' });
+      return true;
+    }
+    // Аят ещё не смонтирован. Окончательно (палец отпущен) — прыгаем
+    // по-настоящему: поднимаем границу монтирования и ждём узел.
+    if (final) { jumpToAyahNumber(n); return true; }
+    // Во время протяжки — не монтируем: каждый такой шаг был бы
+    // перерисовкой всего экрана и монтажом сотни тяжёлых аятов посреди
+    // жеста. Докручиваем до последнего готового; номер в пузыре остаётся
+    // верным, а при отпускании прыжок доведётся.
+    const готовые = document.querySelectorAll<HTMLElement>('[data-ayah-anchor]');
+    готовые[готовые.length - 1]?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    return false;
+  }, [jumpToAyahNumber]);
+
+  /** Содержимое ленты — только отсюда можно начать быструю прокрутку. */
+  const feedRef = useRef<HTMLDivElement>(null);
+  // Полоса по координатам ловит и то, что поверх ленты: нижний лист
+  // «Чтение»/«Оформление» на телефоне, ползунок перехода к аяту. Удержание
+  // на них прокручивало ленту под ними и глотало клик (ревью 10.09.2026).
+  const canStartScrub = useCallback((t: Element | null) =>
+    !!t && !!feedRef.current?.contains(t)
+    && !t.closest('button, a, input, textarea, select, [role="button"], [role="dialog"], [role="slider"]'),
+  []);
+
+  /** Аят под пальцем — по середине ширины экрана, на высоте пальца. */
+  const ayahUnderFinger = useCallback((y: number): number => {
+    const el = document.elementFromPoint(window.innerWidth / 2, y)
+      ?.closest<HTMLElement>('[data-ayah-anchor]');
+    const n = Number(el?.dataset.ayahAnchor);
+    if (Number.isFinite(n) && n > 0) return n;
+    // Над заголовком суры или между аятами — ближайший смонтированный.
+    let лучший = 1, дистанция = Infinity;
+    for (const row of Array.from(document.querySelectorAll<HTMLElement>('[data-ayah-anchor]'))) {
+      const r = row.getBoundingClientRect();
+      const d = r.top <= y && r.bottom >= y ? 0 : Math.min(Math.abs(r.top - y), Math.abs(r.bottom - y));
+      if (d < дистанция) { дистанция = d; лучший = Number(row.dataset.ayahAnchor) || 1; }
+    }
+    return лучший;
+  }, []);
 
   // Доводим отложенный прыжок, как только нужный аят появился в DOM.
   //
@@ -922,8 +988,29 @@ export function SurahScreen({
         />
       )}
 
+      {/* Быстрая прокрутка по аятам: удержание у левого края и протяжка
+          вверх-вниз, номер аята крупно по центру. Полоса начинается с
+          22 px: первые 22 принадлежат системному жесту «назад» на iOS
+          (IosEdgeBackGesture), и за одно касание они спорить не должны.
+          Только обычный режим — у полноэкранного мусхафа свои жесты. */}
+      {meta && (
+        <FastScrubber
+          enabled={FAST_SCROLL.ayahFeed}
+          count={meta.ayahs}
+          left={22}
+          width={36}
+          topInset={96}
+          bottomInset={128}
+          startAt={ayahUnderFinger}
+          onScrub={scrubToAyah}
+          canStart={canStartScrub}
+          label={n => ({ big: String(n), small: `аят из ${meta.ayahs}` })}
+        />
+      )}
+
       {/* ── Main content ──────────────────────────────────────────────────── */}
       <div
+        ref={feedRef}
         onPointerDown={onReaderPointerDown}
         onPointerMove={onReaderPointerMove}
         onPointerUp={onReaderPointerUp}

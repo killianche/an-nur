@@ -38,6 +38,8 @@
  */
 
 import { useState, useMemo, useRef, useDeferredValue } from 'react';
+import { FastScrubber } from '../components/FastScrubber';
+import { FAST_SCROLL } from '../lib/fastScroll';
 import { SURAHS, SURAH_BY_NUMBER, type SurahMeta } from '../content/surahs';
 import { juzOfSurah } from '../lib/ayahNumbering';
 import { readRecents } from '../lib/recents';
@@ -240,6 +242,25 @@ export function SurahPicker({ onSelectSurah, onBookmarks, onAccount, theme, setT
             )}
 
             <SurahList surahs={SURAHS} onSelect={onSelectSurah} />
+            {/* Быстрая прокрутка: удержание на номере суры и протяжка
+                вверх-вниз. Только при полном списке — в результатах поиска номера
+                идут вразбивку, и прокрутка по ним была бы бессмыслицей. */}
+            <FastScrubber
+              enabled={FAST_SCROLL.surahList}
+              count={SURAHS.length}
+              // Колонка номеров начинается с поля экрана (16 px) и занимает 26.
+              left={10}
+              width={44}
+              topInset={72}
+              bottomInset={TAB_BAR_HEIGHT + 24}
+              startAt={сураПодПальцем}
+              onScrub={кСуре}
+              // Только со строки суры. Полоса по координатам ловила и мини-плеер
+              // над панелью вкладок, и шапку, и заголовки джузов (ревью 10.09.2026);
+              // владелец просил именно «удержание на номере».
+              canStart={t => !!t?.closest('[data-surah]')}
+              label={n => ({ big: String(n), small: SURAH_BY_NUMBER[n]?.transliteration })}
+            />
           </>
         )}
     </div>
@@ -343,6 +364,32 @@ function ContinueCard({ title, ayah, total, onClick }: {
 }
 
 // ─── Список сур ──────────────────────────────────────────────────────────
+
+/**
+ * Сура под пальцем — по строке в той же высоте экрана. Смотрим в середину
+ * ширины, а не под сам палец: у края лежит только номер, а строка целиком
+ * найдётся надёжнее по центру.
+ */
+function сураПодПальцем(y: number): number {
+  const el = document.elementFromPoint(window.innerWidth / 2, y)
+    ?.closest<HTMLElement>('[data-surah]');
+  const n = Number(el?.dataset.surah);
+  if (Number.isFinite(n) && n > 0) return n;
+  // Палец над заголовком джуза или между строками — берём ближайшую строку.
+  let лучшая = 1, дистанция = Infinity;
+  for (const row of Array.from(document.querySelectorAll<HTMLElement>('[data-surah]'))) {
+    const r = row.getBoundingClientRect();
+    const d = Math.abs((r.top + r.bottom) / 2 - y);
+    if (d < дистанция) { дистанция = d; лучшая = Number(row.dataset.surah) || 1; }
+  }
+  return лучшая;
+}
+
+/** Прыжок к строке суры: по центру экрана, без плавности — палец ведёт сам. */
+function кСуре(n: number) {
+  document.querySelector<HTMLElement>(`[data-surah="${n}"]`)
+    ?.scrollIntoView({ block: 'center', behavior: 'auto' });
+}
 
 function SurahList({ surahs, onSelect, grouped = true }: {
   surahs: SurahMeta[];
@@ -531,6 +578,9 @@ function SurahRow({ meta, onClick, last = false, sounding = false }: {
 
   return (
     <div
+      // По номеру строку находит быстрая прокрутка: и чтобы понять, откуда
+      // палец начал, и чтобы к ней прыгнуть.
+      data-surah={meta.number}
       style={{
         position: 'relative',
         display: 'flex',
