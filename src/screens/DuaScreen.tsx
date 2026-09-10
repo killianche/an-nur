@@ -382,12 +382,35 @@ function CardMenu({ title, label, icon, onAction }: {
     const мимо = (e: PointerEvent) => {
       const t = e.target as Node;
       if (menuRef.current?.contains(t) || btnRef.current?.contains(t)) return;
+      // 🔴 Касание мимо ТОЛЬКО закрывает меню, как в iOS. Раньше оно ещё и
+      // срабатывало под пальцем — например, давало +1 к счётчику соседней
+      // карточки (ревью 10.09.2026). Гасим и само касание (слушатель на
+      // документе в фазе захвата — раньше корня React), и клик следом.
+      e.stopPropagation();
+      // Ловушка на один клик. Касание могло перейти в прокрутку, и клика не
+      // будет вовсе — тогда её снимает следующее касание (оно уже другой
+      // жест) или таймер. Иначе она съела бы законный тап следом, например
+      // по счётчику (ревью 10.09.2026). Слушатель, добавленный во время
+      // этого же pointerdown, на нём самом не сработает — таков порядок DOM.
+      const снять = () => {
+        document.removeEventListener('click', глотать, { capture: true } as EventListenerOptions);
+        document.removeEventListener('pointerdown', снять, { capture: true } as EventListenerOptions);
+        window.clearTimeout(таймер);
+      };
+      const глотать = (c: MouseEvent) => { c.preventDefault(); c.stopPropagation(); снять(); };
+      document.addEventListener('click', глотать, { capture: true });
+      document.addEventListener('pointerdown', снять, { capture: true });
+      const таймер = window.setTimeout(снять, 700);
       setPlace(null);
     };
     const клавиша = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // Escape закрывает только меню. Лист скрытых слушает Escape на окне, и
+      // без этого одно нажатие закрывало бы сразу оба слоя.
+      e.stopImmediatePropagation();
       setPlace(null);
-      btnRef.current?.focus({ preventScroll: true });
+      // Кнопка могла исчезнуть вместе с карточкой — фокус в пустоту не шлём.
+      if (btnRef.current?.isConnected) btnRef.current.focus({ preventScroll: true });
     };
     // Меню стоит по координатам кнопки; при прокрутке оно бы от неё уехало.
     const прокрутка = () => setPlace(null);

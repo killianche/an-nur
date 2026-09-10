@@ -26,7 +26,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Haptics } from '@capacitor/haptics';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { ChevronLeft } from './icons';
 import { GLASS_BLUR } from '../lib/glass';
 
@@ -143,7 +143,11 @@ export function ScreenHeader({
       }}>
         <button
           onClick={() => {
-            if (Capacitor.getPlatform() === 'ios') void Haptics.selectionChanged();
+            // 🔴 impact, а не selectionChanged. В плагине selectionChanged
+            // срабатывает, только если генератор создан через selectionStart —
+            // а его никто не вызывал, и вибрация на iOS молчала с самого начала
+            // (Haptics.swift, ревью 10.09.2026).
+            if (Capacitor.getPlatform() === 'ios') void Haptics.impact({ style: ImpactStyle.Light });
             onBack();
           }}
           aria-label="Назад"
@@ -195,7 +199,7 @@ export function ScreenHeader({
                 key={a.key}
                 ref={a.ref}
                 onClick={() => {
-                  if (Capacitor.getPlatform() === 'ios') void Haptics.selectionChanged();
+                  if (Capacitor.getPlatform() === 'ios') void Haptics.impact({ style: ImpactStyle.Light });
                   a.onClick();
                 }}
                 aria-label={a.label}
