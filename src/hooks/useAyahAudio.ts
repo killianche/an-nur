@@ -77,6 +77,18 @@ const CONTINUOUS_CACHE_MAX = 2;
  */
 const EARLY_ADVANCE_SECONDS = 0.05;
 
+/**
+ * За сколько секунд до конца записи прогревать файл следующей суры.
+ *
+ * При «слушать суру целиком» следующая сура — новый файл, и без прогрева он
+ * начинал грузиться только в момент перехода. Замер 13.09.2026 на быстром
+ * сервере: 88–128 мс, когда не играл ни один элемент. На мобильной сети —
+ * дольше, а в фоне iOS разрешает запуск звука, только пока страница уже
+ * что-то играет: в эту тишину следующая сура так и не стартовала.
+ * Тридцать секунд хватает, чтобы набрать буфер и на медленной сети.
+ */
+const PREWARM_NEXT_SURAH_SECONDS = 30;
+
 const audioCache = new Map<string, HTMLAudioElement>();
 const logicalKeyForAudio = new WeakMap<HTMLAudioElement, string>();
 const completedRange = new WeakSet<HTMLAudioElement>();
@@ -135,24 +147,69 @@ function touchCache(key: string, audio: HTMLAudioElement) {
   // Эвикция самых старых записей если перебор по размеру.
   // Непрерывные записи вытесняем отдельно и раньше: ключ у них кончается
   // на `:surah` (см. mediaCacheKey).
+  //
+  // 🔴 Звучащую запись и доигрывающий хвост не выселяем никогда. Раньше
+  // безопасность держалась на порядке касаний: выселялась «самая старая», и
+  // это случайно не была текущая. С прогревом следующей суры в кэше
+  // оказываются сразу текущая и следующая — выселение звучащей оборвало бы
+  // чтение посреди аята. Если лишним оказывается только звучащее, кэш
+  // временно больше предела на один элемент — это дешевле тишины.
+  const звучит = (el: HTMLAudioElement | undefined) =>
+    !!el && (!el.paused || finishingTail.has(el));
   const continuous = [...audioCache.keys()].filter(k => k.endsWith(':surah'));
-  while (continuous.length > CONTINUOUS_CACHE_MAX) {
-    const oldestContinuous = continuous.shift();
-    if (!oldestContinuous || oldestContinuous === key) break;
-    const el = audioCache.get(oldestContinuous);
+  let лишнихСплошных = continuous.length - CONTINUOUS_CACHE_MAX;
+  for (const k of continuous) {
+    if (лишнихСплошных <= 0) break;
+    if (k === key) continue;
+    const el = audioCache.get(k);
+    if (звучит(el)) continue;
     if (el) { el.pause(); el.removeAttribute('src'); el.load(); }
-    audioCache.delete(oldestContinuous);
+    audioCache.delete(k);
+    лишнихСплошных--;
   }
-  while (audioCache.size > AUDIO_CACHE_MAX) {
-    const oldestKey = audioCache.keys().next().value;
-    if (!oldestKey) break;
-    const oldest = audioCache.get(oldestKey);
+  let лишних = audioCache.size - AUDIO_CACHE_MAX;
+  for (const k of [...audioCache.keys()]) {
+    if (лишних <= 0) break;
+    if (k === key) continue;
+    const oldest = audioCache.get(k);
+    if (звучит(oldest)) continue;
     if (oldest) {
       try { oldest.pause(); oldest.src = ''; oldest.load(); }
       catch { /* устаревший element может уже быть detached — игнор */ }
     }
-    audioCache.delete(oldestKey);
+    audioCache.delete(k);
+    лишних--;
   }
+}
+
+/**
+ * Этот аят — последний перед переходом в следующую суру.
+ *
+ * Только при «слушать суру целиком» (`startedWholeSurah`): тап по одному
+ * аяту по-прежнему останавливается на конце суры — так решил владелец
+ * 09.09.2026.
+ */
+function уходитВСледующуюСуру(
+  q: { surah: number; last: number } | null,
+  surah: number,
+  ayah: number,
+): boolean {
+  if (!startedWholeSurah || !q || q.surah !== surah) return false;
+  const конец = Math.min(q.last, SURAH_BY_NUMBER[surah]?.ayahs ?? q.last);
+  return ayah >= конец && !!SURAH_BY_NUMBER[surah + 1];
+}
+
+/** Прогретые элементы — чтобы не звать `load()` на каждом кадре. */
+const прогретые = new WeakSet<HTMLAudioElement>();
+
+/** Заранее начать грузить файл следующей суры, чтобы переход был мгновенным. */
+function прогретьСуру(surah: number, reciter: ReciterId) {
+  if (!usesContinuousAudio(reciter)) return;
+  const a = getOrCreateAudio(mediaCacheKey(reciter, surah, 1), surah, 1, reciter);
+  if (прогретые.has(a)) return;
+  прогретые.add(a);
+  a.preload = 'auto';
+  try { a.load(); } catch { /* элемент мог быть отцеплен — прогрев не критичен */ }
 }
 
 function cacheKey(reciter: ReciterId, surah: number, ayah: number) {
@@ -293,10 +350,15 @@ function getOrCreateAudio(
     a.addEventListener('error', () => {
       const сетевой = surahAudioUrl(reciter, surah);
       if (!сетевой || a.src === сетевой) return;
+      // Запускаем снова, только если элемент уже звучал. Элемент может быть
+      // создан заранее — прогревом следующей суры — и тогда безусловный
+      // `play()` включил бы её поверх текущей за полминуты до конца (ревью
+      // 13.09.2026).
+      const играл = !a.paused;
       unmarkSurahFile(reciter, surah);
       a.src = сетевой;
       a.load();
-      void a.play().catch(() => { /* решение примет обычная обработка ошибки */ });
+      if (играл) void a.play().catch(() => { /* решение примет обычная обработка ошибки */ });
     }, { once: true });
   }
   // Safari/WebView не всегда начинает preload сразу после присваивания src.
@@ -324,6 +386,11 @@ function prefetchAyah(surah: number, ayah: number, reciter: ReciterId) {
  * продолжает читать невидимо уже под новым экраном. */
 function stopCachedAyahAudio() {
   audioCache.forEach(audio => {
+    // Хвост, остановленный извне, уже не получит ни `playing` следующей
+    // суры, ни собственного `ended` — без снятия пометки он навсегда
+    // остался бы «доигрывающим»: его не глушил бы ручной переход и не
+    // вытеснял бы кэш (ревью 13.09.2026).
+    finishingTail.delete(audio);
     audio.pause();
     try { audio.currentTime = 0; } catch { /* metadata may be unavailable */ }
   });
@@ -383,6 +450,14 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
   }, []);
 
   const pauseCurrent = useCallback(() => {
+    // Пауза в окне перехода между сурами: активный элемент — следующая сура
+    // (ещё грузится), а звучит хвост прошлой. Без этого пауза с экрана
+    // блокировки оставляла хвост звучать ещё до 4.5 с.
+    audioCache.forEach(a => {
+      if (!finishingTail.has(a)) return;
+      finishingTail.delete(a);
+      a.pause();
+    });
     if (activeKey) {
       activeAudioRef.current?.pause();
       setAudioState('paused');
@@ -431,9 +506,14 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
         // нельзя даже на мгновение вызвать pause(): звук продолжает идти,
         // меняются только логический аят, прогресс и подсветка.
         if (seamlessSameMedia && otherKey === mediaK) return;
-        // Доигрывающему хвост не мешаем: он сам остановится по `ended`,
-        // и чтение аята дойдёт до конца.
-        if (finishingTail.has(a)) return;
+        // Доигрывающему хвост не мешаем, но только при АВТОМАТИЧЕСКОМ
+        // переходе: он сам остановится по `ended` или по звуку следующей
+        // суры. Ручной выбор другого аята — это «хватит того», и хвост
+        // глушится вместе с остальными, иначе две записи звучали бы разом.
+        if (finishingTail.has(a)) {
+          if (transition === 'automatic') return;
+          finishingTail.delete(a);
+        }
         a.pause();
         if (otherKey !== mediaK) a.currentTime = 0;
       });
@@ -671,6 +751,13 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
 
     audio.onended = () => {
       if (failed) return;
+      // 🔴 Конец уже сменившегося элемента — не переход. Хвост прошлой суры
+      // доигрывает, пока звучит следующая (см. переход на последнем аяте), и
+      // его настоящий конец файла пришёл бы сюда с замыканием прошлой суры:
+      // её последний аят (у 83-й — 36) против очереди новой суры (у 84-й —
+      // 25 аятов) решил бы, что и новая кончилась, и перепрыгнул бы через
+      // неё. Та же проверка, что у отказа в `failAndStop`.
+      if (activeAudioRef.current !== audio || logicalKeyForAudio.get(audio) !== k) return;
       setProgress(1);
       advanceOrStop();
     };
@@ -731,6 +818,14 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
         prefetchAyah(surah, nextAyah, r);
       }
     } catch (err) {
+      // `AbortError` — это не сбой: `play()` прервали паузой или сменой
+      // источника. Раньше он шёл в `failAndStop`, и через 900 мс повтор сам
+      // включал звук вопреки нажатой паузе. Настоящие сбои приходят
+      // событием `error` и сторожем — их это не касается.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        stopStallWatch();
+        return;
+      }
       failAndStop(err);
     }
   }, [activeKey, stopAll]);
@@ -880,6 +975,8 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     }
 
     let raf = 0;
+    /** Файл следующей суры уже прогрет в этом эффекте — не звать на каждом кадре. */
+    let прогретаСледующая = false;
     let positionUpdateTick = 0;
     let lastProgressWrite = -Infinity;
     const step = () => {
@@ -918,6 +1015,15 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
         return;
       }
 
+      // Последний аят перед следующей сурой: заранее грузим её файл.
+      if (!прогретаСледующая && range && !completedRange.has(audio)
+        && Number.isFinite(audio.duration)
+        && audio.duration - audio.currentTime <= PREWARM_NEXT_SURAH_SECONDS
+        && уходитВСледующуюСуру(queueRef.current, Number(surahPart), Number(ayahPart))) {
+        прогретаСледующая = true;
+        прогретьСуру(Number(surahPart) + 1, reciterId as ReciterId);
+      }
+
       if (range && audio.currentTime >= range.endSeconds) {
         if (!completedRange.has(audio)) {
           completedRange.add(audio);
@@ -930,8 +1036,37 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
           // onended здесь означает конец ЛОГИЧЕСКОГО аята; физический
           // HTMLAudioElement продолжает читать следующий байт потока.
           if (!hasNextInSameSurah) {
-            audio.pause();
-            seekAudio(audio, range.endSeconds);
+            if (уходитВСледующуюСуру(q, Number(surahPart), Number(ayahPart))) {
+              // 🔴 Не глушим перед следующей сурой. Раньше здесь стояла
+              // пауза, и следующая сура запускалась в тишине — в фоне iOS
+              // такой запуск отклоняет, и чтение замирало (владелец
+              // 13.09.2026: «когда дочитывается, просто останавливается»).
+              // Хвост записи доигрывает сам, следующая сура стартует, пока он
+              // ещё звучит, — тем же приёмом, что в поаятном режиме.
+              finishingTail.add(audio);
+              const хвостКончился = () => finishingTail.delete(audio);
+              audio.addEventListener('ended', хвостКончился, { once: true });
+              // 🔴 Хвост нужен ровно до первого звука следующей суры — не
+              // дольше. У Люхайдана после последнего аята в записи идёт ещё
+              // около 4.5 с, и доигрывая целиком, хвост звучал бы поверх
+              // начала следующей суры (замер 13.09.2026: 180 кадров по 50 мс
+              // с двумя играющими элементами). Глушим его в момент `playing`
+              // следующего элемента: наложение — десятки миллисекунд, а
+              // тишины между сурами нет. Пока следующая ещё грузится, хвост
+              // звучит один и держит звук живым для iOS.
+              const следующая = Number(surahPart) + 1;
+              прогретьСуру(следующая, reciterId as ReciterId);
+              audioCache.get(mediaCacheKey(reciterId as ReciterId, следующая, 1))
+                ?.addEventListener('playing', () => {
+                  audio.removeEventListener('ended', хвостКончился);
+                  if (!finishingTail.has(audio)) return;
+                  finishingTail.delete(audio);
+                  audio.pause();
+                }, { once: true });
+            } else {
+              audio.pause();
+              seekAudio(audio, range.endSeconds);
+            }
           }
           audio.onended?.(new Event('ended'));
         }
