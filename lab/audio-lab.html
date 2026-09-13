@@ -1,0 +1,72 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>audio lab</title></head>
+<body><pre id="out">audio lab</pre>
+<script>
+// Стенд: как WKWebView подаёт плееру звук из разных источников, когда главный
+// поток страницы занят (имитация работы экрана на смене аята).
+const out = document.getElementById('out');
+const log = (...a) => { const s = 'LAB|' + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '); console.log(s); out.textContent += '\n' + s; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const LOCAL = '/lab/083.mp3';
+const NET = 'https://download.quranicaudio.com/quran/yasser_ad-dussary/083.mp3';
+const TEST_SECONDS = 40;
+
+function busy(ms) { const end = performance.now() + ms; while (performance.now() < end) { /* занят */ } }
+
+async function blobUrl() { const r = await fetch(LOCAL); return URL.createObjectURL(await r.blob()); }
+async function dataUrl() {
+  const b = await (await fetch(LOCAL)).blob();
+  return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); });
+}
+
+async function run(name, srcFactory, jankMs, jankEvery) {
+  const src = await srcFactory();
+  const a = new Audio();
+  a.preload = 'auto';
+  let waiting = 0, stalled = 0, errors = 0;
+  a.addEventListener('waiting', () => waiting++);
+  a.addEventListener('stalled', () => stalled++);
+  a.addEventListener('error', () => { errors++; log(name, 'error', a.error && a.error.code); });
+  a.src = src;
+  const tLoad = performance.now();
+  try { await a.play(); } catch (e) { log(name, 'play-failed', String(e)); return; }
+  await new Promise(r => { if (!a.paused && a.readyState >= 3) r(); else a.addEventListener('playing', r, { once: true }); });
+  const t0 = performance.now(), ct0 = a.currentTime;
+  log(name, 'started', { startupMs: Math.round(t0 - tLoad) });
+  const jank = jankMs ? setInterval(() => busy(jankMs), jankEvery) : 0;
+  const samples = [];
+  let last = { t: t0, ct: ct0 }, frozen = 0;
+  const sampler = setInterval(() => {
+    const t = performance.now(), ct = a.currentTime;
+    const b = a.buffered.length ? a.buffered.end(a.buffered.length - 1) - ct : 0;
+    samples.push(+b.toFixed(2));
+    last = { t, ct };
+  }, 1000);
+  await sleep(TEST_SECONDS * 1000);
+  clearInterval(sampler); if (jank) clearInterval(jank);
+  const wall = (performance.now() - t0) / 1000, media = a.currentTime - ct0;
+  log(name, 'result', { jankMs, jankEvery, wall: +wall.toFixed(2), media: +media.toFixed(2), lostSec: +(wall - media).toFixed(2), waiting, stalled, errors, bufferAheadSec: samples });
+  a.pause(); a.removeAttribute('src'); a.load();
+  if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+  await sleep(1500);
+}
+
+(async () => {
+  await sleep(4000);
+  log('ua', navigator.userAgent);
+  const plan = [
+    ['local-capacitor', async () => LOCAL, 0, 0],
+    ['local-capacitor', async () => LOCAL, 120, 2500],
+    ['network-https', async () => NET, 120, 2500],
+    ['local-blob', blobUrl, 120, 2500],
+    ['local-data', dataUrl, 120, 2500],
+    ['local-capacitor', async () => LOCAL, 300, 2500],
+    ['network-https', async () => NET, 300, 2500],
+    ['local-data', dataUrl, 300, 2500],
+  ];
+  for (const [n, f, j, e] of plan) {
+    try { await run(n, f, j, e); } catch (err) { log(n, 'crash', String(err)); }
+  }
+  log('DONE');
+})();
+</script></body></html>

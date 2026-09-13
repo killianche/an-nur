@@ -1,0 +1,65 @@
+# Лабораторный стенд (ветка lab/audio-local, в main не идёт): как WKWebView
+# на iOS подаёт плееру звук из локального файла через схему capacitor://,
+# из сети, из blob: и из data:, когда главный поток страницы занят.
+name: iOS audio lab
+
+on:
+  push:
+    branches: [lab/audio-local]
+  workflow_dispatch:
+
+jobs:
+  lab:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Зависимости
+        run: npm ci
+
+      - name: Веб-часть стенда вместо приложения
+        run: |
+          set -euo pipefail
+          rm -rf dist && mkdir -p dist/lab
+          cp lab/audio-lab.html dist/index.html
+          curl -fsSL -o dist/lab/083.mp3 https://download.quranicaudio.com/quran/yasser_ad-dussary/083.mp3
+          ls -l dist/lab
+
+      - name: cap sync
+        run: npx cap sync ios
+
+      - name: Сборка под симулятор
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "${RUNNER_TEMP}/dd" CODE_SIGNING_ALLOWED=NO | tail -20
+
+      - name: Запуск стенда
+        run: |
+          set -euo pipefail
+          DEV=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))')
+          echo "device $DEV"
+          xcrun simctl boot "$DEV"
+          xcrun simctl bootstatus "$DEV" -b
+          xcrun simctl install "$DEV" "${RUNNER_TEMP}/dd/Build/Products/Debug-iphonesimulator/App.app"
+          xcrun simctl launch --console-pty "$DEV" ru.annur.quran > "${RUNNER_TEMP}/console.log" 2>&1 &
+          for i in $(seq 1 80); do
+            sleep 10
+            if grep -q 'LAB|DONE' "${RUNNER_TEMP}/console.log"; then break; fi
+          done
+          grep 'LAB|' "${RUNNER_TEMP}/console.log" || tail -80 "${RUNNER_TEMP}/console.log"
+          cp "${RUNNER_TEMP}/console.log" console.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audio-lab-console
+          path: console.log
