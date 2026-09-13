@@ -11,6 +11,7 @@ import {
   setMediaSessionPosition, clearMediaSessionMetadata,
 } from '../lib/mediaSession';
 import { SURAH_BY_NUMBER } from '../content/surahs';
+import { RECOVERY_PROBE_TIMEOUT_MS, recoveryDelayMs } from '../lib/audioRecovery';
 
 // Lazy-import: quran-segments.ts ~4 МБ.  Раньше sync-импорт тащил
 // в main bundle всю карту word-timings 8 чтецов × 6236 аятов.  Теперь
@@ -163,7 +164,13 @@ function touchCache(key: string, audio: HTMLAudioElement) {
     if (k === key) continue;
     const el = audioCache.get(k);
     if (звучит(el)) continue;
-    if (el) { el.pause(); el.removeAttribute('src'); el.load(); }
+    if (el) {
+      el.onended = null;
+      el.onerror = null;
+      el.onwaiting = null;
+      el.onplaying = null;
+      el.pause(); el.removeAttribute('src'); el.load();
+    }
     audioCache.delete(k);
     лишнихСплошных--;
   }
@@ -174,7 +181,17 @@ function touchCache(key: string, audio: HTMLAudioElement) {
     const oldest = audioCache.get(k);
     if (звучит(oldest)) continue;
     if (oldest) {
-      try { oldest.pause(); oldest.src = ''; oldest.load(); }
+      // 🔴 Сначала снимаем обработчики, потом источник. `src = ''` WebKit
+      // считает негодным адресом и шлёт `error`, а обработчик выселяемого
+      // аята — это `failAndStop` его давно закончившегося воспроизведения.
+      // Замер в симуляторе iOS 13.09.2026: в поаятном режиме на каждом аяте
+      // приходил ложный «playback failed» от аята шестью раньше. Обработчик
+      // уходил на проверке активного элемента, но полагаться на это нельзя.
+      oldest.onended = null;
+      oldest.onerror = null;
+      oldest.onwaiting = null;
+      oldest.onplaying = null;
+      try { oldest.pause(); oldest.removeAttribute('src'); oldest.load(); }
       catch { /* устаревший element может уже быть detached — игнор */ }
     }
     audioCache.delete(k);
@@ -342,29 +359,33 @@ function getOrCreateAudio(
     ? (местная ?? surahAudioUrl(reciter, surah) ?? ayahAudioUrl(surah, ayah, reciter))
     : ayahAudioUrl(surah, ayah, reciter);
 
-  // Отметка о скачанном файле может пережить сам файл: место кончилось,
-  // система почистила кэш, запись оборвалась. Тогда элемент падает с ошибкой,
-  // и без этого чтение просто останавливалось бы при живом интернете. Снимаем
-  // отметку и один раз пересаживаемся на сетевой адрес.
-  if (местная) {
-    a.addEventListener('error', () => {
-      const сетевой = surahAudioUrl(reciter, surah);
-      if (!сетевой || a.src === сетевой) return;
-      // Запускаем снова, только если элемент уже звучал. Элемент может быть
-      // создан заранее — прогревом следующей суры — и тогда безусловный
-      // `play()` включил бы её поверх текущей за полминуты до конца (ревью
-      // 13.09.2026).
-      const играл = !a.paused;
-      unmarkSurahFile(reciter, surah);
-      a.src = сетевой;
-      a.load();
-      if (играл) void a.play().catch(() => { /* решение примет обычная обработка ошибки */ });
-    }, { once: true });
-  }
+  if (местная) подстраховатьМестныйФайл(a, surah, reciter);
   // Safari/WebView не всегда начинает preload сразу после присваивания src.
   a.load();
   touchCache(key, a);  // вставить + эвикция самых старых при превышении.
   return a;
+}
+
+/**
+ * Отметка о скачанном файле может пережить сам файл: место кончилось,
+ * система почистила кэш, запись оборвалась. Тогда элемент падает с ошибкой,
+ * и без этого чтение просто останавливалось бы при живом интернете. Снимаем
+ * отметку и один раз пересаживаемся на сетевой адрес.
+ */
+function подстраховатьМестныйФайл(a: HTMLAudioElement, surah: number, reciter: ReciterId) {
+  a.addEventListener('error', () => {
+    const сетевой = surahAudioUrl(reciter, surah);
+    if (!сетевой || a.src === сетевой) return;
+    // Запускаем снова, только если элемент уже звучал. Элемент может быть
+    // создан заранее — прогревом следующей суры — и тогда безусловный
+    // `play()` включил бы её поверх текущей за полминуты до конца (ревью
+    // 13.09.2026).
+    const играл = !a.paused;
+    unmarkSurahFile(reciter, surah);
+    a.src = сетевой;
+    a.load();
+    if (играл) void a.play().catch(() => { /* решение примет обычная обработка ошибки */ });
+  }, { once: true });
 }
 
 /** Fire-and-forget: warm the cache for the NEXT ayah while the current
@@ -394,7 +415,131 @@ function stopCachedAyahAudio() {
     audio.pause();
     try { audio.currentTime = 0; } catch { /* metadata may be unavailable */ }
   });
+  снятьАварийныйРежим();
   clearMediaSessionMetadata();
+}
+
+// ─── Аварийный поаятный режим — временный ───────────────────────────────
+//
+// Зачем и почему с растущей паузой — в шапке `src/lib/audioRecovery.ts`.
+// Здесь только механика: отказ сплошной записи включает поаятный режим и
+// заводит фоновую проверку; как только запись снова открывается, элемент
+// проверки кладётся в кэш под ключом сплошной записи, и на ближайшей
+// автоматической границе аята `вернутьсяНаСплошную` возвращает режим.
+
+type АварийныйРежим = {
+  reciter: ReciterId;
+  surah: number;
+  таймер: number;
+  /** Элемент, на котором сплошная запись открылась, — ждёт границы аята. */
+  готовый: HTMLAudioElement | null;
+};
+
+let аварийный: АварийныйРежим | null = null;
+
+/** Неудачи в одной суре — от них растёт пауза перед проверкой. */
+let неудачиСуры = { ключ: '', число: 0 };
+
+function засчитатьНеудачу(reciter: ReciterId, surah: number): number {
+  const ключ = `${reciter}:${surah}`;
+  неудачиСуры = неудачиСуры.ключ === ключ
+    ? { ключ, число: неудачиСуры.число + 1 }
+    : { ключ, число: 1 };
+  return неудачиСуры.число;
+}
+
+/** Сплошная запись отказала — дочитываем поаятно, но ищем путь назад. */
+function войтиВАварийныйРежим(reciter: ReciterId, surah: number) {
+  снятьАварийныйРежим();
+  const режим: АварийныйРежим = { reciter, surah, таймер: 0, готовый: null };
+  аварийный = режим;
+  режим.таймер = window.setTimeout(
+    () => проверитьСплошную(режим),
+    recoveryDelayMs(засчитатьНеудачу(reciter, surah)),
+  );
+}
+
+/**
+ * Выйти из аварийного режима без возврата: остановка, ручной выбор аята,
+ * новая сура. Счётчик неудач при этом не сбрасываем — он привязан к суре и
+ * сам обнулится, когда сура сменится.
+ */
+function снятьАварийныйРежим() {
+  const режим = аварийный;
+  if (!режим) return;
+  аварийный = null;
+  if (режим.таймер) window.clearTimeout(режим.таймер);
+  // Неиспользованный элемент проверки лежит вне кэша — гасим его здесь,
+  // иначе он продолжал бы тянуть файл.
+  const el = режим.готовый;
+  if (el && !audioCache.has(`${режим.reciter}:${режим.surah}:surah`)) {
+    el.removeAttribute('src');
+    try { el.load(); } catch { /* элемент мог быть отцеплен */ }
+  }
+}
+
+/**
+ * Открывается ли сплошная запись снова.
+ *
+ * Достаточно заголовка файла (`loadedmetadata`): он доказывает, что источник
+ * отвечает. Если после возврата поток всё же оборвётся, сработает обычная
+ * цепочка отказа — повтор, поаятный режим и следующая проверка с удвоенной
+ * паузой.
+ */
+function проверитьСплошную(режим: АварийныйРежим) {
+  if (аварийный !== режим) return;
+  режим.таймер = 0;
+  const местная = localSurahSrc(режим.surah, режим.reciter);
+  const src = местная ?? surahAudioUrl(режим.reciter, режим.surah);
+  if (!src) return;
+
+  const a = new Audio();
+  a.preload = 'metadata';
+  let решено = false;
+  const итог = (открылась: boolean) => {
+    if (решено) return;
+    решено = true;
+    window.clearTimeout(сторож);
+    a.removeEventListener('loadedmetadata', удача);
+    a.removeEventListener('error', отказ);
+    if (аварийный !== режим || !открылась) {
+      a.removeAttribute('src');
+      try { a.load(); } catch { /* элемент мог быть отцеплен */ }
+      if (аварийный === режим) {
+        режим.таймер = window.setTimeout(
+          () => проверитьСплошную(режим),
+          recoveryDelayMs(засчитатьНеудачу(режим.reciter, режим.surah)),
+        );
+      }
+      return;
+    }
+    // Открылась — пусть буферизует вперёд, пока ждёт границы аята.
+    a.preload = 'auto';
+    if (местная) подстраховатьМестныйФайл(a, режим.surah, режим.reciter);
+    режим.готовый = a;
+  };
+  const удача = () => итог(true);
+  const отказ = () => итог(false);
+  const сторож = window.setTimeout(отказ, RECOVERY_PROBE_TIMEOUT_MS);
+  a.addEventListener('loadedmetadata', удача);
+  a.addEventListener('error', отказ);
+  a.src = src;
+  a.load();
+}
+
+/**
+ * Вызывается на автоматической границе аята в поаятном режиме. Если
+ * сплошная запись этой суры снова открылась, отдаёт её элемент в кэш и
+ * возвращает `true` — вызывающий переключает режим обратно на `surah`.
+ */
+function вернутьсяНаСплошную(reciter: ReciterId, surah: number): boolean {
+  const режим = аварийный;
+  if (!режим || режим.reciter !== reciter || режим.surah !== surah) return false;
+  const a = режим.готовый;
+  if (!a || a.error) return false;
+  аварийный = null;
+  touchCache(`${reciter}:${surah}:surah`, a);
+  return true;
 }
 
 export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
@@ -606,6 +751,11 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
 
       if (ayah < конецСуры) {
         q.current = ayah + 1;
+        // Поаятный режим после отказа — временный: если сплошная запись этой
+        // суры снова открылась, следующий аят играет уже из неё.
+        if (playbackMode === 'ayah' && вернутьсяНаСплошную(reciterRef.current, q.surah)) {
+          playbackMode = 'surah';
+        }
         playOne(q.surah, q.current, 'automatic');
         return;
       }
@@ -632,6 +782,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       if (!метаСледующей) { остановить(); return; }
 
       const r = reciterRef.current;
+      снятьАварийныйРежим();
       playbackMode = hasSurahAudio(r) ? 'surah' : 'ayah';
       startedWholeSurah = true;
       queueRef.current = {
@@ -719,6 +870,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       const местныйАят = localAyahSrc(surah, ayah, r);
       if (playbackMode === 'surah' && местныйАят) {
         playbackMode = 'ayah';
+        войтиВАварийныйРежим(r, surah);
         audio.onended = null;
         audio.onerror = null;
         audio.onwaiting = null;
@@ -885,6 +1037,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
       // Поаятный режим больше не выбирается заранее никогда. Он остался
       // аварийным: если сплошная запись не открылась (нет сети и файла нет),
       // `failAndStop` переключит режим и повторит тот же аят.
+      снятьАварийныйРежим();
       playbackMode = hasSurahAudio(r) ? 'surah' : 'ayah';
       startedWholeSurah = false;
       playOne(surah, ayah);
@@ -913,6 +1066,7 @@ export function useAyahAudio(reciter: ReciterId = DEFAULT_RECITER) {
     // Локальный файл предпочитается сетевому внутри `getOrCreateAudio`, а
     // отсутствие и того и другого разбирает аварийная ветка в `failAndStop`.
     // Здесь `mode` управляет только тем, начинать ли суру с нуля записи.
+    снятьАварийныйРежим();
     playbackMode = hasSurahAudio(reciterRef.current) ? 'surah' : 'ayah';
     startedWholeSurah = mode === 'surah';
     queueRef.current = { surah, first: fromAyah, last: lastAyah, current: fromAyah };

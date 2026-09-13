@@ -1968,6 +1968,31 @@ await groupAsync('Быстрая прокрутка: палец → номер',
   check('выключатель ленты на месте', typeof FAST_SCROLL.ayahFeed, 'boolean');
 });
 
+await groupAsync('Возврат из поаятного режима на сплошную запись', async () => {
+  const mod = await import(
+    pathToFileURL(resolve(ROOT, 'src/lib/audioRecovery.ts')).href
+  );
+  const {
+    recoveryDelayMs, RECOVERY_FIRST_DELAY_MS, RECOVERY_MAX_DELAY_MS,
+  } = mod;
+
+  // Числа выводятся из констант: поменяй константу — тест не станет врать.
+  check('первая проверка — через первую паузу', recoveryDelayMs(1), RECOVERY_FIRST_DELAY_MS);
+  check('каждая неудача удваивает паузу', recoveryDelayMs(3), RECOVERY_FIRST_DELAY_MS * 4);
+  check('пауза не растёт выше предела', recoveryDelayMs(50), RECOVERY_MAX_DELAY_MS);
+  check('предел достигается, а не пролетается', recoveryDelayMs(1e9), RECOVERY_MAX_DELAY_MS);
+
+  // Мусор на входе не должен давать мгновенных проверок: нулевая пауза на
+  // мёртвой сети — это секунды тишины посреди чтения каждые пару секунд.
+  check('ноль — как первая попытка', recoveryDelayMs(0), RECOVERY_FIRST_DELAY_MS);
+  check('отрицательное — как первая попытка', recoveryDelayMs(-4), RECOVERY_FIRST_DELAY_MS);
+  check('NaN — как первая попытка', recoveryDelayMs(NaN), RECOVERY_FIRST_DELAY_MS);
+
+  let убывает = 0;
+  for (let n = 2; n < 40; n++) if (recoveryDelayMs(n) < recoveryDelayMs(n - 1)) убывает++;
+  check('пауза не убывает с числом неудач', убывает, 0);
+});
+
 // ─── Итог ─────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length === 0) {

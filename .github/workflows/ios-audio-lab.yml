@@ -1,6 +1,6 @@
 # Лабораторный стенд (ветка lab/audio-local, в main не идёт).
-# Прогон 4: сплошная запись недоступна, лежат старые поаятные файлы суры 83 —
-# меряем швы поаятного режима на WebKit iOS.
+# Прогон 5: сплошная запись недоступна, лежат старые поаятные файлы суры 83;
+# через 40 с сеть возвращается — чтение должно вернуться на сплошную запись.
 name: iOS audio lab
 
 on:
@@ -69,6 +69,13 @@ jobs:
           curl -sS -m 5 -o /dev/null -w "quranicaudio -> %{http_code}\n" https://download.quranicaudio.com/quran/yasser_ad-dussary/083.mp3 || true
 
           xcrun simctl launch --console-pty "$DEV" "$APP" > "${RUNNER_TEMP}/a.log" 2>&1 &
+          for i in $(seq 1 120); do sleep 2; grep -q 'LAB|click' "${RUNNER_TEMP}/a.log" && break; done
+          sleep 40
+          # Сеть вернулась: сплошная запись снова открывается.
+          sudo sed -i '' '/download.quranicaudio.com/d' /etc/hosts
+          sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder
+          echo "LABHOST unblocked"
+          curl -sS -m 10 -o /dev/null -w "quranicaudio -> %{http_code}\n" https://download.quranicaudio.com/quran/yasser_ad-dussary/083.mp3 || true
           for i in $(seq 1 30); do sleep 10; grep -q 'LAB|ALL-DONE' "${RUNNER_TEMP}/a.log" && break; done
           xcrun simctl terminate "$DEV" "$APP" || true
           cp "${RUNNER_TEMP}/a.log" console.log

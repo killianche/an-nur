@@ -46,7 +46,7 @@
         silentSince = null; started = true;
       } else if (silentSince === null) silentSince = performance.now();
     }, 20);
-    await sleep(150000);
+    await sleep(170000);
     clearInterval(sampler);
     const s = [...gaps].sort((x, y) => x - y);
     log('result', { gaps: gaps.length, median: s[Math.floor(s.length / 2)] ?? null, max: s[s.length - 1] ?? null, elements: els.length, srcs: els.slice(0, 6).map(e => tail(e.src)) });
