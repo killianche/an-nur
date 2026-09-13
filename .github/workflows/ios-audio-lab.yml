@@ -1,6 +1,6 @@
-# Лабораторный стенд (ветка lab/audio-local, в main не идёт): как WKWebView
-# на iOS подаёт плееру звук из локального файла через схему capacitor://,
-# из сети, из blob: и из data:, когда главный поток страницы занят.
+# Лабораторный стенд (ветка lab/audio-local, в main не идёт).
+# Прогон 2: настоящее приложение в симуляторе, сура 83 заранее лежит на диске
+# приложения; зонд lab/lab-probe.js пишет каждое событие аудиоэлементов.
 name: iOS audio lab
 
 on:
@@ -11,7 +11,7 @@ on:
 jobs:
   lab:
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -23,13 +23,18 @@ jobs:
       - name: Зависимости
         run: npm ci
 
-      - name: Веб-часть стенда вместо приложения
+      - name: Сборка приложения с зондом
         run: |
           set -euo pipefail
-          rm -rf dist && mkdir -p dist/lab
-          cp lab/audio-lab.html dist/index.html
-          curl -fsSL -o dist/lab/083.mp3 https://download.quranicaudio.com/quran/yasser_ad-dussary/083.mp3
-          ls -l dist/lab
+          npm run build
+          cp lab/lab-probe.js dist/lab-probe.js
+          python3 - <<'EOF'
+          p = 'dist/index.html'
+          s = open(p).read()
+          s = s.replace('<head>', '<head><script src="/lab-probe.js"></script>', 1)
+          open(p, 'w').write(s)
+          EOF
+          grep -o '<head><script[^>]*>' dist/index.html
 
       - name: cap sync
         run: npx cap sync ios
@@ -40,23 +45,45 @@ jobs:
           xcodebuild build \
             -project ios/App/App.xcodeproj -scheme App -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "${RUNNER_TEMP}/dd" CODE_SIGNING_ALLOWED=NO | tail -20
+            -derivedDataPath "${RUNNER_TEMP}/dd" CODE_SIGNING_ALLOWED=NO | tail -5
 
-      - name: Запуск стенда
+      - name: Прогон
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          APP=ru.annur.quran
           DEV=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))')
           echo "device $DEV"
           xcrun simctl boot "$DEV"
           xcrun simctl bootstatus "$DEV" -b
           xcrun simctl install "$DEV" "${RUNNER_TEMP}/dd/Build/Products/Debug-iphonesimulator/App.app"
-          xcrun simctl launch --console-pty "$DEV" ru.annur.quran > "${RUNNER_TEMP}/console.log" 2>&1 &
-          for i in $(seq 1 80); do
-            sleep 10
-            if grep -q 'LAB|DONE' "${RUNNER_TEMP}/console.log"; then break; fi
+          DATA=$(xcrun simctl get_app_container "$DEV" "$APP" data)
+          echo "data $DATA"
+          for spec in "yasser https://download.quranicaudio.com/quran/yasser_ad-dussary/083.mp3" \
+                      "alafasy https://download.quranicaudio.com/qdc/mishari_al_afasy/murattal/83.mp3" \
+                      "luhaidan https://server8.mp3quran.net/lhdan/083.mp3"; do
+            set -- $spec
+            mkdir -p "$DATA/Library/NoCloud/audio/$1"
+            curl -fsSL -o "$DATA/Library/NoCloud/audio/$1/surah-83.mp3" "$2"
           done
-          grep 'LAB|' "${RUNNER_TEMP}/console.log" || tail -80 "${RUNNER_TEMP}/console.log"
-          cp "${RUNNER_TEMP}/console.log" console.log
+          ls -lR "$DATA/Library/NoCloud/audio"
+          xcrun simctl spawn "$DEV" defaults write "$APP" CapacitorStorage.audio.surahFiles.v1 -string '{"yasser":[83],"alafasy":[83],"luhaidan":[83]}'
+
+          : > "${RUNNER_TEMP}/a.log"
+          xcrun simctl launch --console-pty "$DEV" "$APP" > "${RUNNER_TEMP}/a.log" 2>&1 &
+          for i in $(seq 1 120); do sleep 10; grep -q 'LAB|PHASE-A-DONE\|LAB|ALL-DONE' "${RUNNER_TEMP}/a.log" && break; done
+          xcrun simctl terminate "$DEV" "$APP" || true
+          sleep 3
+
+          rm -rf "$DATA/Library/NoCloud/audio"
+          xcrun simctl spawn "$DEV" defaults write "$APP" CapacitorStorage.audio.surahFiles.v1 -string '{}'
+          : > "${RUNNER_TEMP}/b.log"
+          xcrun simctl launch --console-pty "$DEV" "$APP" > "${RUNNER_TEMP}/b.log" 2>&1 &
+          for i in $(seq 1 60); do sleep 10; grep -q 'LAB|ALL-DONE' "${RUNNER_TEMP}/b.log" && break; done
+          xcrun simctl terminate "$DEV" "$APP" || true
+
+          cat "${RUNNER_TEMP}/a.log" "${RUNNER_TEMP}/b.log" > console.log
+          grep -E 'LAB\||\[warn\]|\[error\]' console.log | grep -v 'LAB|ev .* (loadstart|play|pause)' | head -400
+          exit 0
 
       - uses: actions/upload-artifact@v4
         if: always()
