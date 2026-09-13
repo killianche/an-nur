@@ -1,6 +1,6 @@
 # Лабораторный стенд (ветка lab/audio-local, в main не идёт).
-# Прогон 3: сура скачивается самим приложением, файл сверяется с оригиналом,
-# затем играет; зонд lab/lab-probe.js пишет каждое событие аудиоэлементов.
+# Прогон 4: сплошная запись недоступна, лежат старые поаятные файлы суры 83 —
+# меряем швы поаятного режима на WebKit iOS.
 name: iOS audio lab
 
 on:
@@ -57,32 +57,22 @@ jobs:
           echo "device $DEV"
           xcrun simctl install "$DEV" "${RUNNER_TEMP}/dd/Build/Products/Debug-iphonesimulator/App.app"
           DATA=$(xcrun simctl get_app_container "$DEV" "$APP" data)
-          DIR="$DATA/Library/NoCloud/audio/yasser"
+          DIR="$DATA/Library/NoCloud/audio/yasser/83"
+          mkdir -p "$DIR"
+          for a in $(seq 1 36); do
+            curl -fsSL -o "$DIR/$a.mp3" "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/083$(printf %03d $a).mp3"
+          done
+          ls "$DIR" | wc -l
+          # Сплошная запись недоступна: как обрыв потока на телефоне.
+          sudo sh -c 'echo "0.0.0.0 download.quranicaudio.com" >> /etc/hosts'
+          sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder
+          curl -sS -m 5 -o /dev/null -w "quranicaudio -> %{http_code}\n" https://download.quranicaudio.com/quran/yasser_ad-dussary/083.mp3 || true
 
-          # Фаза 1: приложение само качает фонотеку Ясира (автозагрузка).
           xcrun simctl launch --console-pty "$DEV" "$APP" > "${RUNNER_TEMP}/a.log" 2>&1 &
-          mkdir -p ref
-          for i in $(seq 1 48); do
-            sleep 10
-            ls -l "$DIR" 2>/dev/null | awk '{print $5, $9}' | tr '\n' ' '; echo
-            if [ -f "$DIR/surah-90.mp3" ]; then break; fi
-          done
+          for i in $(seq 1 30); do sleep 10; grep -q 'LAB|ALL-DONE' "${RUNNER_TEMP}/a.log" && break; done
           xcrun simctl terminate "$DEV" "$APP" || true
-          sleep 3
-          echo "== сверка файлов, скачанных приложением, с оригиналами"
-          for f in "$DIR"/surah-*.mp3; do
-            n=$(basename "$f" .mp3); n=${n#surah-}
-            p=$(printf %03d "$n")
-            curl -fsSL -o "ref/$p.mp3" "https://download.quranicaudio.com/quran/yasser_ad-dussary/$p.mp3"
-            echo "LABFILE surah $n app=$(stat -f %z "$f") $(md5 -q "$f") ref=$(stat -f %z "ref/$p.mp3") $(md5 -q "ref/$p.mp3")"
-          done
-
-          # Фаза 2: сура 83 играет из файла, который скачало приложение.
-          xcrun simctl launch --console-pty "$DEV" "$APP" > "${RUNNER_TEMP}/b.log" 2>&1 &
-          for i in $(seq 1 40); do sleep 10; grep -q 'LAB|ALL-DONE' "${RUNNER_TEMP}/b.log" && break; done
-          xcrun simctl terminate "$DEV" "$APP" || true
-          cat "${RUNNER_TEMP}/a.log" "${RUNNER_TEMP}/b.log" > console.log
-          grep -v readdir console.log | grep -E 'LAB\||\[warn\]' | head -300
+          cp "${RUNNER_TEMP}/a.log" console.log
+          grep -v readdir console.log | grep -E 'LAB\||\[warn\]' | head -400
           exit 0
 
       - uses: actions/upload-artifact@v4
