@@ -1,6 +1,6 @@
 # Лабораторный стенд (ветка lab/audio-local, в main не идёт).
-# Прогон 2: настоящее приложение в симуляторе, сура 83 заранее лежит на диске
-# приложения; зонд lab/lab-probe.js пишет каждое событие аудиоэлементов.
+# Прогон 3: сура скачивается самим приложением, файл сверяется с оригиналом,
+# затем играет; зонд lab/lab-probe.js пишет каждое событие аудиоэлементов.
 name: iOS audio lab
 
 on:
@@ -52,37 +52,36 @@ jobs:
           set -uo pipefail
           APP=ru.annur.quran
           DEV=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))')
-          echo "device $DEV"
           xcrun simctl boot "$DEV"
-          xcrun simctl bootstatus "$DEV" -b
+          xcrun simctl bootstatus "$DEV" -b > /dev/null
           xcrun simctl install "$DEV" "${RUNNER_TEMP}/dd/Build/Products/Debug-iphonesimulator/App.app"
           DATA=$(xcrun simctl get_app_container "$DEV" "$APP" data)
-          echo "data $DATA"
-          for spec in "yasser https://download.quranicaudio.com/quran/yasser_ad-dussary/083.mp3" \
-                      "alafasy https://download.quranicaudio.com/qdc/mishari_al_afasy/murattal/83.mp3" \
-                      "luhaidan https://server8.mp3quran.net/lhdan/083.mp3"; do
-            set -- $spec
-            mkdir -p "$DATA/Library/NoCloud/audio/$1"
-            curl -fsSL -o "$DATA/Library/NoCloud/audio/$1/surah-83.mp3" "$2"
-          done
-          ls -lR "$DATA/Library/NoCloud/audio"
-          xcrun simctl spawn "$DEV" defaults write "$APP" CapacitorStorage.audio.surahFiles.v1 -string '{"yasser":[83],"alafasy":[83],"luhaidan":[83]}'
+          DIR="$DATA/Library/NoCloud/audio/yasser"
 
-          : > "${RUNNER_TEMP}/a.log"
+          # Фаза 1: приложение само качает фонотеку Ясира (автозагрузка).
           xcrun simctl launch --console-pty "$DEV" "$APP" > "${RUNNER_TEMP}/a.log" 2>&1 &
-          for i in $(seq 1 120); do sleep 10; grep -q 'LAB|PHASE-A-DONE\|LAB|ALL-DONE' "${RUNNER_TEMP}/a.log" && break; done
+          mkdir -p ref
+          for i in $(seq 1 48); do
+            sleep 10
+            ls -l "$DIR" 2>/dev/null | awk '{print $5, $9}' | tr '\n' ' '; echo
+            if [ -f "$DIR/surah-90.mp3" ]; then break; fi
+          done
           xcrun simctl terminate "$DEV" "$APP" || true
           sleep 3
+          echo "== сверка файлов, скачанных приложением, с оригиналами"
+          for f in "$DIR"/surah-*.mp3; do
+            n=$(basename "$f" .mp3); n=${n#surah-}
+            p=$(printf %03d "$n")
+            curl -fsSL -o "ref/$p.mp3" "https://download.quranicaudio.com/quran/yasser_ad-dussary/$p.mp3"
+            echo "LABFILE surah $n app=$(stat -f %z "$f") $(md5 -q "$f") ref=$(stat -f %z "ref/$p.mp3") $(md5 -q "ref/$p.mp3")"
+          done
 
-          rm -rf "$DATA/Library/NoCloud/audio"
-          xcrun simctl spawn "$DEV" defaults write "$APP" CapacitorStorage.audio.surahFiles.v1 -string '{}'
-          : > "${RUNNER_TEMP}/b.log"
+          # Фаза 2: сура 83 играет из файла, который скачало приложение.
           xcrun simctl launch --console-pty "$DEV" "$APP" > "${RUNNER_TEMP}/b.log" 2>&1 &
-          for i in $(seq 1 60); do sleep 10; grep -q 'LAB|ALL-DONE' "${RUNNER_TEMP}/b.log" && break; done
+          for i in $(seq 1 40); do sleep 10; grep -q 'LAB|ALL-DONE' "${RUNNER_TEMP}/b.log" && break; done
           xcrun simctl terminate "$DEV" "$APP" || true
-
           cat "${RUNNER_TEMP}/a.log" "${RUNNER_TEMP}/b.log" > console.log
-          grep -E 'LAB\||\[warn\]|\[error\]' console.log | grep -v 'LAB|ev .* (loadstart|play|pause)' | head -400
+          grep -v readdir console.log | grep -E 'LAB\||\[warn\]' | head -300
           exit 0
 
       - uses: actions/upload-artifact@v4
