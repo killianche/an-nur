@@ -26,7 +26,8 @@
     await sleep(1500);
     if (!document.querySelector('[data-surah="83"]')) document.querySelector('button[aria-label="Назад"]')?.click();
     const row = await waitFor(() => document.querySelector('[data-surah="83"]'), 20000);
-    await sleep(6000);
+    // Первый запуск: приложение сканирует диск в поисках поаятных файлов.
+    await sleep(75000);
     row.scrollIntoView({ block: 'center' });
     await sleep(400);
     const b = row.querySelector('button[aria-label^="Слушать суру"]');
