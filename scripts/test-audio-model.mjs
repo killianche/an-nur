@@ -1776,58 +1776,65 @@ await groupAsync('Мусхаф: подгонка страницы под экр�
   check('пустая строка не тянется', lineJustified(0, 0), false);
 });
 
-await groupAsync('Мусхаф: куда встаёт лист после отпускания', async () => {
+await groupAsync('Мусхаф: лента страниц на нативной прокрутке', async () => {
   const mod = await import(
-    pathToFileURL(resolve(ROOT, 'src/lib/mushafSwipe.ts')).href
+    pathToFileURL(resolve(ROOT, 'src/lib/mushafStrip.ts')).href
   );
-  const { projectTarget, clampSpeed, MAX_SPEED } = mod;
+  const {
+    stripIndex, scrollLeftForPage, pageAtScrollLeft, isStripAligned, stripWidth,
+    STRIP_FIRST_PAGE, STRIP_LAST_PAGE,
+  } = mod;
   const ШАГ = 408;            // 390 экрана + 18 зазора
-  const ПОРОГ = 70;           // min(104, 390 × 0.18)
 
-  // ── Куда поедет лист ───────────────────────────────────────────────
-  // Прежние два правила (путь ≥ порога ИЛИ короткий быстрый щелчок) сведены
-  // в одно: решает предсказанная точка остановки.
-  check('медленная протяжка за порог переворачивает',
-    projectTarget(150, 0.1, ШАГ, ПОРОГ), ШАГ);
-  check('короткий быстрый щелчок тоже переворачивает',
-    projectTarget(40, 1.0, ШАГ, ПОРОГ), ШАГ);
-  check('вялое движение возвращает лист на место',
-    projectTarget(30, 0.03, ШАГ, ПОРОГ), 0);
-  // 🔴 Найдено вживую, а не выведено: вялая протяжка на 50 px со скоростью
-  // 0.21 px/мс — это половина порога и восьмая часть экрана. Прежний код на
-  // такой жест не реагировал, и новый не должен: листать от неосторожного
-  // движения в мусхафе значит терять место в чтении.
-  check('короткая вялая протяжка страницу не переворачивает',
-    projectTarget(50, 0.21, ШАГ, ПОРОГ), 0);
-  check('но чуть быстрее — уже переворачивает',
-    projectTarget(50, 0.6, ШАГ, ПОРОГ), ШАГ);
-  check('в обратную сторону всё симметрично',
-    projectTarget(-150, -0.1, ШАГ, ПОРОГ), -ШАГ);
-  // 🔴 Жест, начатый вперёд, не отдаёт страницу назад, чем бы он ни
-  // закончился: в мусхафе такой сюрприз стоит потерянного места.
-  check('бросок назад после протяжки вперёд возвращает лист, а не листает назад',
-    projectTarget(90, -1.2, ШАГ, ПОРОГ), 0);
-  // Но щелчок почти без движения направление берёт у скорости.
-  check('щелчок из мёртвой зоны слушается скорости',
-    projectTarget(-3, 1.5, ШАГ, ПОРОГ), ШАГ);
-  check('на первой странице назад не листаем',
-    projectTarget(-200, -0.5, ШАГ, ПОРОГ, { canBack: false }), 0);
-  check('на последней странице вперёд не листаем',
-    projectTarget(200, 0.5, ШАГ, ПОРОГ, { canForward: false }), 0);
-  // За жест ровно одна страница, сколько ни бросай.
-  check('даже сильнейший бросок переворачивает одну страницу',
-    projectTarget(200, MAX_SPEED * 4, ШАГ, ПОРОГ), ШАГ);
+  // Справа налево: следующая страница лежит ЛЕВЕЕ текущей.
+  check('следующая страница левее текущей',
+    scrollLeftForPage(101, ШАГ) < scrollLeftForPage(100, ШАГ), true);
+  check('последняя страница книги у левого края', scrollLeftForPage(STRIP_LAST_PAGE, ШАГ), 0);
+  check('первая — у правого', stripIndex(STRIP_FIRST_PAGE), STRIP_LAST_PAGE - STRIP_FIRST_PAGE);
 
-  // Скорость ограничена: одиночный выброс координаты не решает судьбу листа.
-  check('скорость сверху ограничена', clampSpeed(99), MAX_SPEED);
-  check('и снизу тоже', clampSpeed(-99), -MAX_SPEED);
-  check('мусор в скорости обнуляется', clampSpeed(NaN), 0);
+  // Прокрутка ↔ страница — взаимно обратны на каждой странице книги.
+  let расходится = 0;
+  for (let p = STRIP_FIRST_PAGE; p <= STRIP_LAST_PAGE; p++) {
+    if (pageAtScrollLeft(scrollLeftForPage(p, ШАГ), ШАГ) !== p) расходится++;
+  }
+  check('страница → прокрутка → та же страница, все 604', расходится, 0);
 
-  // 🔴 Анимации листания нет — по прямой просьбе владельца 14.09.2026
-  // («убери полностью всю анимацию, прям удали»). Страж ловит её возврат
-  // любым из прежних путей: Web Animations в пейджере или CSS-переход слоя.
+  // Номер меняется, когда новая страница заняла больше половины шага.
+  check('чуть сдвинули — страница прежняя',
+    pageAtScrollLeft(scrollLeftForPage(100, ШАГ) - ШАГ * 0.4, ШАГ), 100);
+  check('больше половины — уже следующая',
+    pageAtScrollLeft(scrollLeftForPage(100, ШАГ) - ШАГ * 0.6, ШАГ), 101);
+  check('резинка за левым краем не выводит за 604', pageAtScrollLeft(-300, ШАГ), STRIP_LAST_PAGE);
+  check('и за правым — за 1', pageAtScrollLeft(ШАГ * 700, ШАГ), STRIP_FIRST_PAGE);
+  check('нулевой шаг не делит на ноль', pageAtScrollLeft(500, 0), STRIP_FIRST_PAGE);
+
+  check('на странице лента выровнена', isStripAligned(scrollLeftForPage(250, ШАГ), ШАГ), true);
+  check('посередине — нет', isStripAligned(scrollLeftForPage(250, ШАГ) + 150, ШАГ), false);
+  check('полпикселя дрожи — ещё выровнена', isStripAligned(scrollLeftForPage(250, ШАГ) + 0.5, ШАГ), true);
+  // Допуск остановки: застывшее значение WebKit (−10…+7 px) — остановка,
+  // палец посреди листа — нет.
+  const { stripSettleTolerance } = mod;
+  const допуск = stripSettleTolerance(ШАГ);
+  check('запаздывание WebKit в 10 px — лента стоит',
+    isStripAligned(scrollLeftForPage(250, ШАГ) - 10, ШАГ, допуск), true);
+  check('палец посреди листа — не стоит',
+    isStripAligned(scrollLeftForPage(250, ШАГ) - ШАГ * 0.3, ШАГ, допуск), false);
+  check('допуск не меньше 16 px даже на узком экране', stripSettleTolerance(100), 16);
+
+  // Последний лист справа должен доезжать до кадра целиком.
+  check('ширина ленты: все шаги плюс лист',
+    stripWidth(390, 18), (STRIP_LAST_PAGE - STRIP_FIRST_PAGE) * ШАГ + 390);
+  check('первая страница помещается в ленту',
+    scrollLeftForPage(STRIP_FIRST_PAGE, ШАГ) + 390, stripWidth(390, 18));
+
+  // 🔴 Своей анимации листания нет: листает системная прокрутка iOS (владелец
+  // 14.09.2026: «бери то, что уже сделано крупной компанией»). Страж ловит
+  // возврат самодельной физики любым из прежних путей: Web Animations в
+  // пейджере или CSS-переход слоя.
   const экран = readFileSync(resolve(ROOT, 'src/screens/MushafScreen.tsx'), 'utf8');
   check('пейджер мусхафа не запускает Web Animations', /\.animate\(/.test(экран), false);
+  check('лента мусхафа — нативная прокрутка с привязкой к страницам',
+    /scrollSnapType:\s*'x mandatory'/.test(экран) && /scrollSnapStop:\s*'always'/.test(экран), true);
   const стили = readFileSync(resolve(ROOT, 'src/index.css'), 'utf8');
   const слойИДорожка = [...стили.matchAll(/\.mushaf-page-(?:layer|track)[^{]*\{([^}]*)\}/g)]
     .map(m => m[1].replace(/\/\*[\s\S]*?\*\//g, ''));
