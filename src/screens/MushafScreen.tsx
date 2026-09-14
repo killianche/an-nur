@@ -336,7 +336,8 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     settleTimer.current = null;
     const track = pageTrackRef.current;
     if (!track || !area) return;
-    // Палец держит ленту — ждём: отпускание само запустит проверку снова.
+    // Касание, не ставшее прокруткой (тап, удержание), ленту не двигает — ждём
+    // его конца: отпускание само запустит проверку снова.
     if (touch.current != null) return;
     // 🔴 Остановку подтверждает ТИШИНА событий прокрутки при убранном пальце,
     // а не равенство точке привязки. WebKit на iOS отдаёт странице положение
@@ -372,6 +373,16 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   const onTrackScroll = () => {
     const track = pageTrackRef.current;
     if (!track || !area) return;
+    // 🔴 Пошла прокрутка — касание больше не тап и не удержание, и его снимок
+    // снимаем СРАЗУ. WebKit на iOS, отдав жест нативной прокрутке, не шлёт
+    // странице ни `touchend`, ни `touchcancel` (замер свайпами в
+    // iOS-симуляторе 14.09.2026): снимок висел до следующего касания, и всё,
+    // что ждёт «палец убран», — остановка ленты, выравнивание по стрелкам и
+    // звуку — не срабатывало.
+    if (touch.current != null) {
+      touch.current = null;
+      clearLongPress();
+    }
     const x = track.scrollLeft;
     // Пока лента между страницами — `data-turning`: волосок стыка виден, подбор
     // кегля дальних листов ждёт. Пишем только при смене — событие частое.
