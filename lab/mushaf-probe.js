@@ -15,7 +15,7 @@
     const t = await waitFor(() => document.querySelector('.mushaf-page-track'), 20000);
     await sleep(4000);
     const snap = () => {
-      const step = t.clientWidth + 18;
+      const step = t.firstElementChild.children[1].offsetLeft;
       const off = t.scrollLeft - (604 - Number((document.querySelector('.screen-header')?.textContent?.match(/Страница\s+(\d+)/) ?? [])[1])) * step;
       const n = Number((document.querySelector('.screen-header')?.textContent?.match(/Страница\s+(\d+)/) ?? [])[1]);
       return { page: n, off: Math.round(off * 10) / 10, scrollLeft: Math.round(t.scrollLeft), aligned: Math.abs(t.scrollLeft - (604 - n) * step) < 1, turning: t.dataset.turning !== undefined, layers: document.querySelectorAll('.mushaf-page-layer').length, blankCurrent: !document.querySelector('.mushaf-page-layer[data-current] .mushaf-page, .mushaf-page-layer[data-current] [data-verse-key]') };
@@ -23,7 +23,7 @@
     log('READY', snap());
     let prev = '';
     t.addEventListener('scroll', () => { const s = JSON.stringify(snap()); if (s !== prev) { prev = s; } });
-    setInterval(() => { const s = JSON.stringify(snap()); if (s !== prev) { prev = s; log('state', Math.round(performance.now()), s); } }, 250);
+    setInterval(() => { const s = JSON.stringify(snap()); if (s !== prev) { prev = s; log('state', Math.round(performance.now()), s); } }, 100);
     window.__labSnap = snap;
   })();
 })();

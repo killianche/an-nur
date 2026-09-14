@@ -296,8 +296,19 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
 
   useEffect(() => () => clearLongPress(), []);
 
-  /** Шаг ленты: ширина листа плюс зазор. Ширина — из замера области, без чтения вёрстки. */
-  const step = (area?.width ?? 0) + PAGE_GUTTER;
+  /**
+   * Ширина листа на ленте — ЦЕЛАЯ, в пикселях.
+   *
+   * 🔴 Замер области бывает дробным (401.98 px — отступы с `env()`). Дробный
+   * шаг на ленте в четверть миллиона пикселей набегал: на странице 3 (место
+   * 601) расхождение между точкой привязки, которую округляет WebKit, и нашей
+   * арифметикой доходило до 10 px — замер в iOS-симуляторе 14.09.2026. Целый
+   * шаг даёт точные координаты на всех 604 страницах. Кегль по-прежнему
+   * подбирается под настоящую, дробную область.
+   */
+  const pageWidth = Math.floor(area?.width ?? 0);
+  /** Шаг ленты: ширина листа плюс зазор. Без чтения вёрстки. */
+  const step = pageWidth + PAGE_GUTTER;
 
   /** Номер, выставленный самой прокруткой: такой номер ленту не выравнивает. */
   const pageFromScroll = useRef<number | null>(null);
@@ -691,10 +702,10 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           {area && (
             <div style={{
               position: 'relative',
-              width: stripWidth(area.width, PAGE_GUTTER, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE),
+              width: stripWidth(pageWidth, PAGE_GUTTER, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE),
               height: '100%',
             }}>
-              <MushafSnapPoints step={step} pageWidth={area.width} />
+              <MushafSnapPoints step={step} pageWidth={pageWidth} />
               {pageWindow.map(preparedPage => (
                 <PreparedMushafPage
                   key={preparedPage}
@@ -702,7 +713,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
                   visible={preparedPage === page}
                   offset={page - preparedPage}
                   left={scrollLeftForPage(preparedPage, step, MUSHAF_LAST_PAGE)}
-                  width={area.width}
+                  width={pageWidth}
                   fitTo={area}
                   activeVerseKey={activeVerseKey}
                   activeWordPos={tick.currentWordPos}
