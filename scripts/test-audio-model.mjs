@@ -1811,6 +1811,15 @@ await groupAsync('Мусхаф: лента страниц на нативной 
   check('на странице лента выровнена', isStripAligned(scrollLeftForPage(250, ШАГ), ШАГ), true);
   check('посередине — нет', isStripAligned(scrollLeftForPage(250, ШАГ) + 150, ШАГ), false);
   check('полпикселя дрожи — ещё выровнена', isStripAligned(scrollLeftForPage(250, ШАГ) + 0.5, ШАГ), true);
+  // Допуск остановки: застывшее значение WebKit (−10…+7 px) — остановка,
+  // палец посреди листа — нет.
+  const { stripSettleTolerance } = mod;
+  const допуск = stripSettleTolerance(ШАГ);
+  check('запаздывание WebKit в 10 px — лента стоит',
+    isStripAligned(scrollLeftForPage(250, ШАГ) - 10, ШАГ, допуск), true);
+  check('палец посреди листа — не стоит',
+    isStripAligned(scrollLeftForPage(250, ШАГ) - ШАГ * 0.3, ШАГ, допуск), false);
+  check('допуск не меньше 16 px даже на узком экране', stripSettleTolerance(100), 16);
 
   // Последний лист справа должен доезжать до кадра целиком.
   check('ширина ленты: все шаги плюс лист',

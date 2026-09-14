@@ -37,7 +37,7 @@ import { QcfMushafPage } from '../components/QcfMushafPage';
 import { FontErrorBanner } from '../components/FontErrorBanner';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import {
-  isStripAligned, pageAtScrollLeft, scrollLeftForPage, stripWidth,
+  isStripAligned, pageAtScrollLeft, scrollLeftForPage, stripSettleTolerance, stripWidth,
 } from '../lib/mushafStrip';
 
 /**
@@ -330,7 +330,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
    * ничего не должно случиться: ни закрыться лист звучащего аята, ни
    * выключиться следование за звуком (ревью 14.09.2026). `scrollend` в Safari
    * рассчитывать нельзя, поэтому остановку подтверждает тишина событий
-   * прокрутки и выровненная лента.
+   * прокрутки и лента в пределах допуска от страницы (см. ниже).
    */
   const settleStrip = () => {
     settleTimer.current = null;
@@ -339,15 +339,22 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     // Касание, не ставшее прокруткой (тап, удержание), ленту не двигает — ждём
     // его конца: отпускание само запустит проверку снова.
     if (touch.current != null) return;
-    // 🔴 Остановку подтверждает ТИШИНА событий прокрутки при убранном пальце,
-    // а не равенство точке привязки. WebKit на iOS отдаёт странице положение
-    // прокрутки с запаздыванием, и последнее значение застывает в нескольких
-    // пикселях от точки, где лента реально стоит: −10, −4, +7 px — замер
-    // настоящими свайпами в iOS-симуляторе 14.09.2026, на экране при этом
-    // лист стоит ровно. Требование «до пикселя» оставляло признак движения
-    // включённым навсегда — тап переставал открывать шапку. Положение не
-    // дописываем: запись поверх системной привязки сдвинула бы лист на эти
-    // пиксели уже по-настоящему.
+    // 🔴 Остановку подтверждает тишина событий прокрутки И лента в пределах
+    // допуска от страницы — не «до пикселя» и не «просто тишина».
+    //
+    // До пикселя нельзя: WebKit на iOS отдаёт странице положение прокрутки с
+    // запаздыванием, последнее значение застывает в −10…+7 px от точки, где
+    // лист реально стоит (замер свайпами в iOS-симуляторе 14.09.2026), и
+    // признак движения не снимался бы вовсе. Одной тишины мало: после начала
+    // прокрутки WebKit не присылает `touchend`, и палец, замерший посреди листа,
+    // выглядел бы остановкой — закрывался лист звучащего аята (ревью
+    // 14.09.2026). Палец держит лист далеко за допуском — ждём дальше, опросом
+    // на таймере. Положение не дописываем: запись поверх системной привязки
+    // сдвинула бы лист на эти пиксели уже по-настоящему.
+    if (!isStripAligned(track.scrollLeft, step, stripSettleTolerance(step))) {
+      settleTimer.current = setTimeout(settleStrip, 250);
+      return;
+    }
     if (track.dataset.turning !== undefined) delete track.dataset.turning;
     const стоит = pageAtScrollLeft(track.scrollLeft, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE);
     pageFromScroll.current = null;
@@ -357,6 +364,11 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       // Человек сам перелистнул — это важнее автоследования за звуком.
       followsAudio.current = false;
       setSelected(null);
+    }
+    // Позиция чтения — та, на которой лента стоит. Пишем и когда принятая
+    // страница не менялась: стрелка, нажатая посреди прокрутки, успела бы
+    // записать чужой номер (ревью 14.09.2026).
+    if (localStorage.getItem(PAGE_KEY) !== String(стоит)) {
       localStorage.setItem(PAGE_KEY, String(стоит));
     }
   };
@@ -384,13 +396,12 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       clearLongPress();
     }
     const x = track.scrollLeft;
-    // Пока лента между страницами — `data-turning`: волосок стыка виден, подбор
-    // кегля дальних листов ждёт. Пишем только при смене — событие частое.
-    const между = !isStripAligned(x, step);
-    if (между !== (track.dataset.turning !== undefined)) {
-      if (между) track.dataset.turning = '';
-      else delete track.dataset.turning;
-    }
+    // Любое событие прокрутки — лента в движении (`data-turning`: волосок стыка
+    // виден, подбор кегля дальних листов ждёт, внешняя смена страницы не
+    // перебивает жест). Снимает признак только остановка — `settleStrip`.
+    // Мгновенное «выровнено» здесь снимало бы его, пока медленный палец
+    // проходит точку привязки. Пишем только при смене — событие частое.
+    if (track.dataset.turning === undefined) track.dataset.turning = '';
     const под = pageAtScrollLeft(x, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE);
     if (под !== pageRef.current) {
       pageFromScroll.current = под;
@@ -715,7 +726,9 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
             // Зазор задаётся отсюда, а не из CSS: то же число участвует в
             // расчёте шага ленты, и разъехаться они не должны.
             '--mushaf-gutter': `${PAGE_GUTTER}px`,
-            position: 'relative', width: '100%', height: '100%', minHeight: 0,
+            // Ширина — целая, как и лист: иначе кадр шире листа на долю
+            // пикселя, и крайняя страница не доезжает до точки привязки.
+            position: 'relative', width: area ? pageWidth : '100%', height: '100%', minHeight: 0,
             // 🔴 Нативная прокрутка с привязкой к страницам — её на iOS
             // ведёт системный UIScrollView (шапка `lib/mushafStrip.ts`).
             overflowX: area ? 'auto' : 'hidden',

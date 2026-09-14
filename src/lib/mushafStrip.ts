@@ -62,11 +62,25 @@ export function pageAtScrollLeft(
   return Math.min(last, Math.max(first, page));
 }
 
-/** Лента стоит на странице — не посередине между листами (допуск — пиксель). */
-export function isStripAligned(scrollLeft: number, step: number): boolean {
+/**
+ * Допуск, в котором лента считается стоящей на странице, px.
+ *
+ * 🔴 Не пиксель. WebKit на iOS отдаёт странице положение прокрутки с
+ * запаздыванием: после остановки последнее значение застывает в −10…+7 px от
+ * точки привязки, хотя лист на экране стоит ровно (замер свайпами в
+ * iOS-симуляторе 14.09.2026). А палец, замерший посреди листа, — это десятки
+ * и сотни пикселей. Пять процентов шага, но не меньше 16 px, разделяют эти
+ * два случая.
+ */
+export function stripSettleTolerance(step: number): number {
+  return Math.max(16, step * 0.05);
+}
+
+/** Лента стоит на странице — не посередине между листами. */
+export function isStripAligned(scrollLeft: number, step: number, tolerance = 1): boolean {
   if (!(step > 0) || !Number.isFinite(scrollLeft)) return true;
   const r = scrollLeft / step;
-  return Math.abs(r - Math.round(r)) * step < 1;
+  return Math.abs(r - Math.round(r)) * step < tolerance;
 }
 
 /** Ширина всей ленты: все шаги между страницами плюс ширина последнего листа. */
