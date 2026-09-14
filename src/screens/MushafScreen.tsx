@@ -336,8 +336,17 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     settleTimer.current = null;
     const track = pageTrackRef.current;
     if (!track || !area) return;
-    // Палец держит ленту между листами — ждём: отпускание даст новые события.
-    if (!isStripAligned(track.scrollLeft, step)) return;
+    // Палец держит ленту — ждём: отпускание само запустит проверку снова.
+    if (touch.current != null) return;
+    // 🔴 Остановку подтверждает ТИШИНА событий прокрутки при убранном пальце,
+    // а не равенство точке привязки. WebKit на iOS отдаёт странице положение
+    // прокрутки с запаздыванием, и последнее значение застывает в нескольких
+    // пикселях от точки, где лента реально стоит: −10, −4, +7 px — замер
+    // настоящими свайпами в iOS-симуляторе 14.09.2026, на экране при этом
+    // лист стоит ровно. Требование «до пикселя» оставляло признак движения
+    // включённым навсегда — тап переставал открывать шапку. Положение не
+    // дописываем: запись поверх системной привязки сдвинула бы лист на эти
+    // пиксели уже по-настоящему.
     if (track.dataset.turning !== undefined) delete track.dataset.turning;
     const стоит = pageAtScrollLeft(track.scrollLeft, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE);
     pageFromScroll.current = null;
@@ -424,10 +433,18 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     // Палец пошёл — это листание или прокрутка, не удержание.
     if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > 12) clearLongPress();
   };
+  /** Палец убран — если лента в движении, проверить остановку после тишины. */
+  const armSettle = () => {
+    if (pageTrackRef.current?.dataset.turning === undefined) return;
+    if (settleTimer.current != null) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(settleStrip, 120);
+  };
+
   const onTouchEnd = (e: React.TouchEvent) => {
     const start = touch.current;
     touch.current = null;
     clearLongPress();
+    armSettle();
     if (!start || start.interactive) return;
     if (start.longPressed) {
       // Не позволяем WebKit породить click после удержания.
@@ -445,6 +462,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   const onTouchCancel = () => {
     touch.current = null;
     clearLongPress();
+    armSettle();
   };
 
   // 🔴 Окно из пяти слоёв, собранное из двух частей.

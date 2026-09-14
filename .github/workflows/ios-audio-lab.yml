@@ -80,6 +80,11 @@ jobs:
           # Скриншот посреди медленного свайпа.
           ( idb ui swipe --udid "$DEV" --duration 2.0 100 450 300 450 & ) ; sleep 1.0; xcrun simctl io "$DEV" screenshot shots/7-mid.png; sleep 3
           sleep 3
+          echo "LABTAP 1"; idb ui tap --udid "$DEV" 200 500; sleep 2; xcrun simctl io "$DEV" screenshot shots/8-tap.png
+          echo "LABTAP 2"; idb ui tap --udid "$DEV" 200 500; sleep 2
+          swipe 80 450 330 450 0.12
+          echo "LABTAP 3 after swipe"; idb ui tap --udid "$DEV" 200 500; sleep 2; xcrun simctl io "$DEV" screenshot shots/9-tap-after-swipe.png
+          sleep 3
           xcrun simctl terminate "$DEV" "$APP" || true
           cp "${RUNNER_TEMP}/a.log" console.log
           grep -E 'LAB\|' console.log | head -200
