@@ -48,7 +48,8 @@ jobs:
       - name: idb
         run: |
           brew tap facebook/fb
-          brew install idb-companion
+          brew trust facebook/fb || true
+          brew install facebook/fb/idb-companion
           python3 -m pip install --break-system-packages fb-idb || python3 -m pip install --user fb-idb
           which idb || ls ~/Library/Python/*/bin/ 2>/dev/null
 
