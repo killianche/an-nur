@@ -158,7 +158,7 @@ const fitCache = new Map<string, PageFit>();
 /** Больше окна листания на порядок — хватает на долгую сессию чтения. */
 const FIT_CACHE_LIMIT = 64;
 
-/** Листание идёт: палец ведёт лист или лист летит (у дорожки стоит `data-turning`). */
+/** Листание идёт: палец ведёт ленту листов (у дорожки стоит `data-turning`). */
 function pagerBusy(): boolean {
   return !!document.querySelector('.mushaf-page-track[data-turning]');
 }

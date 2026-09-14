@@ -30,27 +30,22 @@
  * используют фиксированные строки источника; это не свободная перевёрстка.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useDeferredValue } from 'react';
-import { flushSync } from 'react-dom';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
 import { Appearance, BookOpen, Typography, ICON_SIZE } from '../components/icons';
 import { BottomDock } from '../components/BottomDock';
 import { QcfMushafPage } from '../components/QcfMushafPage';
 import { FontErrorBanner } from '../components/FontErrorBanner';
 import { ScreenHeader, screenHeaderOffset } from '../components/ScreenHeader';
 import {
-  approachTau, clampSpeed, flightAt, flightKeyframes, projectTarget, type FlingState,
-} from '../lib/mushafFling';
+  isStripAligned, pageAtScrollLeft, scrollLeftForPage, stripWidth,
+} from '../lib/mushafStrip';
 
 /**
  * Зазор между соседними листами, px.
  *
- * 🔴 Одно число и для вида, и для арифметики доводки — иначе рывок.
- *
- * 07.09.2026 зазор жил только в CSS, а доводка целилась ровно в ширину
- * экрана. Соседний лист при этом стоит на «ширина + зазор», поэтому в самом
- * конце страница доезжала и ПОДПРЫГИВАЛА на 18 px, подравнивая разницу.
- * Владелец увидел это сразу: «в самом конце дёргается, подравнивая
- * добавленный отступ». Держать зазор в двух местах нельзя.
+ * 🔴 Одно число и для вида, и для арифметики листания. 07.09.2026 зазор жил
+ * только в CSS, а доводка целилась ровно в ширину экрана — и лист в конце
+ * подпрыгивал на 18 px. Держать зазор в двух местах нельзя.
  */
 const PAGE_GUTTER = 18;
 import { MushafReadingSettings, ThemeSettings } from '../components/ReadingSettings';
@@ -283,305 +278,83 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   }, []);
 
   // ── Жесты страницы ──────────────────────────────────────────────────
-  // Удержание выбирает аят, горизонтальный жест листает страницу, а
-  // короткий неподвижный тап показывает/скрывает верхнюю панель.
+  // Горизонтальное листание целиком делает системная прокрутка iOS (см.
+  // шапку `lib/mushafStrip.ts`): дорожка — нативный прокручиваемый контейнер
+  // с привязкой к страницам. Здесь остаются только жесты поверх неё:
+  // удержание выбирает аят, короткий неподвижный тап показывает/скрывает
+  // верхнюю панель.
   const touch = useRef<{
     x: number;
     y: number;
-    /** Где стоял лист в момент касания: жест продолжает движение, а не начинает с нуля. */
-    baseX: number;
-    /** Касание поймало летящий лист — это не тап, шапку не переключаем. */
-    caughtFlight: boolean;
-    /** Предыдущая точка и её время — для мгновенной скорости при отпускании. */
-    lastX: number;
-    lastAt: number;
     startedAt: number;
     verseKey: string | null;
     interactive: boolean;
     longPressed: boolean;
-    axis: 'pending' | 'horizontal' | 'vertical';
+    /** Касание остановило идущую прокрутку — это не тап, шапку не трогаем. */
+    caughtScroll: boolean;
   } | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /**
-   * Живое состояние листа: где он сейчас и с какой скоростью идёт.
-   *
-   * 🔴 Одно на всё — и на палец, и на полёт. Раньше их было двое: смещение
-   * пальца и отдельный CSS-переход доводки, и они спорили. Новое касание
-   * могло только ОБОРВАТЬ переход, а обрыв ставил лист на место мгновенно —
-   * отсюда и рывок при быстром листании. Теперь касание просто продолжает
-   * то же движение с той же скоростью.
-   */
-  const fling = useRef<FlingState>({ x: 0, v: 0 });
-  /** Куда лист едет сейчас: 0 — назад на место, ±шаг — на соседнюю. */
-  const flingTarget = useRef(0);
-  /** Страница, которую нужно зафиксировать, когда лист доедет. */
-  const flingPage = useRef<number | null>(null);
-  /**
-   * Текущий полёт листа — анимации на компоновщике, по одной на слой.
-   *
-   * Параметры траектории хранятся рядом: при перехвате касанием положение
-   * не читается из вёрстки, а считается по формуле от `currentTime`.
-   */
-  const flight = useRef<{
-    anims: Animation[];
-    x0: number;
-    target: number;
-    tau: number;
-    duration: number;
-  } | null>(null);
-  const dragFrame = useRef<number | null>(null);
-  const pendingDrag = useRef(0);
+  /** Номер страницы для обработчика прокрутки — без пересоздания обработчика. */
+  const pageRef = useRef(page);
+  pageRef.current = page;
 
   const clearLongPress = () => {
     if (longPressTimer.current != null) clearTimeout(longPressTimer.current);
     longPressTimer.current = null;
   };
 
+  useEffect(() => () => clearLongPress(), []);
+
+  /** Шаг ленты: ширина листа плюс зазор. Ширина — из замера области, без чтения вёрстки. */
+  const step = (area?.width ?? 0) + PAGE_GUTTER;
+
   /**
-   * Показать листы на координате x.
+   * Прокрутка ленты → номер страницы.
    *
-   * 🔴 Трансформация пишется КАЖДОМУ слою напрямую, а не одной переменной
-   * на дорожку. Разница не косметическая: переменная на родителе
-   * обесценивает стиль всего поддерева, а в поддереве полторы сотни слов
-   * страницы. Замер показал ровно это — при кадровой записи переменной
-   * пересчёт стилей за шестнадцать листаний вырос с ~700 мс до ~2100 мс,
-   * то есть анимация начала стоить дороже, чем экономила. Инлайновый
-   * `transform` трогает три элемента и ничего не наследует.
+   * Номер меняется посреди движения, как только новая страница заняла больше
+   * половины шага: шапка и соседи в окне монтирования поспевают за глазом.
+   * Места слоёв от номера не зависят (каждый стоит на своей координате
+   * ленты), поэтому смена номера ничего на экране не сдвигает.
    */
-  const writeX = useCallback((x: number) => {
+  const onTrackScroll = () => {
     const track = pageTrackRef.current;
-    if (!track) return;
-    // Пока лист движется — показываем корешок между страницами (см. CSS
-    // `.mushaf-page-track[data-turning]`). В покое он не нужен: лист один.
-    if (x !== 0) track.dataset.turning = '';
-    else delete track.dataset.turning;
-    if (!trackWidthRef.current) trackWidthRef.current = track.clientWidth || window.innerWidth;
-    const step = trackWidthRef.current + PAGE_GUTTER;
-    for (const слой of Array.from(track.children) as HTMLElement[]) {
-      const offset = Number(слой.dataset.offset ?? 0);
-      // Шаг на расстояние, а не на знак: слоёв теперь по два с каждой
-      // стороны, и лист через одну должен стоять через один шаг.
-      const own = offset * step;
-      слой.style.transform = `translate3d(${own + x}px, 0, 0)`;
-    }
-  }, []);
-
-  /** Смещение пальца рисуем не чаще кадра: touchmove приходит чаще. */
-  const paintDrag = useCallback((x: number) => {
-    pendingDrag.current = x;
-    if (dragFrame.current != null) return;
-    dragFrame.current = requestAnimationFrame(() => {
-      dragFrame.current = null;
-      writeX(pendingDrag.current);
-    });
-  }, [writeX]);
-
-  /**
-   * Сколько полёта уже прошло, мс.
-   *
-   * От `performance.now()`, а не от `currentTime` анимации: время анимации в
-   * WebKit может быть заморожено на последнем кадре главного потока, и
-   * перехват после длинной задачи отбросил бы лист назад относительно того,
-   * что рисовал компоновщик (ревью 10.09.2026). `startTime` пуст, пока
-   * анимация не стартовала, — тогда полёт ещё не начался.
-   */
-  const flightElapsed = (f: NonNullable<typeof flight.current>) => {
-    const start = f.anims[0]?.startTime;
-    const t = start == null ? 0 : performance.now() - Number(start);
-    return Math.min(f.duration, Math.max(0, t));
-  };
-
-  /**
-   * Остановить полёт там, где лист сейчас на экране.
-   *
-   * Порядок важен: сначала положение пишется инлайном, потом анимации
-   * снимаются. В обратном порядке между ними мелькнул бы кадр со старым,
-   * доколётным смещением.
-   */
-  const stopFling = useCallback(() => {
-    const f = flight.current;
-    if (!f) return;
-    flight.current = null;
-    fling.current = flightAt(f.x0, f.target, f.tau, flightElapsed(f));
-    writeX(fling.current.x);
-    for (const a of f.anims) a.cancel();
-  }, [writeX]);
-
-  /**
-   * Зафиксировать перевёрнутую страницу, не сдвинув картинку ни на пиксель.
-   *
-   * 🔴 Здесь вся суть переделки. Слои расставлены относительно ТЕКУЩЕЙ
-   * страницы, поэтому смена номера сама по себе двигает их ровно на шаг.
-   * Значит одновременно с номером надо вычесть шаг из смещения — и на
-   * экране не изменится ничего. `flushSync` не оставляет между этими двумя
-   * действиями ни одного кадра, иначе лист мигнул бы на шаг в сторону.
-   *
-   * Прежний код делал ровно это в конце доводки, но ТОЛЬКО в конце. Если
-   * доводку обрывали касанием, он всё равно доводил смещение до нуля —
-   * то есть телепортировал лист на остаток пути. Теперь фиксация не
-   * привязана к концу движения: её можно сделать в любой момент, в том
-   * числе прямо под пальцем.
-   */
-  const commitPage = useCallback((step: number) => {
-    const target = flingPage.current;
-    if (target == null || step === 0) return;
-    fling.current.x -= step;
-    flingTarget.current = 0;
-    flingPage.current = null;
-    flushSync(() => setPage(target));
-    writeX(fling.current.x);
-  }, [setPage, writeX]);
-
-  /** Лист пришёл: зафиксировать положение и, если это соседняя, страницу. */
-  const land = useCallback((target: number) => {
-    fling.current = { x: target, v: 0 };
-    if (target !== 0) commitPage(target);
-    else writeX(0);
-  }, [commitPage, writeX]);
-
-  /**
-   * Отпущенный лист летит к границе страницы — на компоновщике.
-   *
-   * 🔴 Не кадрами из JavaScript. Такой лист останавливался вместе с главным
-   * потоком: при замедлении процессора ×4 каждый девятый кадр полёта был
-   * длиннее 50 мс — React в это время монтирует дальнюю страницу. Анимация
-   * `transform` через Web Animations идёт на компоновщике и этой работы не
-   * замечает. Подробнее — `lib/mushafFling.ts`, «Полёт на компоновщике».
-   */
-  const runFling = useCallback(() => {
-    stopFling();
-    const track = pageTrackRef.current;
-    const x0 = fling.current.x;
-    const target = flingTarget.current;
-    // Чем быстрее отпустили, тем короче полёт — ровно то, что просил
-    // владелец: «если быстро перелистываешь, они быстрее перелистываются».
-    const tau = approachTau(x0 - target, fling.current.v);
-    const { duration, xs } = flightKeyframes(x0, target, tau);
-    if (!track || duration === 0) { land(target); return; }
-
-    if (!trackWidthRef.current) trackWidthRef.current = track.clientWidth || window.innerWidth;
-    const step = trackWidthRef.current + PAGE_GUTTER;
-    track.dataset.turning = '';
-    const last = xs.length - 1;
-    const anims = (Array.from(track.children) as HTMLElement[]).map(слой => {
-      const own = Number(слой.dataset.offset ?? 0) * step;
-      return слой.animate(
-        xs.map((x, i) => ({ offset: i / last, transform: `translate3d(${own + x}px, 0, 0)` })),
-        { duration, easing: 'linear', fill: 'forwards' },
-      );
-    });
-    const f = { anims, x0, target, tau, duration };
-    flight.current = f;
-    anims[0].onfinish = () => {
-      // Полёт перехватили касанием — его остановка уже всё сделала.
-      if (flight.current !== f) return;
-      flight.current = null;
-      // Сначала цель инлайном, потом снимаем анимации — без промежуточного кадра.
-      writeX(target);
-      for (const a of anims) a.cancel();
-      land(target);
-    };
-  }, [land, stopFling, writeX]);
-
-  const resetPager = useCallback(() => {
-    stopFling();
-    if (dragFrame.current != null) cancelAnimationFrame(dragFrame.current);
-    dragFrame.current = null;
-    pendingDrag.current = 0;
-    fling.current = { x: 0, v: 0 };
-    flingTarget.current = 0;
-    flingPage.current = null;
-    writeX(0);
-  }, [stopFling, writeX]);
-
-  useEffect(() => () => {
-    clearLongPress();
-    resetPager();
-  }, [resetPager]);
-
-  /**
-   * Довести лист на место, если его остановили и больше никуда не повели.
-   *
-   * 🔴 Без этого лист застывал на полпути (ревью 10.09.2026, воспроизведено
-   * касаниями: −19 px через 1.5 с). Касание всегда останавливает полёт, а
-   * снова запускала его только горизонтальная ветка отпускания. Тап после
-   * быстрого свайпа (чтобы показать шапку), вертикальный жест, кнопка,
-   * долгое нажатие на аят, щипок, отменённое касание — все эти выходы
-   * оставляли две половины страниц с корешком до следующего свайпа. При
-   * быстрой серии листаний это и выглядело как дёрганье.
-   *
-   * Цель — 0: если страница уже зафиксирована на касании, это визуально
-   * продолжает тот же поворот, а если нет — возвращает лист на место.
-   */
-  const resumeFling = () => {
-    if (flight.current != null) return;
-    if (Math.abs(fling.current.x) < 0.5) return;
-    flingTarget.current = 0;
-    flingPage.current = null;
-    runFling();
+    if (!track || !area) return;
+    const x = track.scrollLeft;
+    // Пока лента между страницами — виден волосок стыка (CSS
+    // `.mushaf-page-track[data-turning]`), и подбор кегля дальних листов ждёт.
+    if (isStripAligned(x, step)) delete track.dataset.turning;
+    else track.dataset.turning = '';
+    const под = pageAtScrollLeft(x, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE);
+    if (под !== pageRef.current) setPage(под);
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
-    // Лист был в движении — касание его поймало. Такое касание не тап:
-    // человек останавливал страницу, а не звал шапку.
-    //
-    // 🔴 Только если движение ВИДНО. С медленным полётом (TAU_MAX 230) лист
-    // идёт до полупикселя ещё около секунды, хотя последние миллиметры
-    // глазу неподвижны, — и тап в это время не открывал шапку (ревью
-    // 10.09.2026). Дальше 6 px от цели — перехват, ближе — обычный тап.
-    const f = flight.current;
-    const поймал = f
-      ? Math.abs(flightAt(f.x0, f.target, f.tau, flightElapsed(f)).x - f.target) > 6
-      : Math.abs(fling.current.x) > 6;
-    // 🔴 Лист на ходу НЕ ставится на место — он перехватывается там, где
-    // сейчас есть, вместе со своей скоростью. Именно доводка «до конца» и
-    // давала рывок при быстром листании: лист был на полпути, а его
-    // мгновенно телепортировали на остаток.
-    //
-    // Если страница уже была переведена в соседнюю, фиксируем её прямо
-    // сейчас — визуально это ничего не меняет (см. `commitPage`), зато
-    // следующий свайп начинает с чистого листа и может перевернуть ещё одну.
-    stopFling();
-    if (flingTarget.current !== 0) commitPage(flingTarget.current);
-    flingTarget.current = 0;
-    // Второй палец — это масштабирование (touchAction разрешает pinch-zoom).
-    // Без этой проверки он перезаписывал снимок касания, и отпускание одного
-    // пальца давало «неподвижный тап» с малым смещением: панель прыгала
-    // посреди щипка.
+    // Второй палец — это масштабирование: снимок касания сбрасываем, иначе
+    // отпускание одного пальца дало бы «тап» посреди щипка.
     if (e.touches.length !== 1) {
       touch.current = null;
       clearLongPress();
-      resumeFling();
       return;
     }
     const t = e.touches[0];
     const target = e.target instanceof Element ? e.target : null;
-    // Первые 28 px принадлежат системному жесту «Назад» iOS. Пейджер не
-    // конкурирует с ним и не пытается одновременно перелистнуть мусхаф.
-    // Список целей тот же, что в ленте: ссылки и заблокированные контролы
-    // тоже не должны переключать панель. WebKit доставляет события
-    // заблокированной кнопки предку, поэтому :disabled проверяется явно.
+    // Первые 28 px принадлежат системному жесту «Назад» iOS. Ссылки и
+    // заблокированные контролы тоже не переключают панель. WebKit доставляет
+    // события заблокированной кнопки предку, поэтому :disabled проверяется явно.
     const interactive = t.clientX <= 28
       || !!target?.closest(
         'button, a, input, textarea, select, [role="button"], [aria-disabled="true"]',
       );
     const verseKey = target?.closest<HTMLElement>('[data-verse-key]')
       ?.dataset.verseKey ?? null;
-    const now = performance.now();
     touch.current = {
       x: t.clientX,
       y: t.clientY,
-      // Лист мог не успеть вернуться — тянем от того места, где он стоит,
-      // а не от нуля. Иначе он прыгнул бы под пальцем.
-      baseX: fling.current.x,
-      caughtFlight: поймал,
-      lastX: t.clientX,
-      lastAt: now,
-      startedAt: now,
+      startedAt: performance.now(),
       verseKey,
       interactive,
       longPressed: false,
-      axis: 'pending',
+      caughtScroll: pageTrackRef.current?.dataset.turning !== undefined,
     };
     clearLongPress();
     if (verseKey && !interactive) {
@@ -594,102 +367,32 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   };
   const onTouchMove = (e: React.TouchEvent) => {
     const start = touch.current;
-    // 🔴 Условия «идёт доводка» здесь больше нет. Раньше она глушила
-    // движение целиком: пока лист доезжал, палец не слушался вовсе.
     if (!start || start.interactive) return;
     const t = e.touches[0];
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-    if (Math.hypot(dx, dy) > 12) {
-      clearLongPress();
-    }
-    if (start.axis === 'pending' && Math.max(Math.abs(dx), Math.abs(dy)) >= 8) {
-      start.axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'horizontal' : 'vertical';
-    }
-    if (start.axis !== 'horizontal') return;
-
-    e.preventDefault();
-    const canTurn = dx > 0
-      ? page < MUSHAF_LAST_PAGE
-      : page > MUSHAF_FIRST_PAGE;
-    // На границе книги остаётся мягкое сопротивление вместо пустого экрана.
-    const visualDx = canTurn ? dx : dx * 0.18;
-
-    // Мгновенная скорость по последним двум точкам, а не по всему жесту:
-    // важно, чем ЗАКОНЧИЛОСЬ движение, а не каким оно было в среднем.
-    // Палец, притормозивший перед отпусканием, не должен бросать лист.
-    const now = performance.now();
-    const dtMove = now - start.lastAt;
-    if (dtMove > 0) {
-      const мгновенная = (t.clientX - start.lastX) / dtMove;
-      // Сглаживание: одиночный выброс координаты не должен решать судьбу листа.
-      fling.current.v = clampSpeed(fling.current.v * 0.3 + мгновенная * 0.7);
-      start.lastX = t.clientX;
-      start.lastAt = now;
-    }
-    // 🔴 Не дальше соседа. Лист, пойманный сразу после броска, стоит с
-    // остатком почти в шаг, и протяжка на всю ширину экрана увела бы его за
-    // шаг — в кадр въехал бы слой через одну (ревью 10.09.2026). Он меряется
-    // в простое и может быть ещё не подобран, а лишнее срезает
-    // `contain: paint` — обрезка аята краем. За шагом — то же сопротивление,
-    // что у края книги: инвариант «через одну не видно» держится
-    // конструкцией, а не разбором случаев.
-    const предел = (trackWidthRef.current || window.innerWidth) + PAGE_GUTTER;
-    const сырой = start.baseX + visualDx;
-    fling.current.x = Math.abs(сырой) <= предел
-      ? сырой
-      : Math.sign(сырой) * (предел + (Math.abs(сырой) - предел) * 0.18);
-    paintDrag(fling.current.x);
+    // Палец пошёл — это листание или прокрутка, не удержание.
+    if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > 12) clearLongPress();
   };
   const onTouchEnd = (e: React.TouchEvent) => {
     const start = touch.current;
     touch.current = null;
     clearLongPress();
-    if (!start || start.interactive) { resumeFling(); return; }
+    if (!start || start.interactive) return;
     if (start.longPressed) {
       // Не позволяем WebKit породить click после удержания.
       e.preventDefault();
-      resumeFling();
       return;
     }
     const t = e.changedTouches[0];
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-    const elapsed = Math.max(1, performance.now() - start.startedAt);
-    if (start.axis === 'pending') {
-      if (Math.hypot(dx, dy) <= 8 && elapsed <= 340 && !start.caughtFlight) {
-        setThemeOpen(false);
-        setHeaderVisible(v => !v);
-      }
-      resumeFling();
-      return;
+    const moved = Math.hypot(t.clientX - start.x, t.clientY - start.y);
+    const elapsed = performance.now() - start.startedAt;
+    if (moved <= 8 && elapsed <= 340 && !start.caughtScroll) {
+      setThemeOpen(false);
+      setHeaderVisible(v => !v);
     }
-    if (start.axis !== 'horizontal') { resumeFling(); return; }
-
-    const width = Math.max(1, trackWidthRef.current || pageTrackRef.current?.clientWidth || window.innerWidth);
-    // Целимся в ширину ПЛЮС зазор: ровно туда, где стоит соседний лист.
-    const step = width + PAGE_GUTTER;
-    // Порог тот же, что был: пятая часть экрана, но не больше 104 px.
-    const threshold = Math.min(104, width * 0.18);
-    const target = projectTarget(fling.current.x, fling.current.v, step, threshold, {
-      canForward: page < MUSHAF_LAST_PAGE,
-      canBack: page > MUSHAF_FIRST_PAGE,
-    });
-
-    flingTarget.current = target;
-    flingPage.current = target === 0 ? null : page + (target > 0 ? 1 : -1);
-    runFling();
   };
-
   const onTouchCancel = () => {
-    const start = touch.current;
     touch.current = null;
     clearLongPress();
-    if (start?.axis !== 'horizontal') { resumeFling(); return; }
-    // Отменённый жест возвращает лист на место — тоже пружиной, а не рывком.
-    flingTarget.current = 0;
-    flingPage.current = null;
-    runFling();
   };
 
   // 🔴 Окно из пяти слоёв, собранное из двух частей.
@@ -702,12 +405,32 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   // дальнего соседа прямо в `flushSync` внутри касания — синхронная сборка
   // страницы Корана посреди быстрой серии листаний. Теперь к моменту смены
   // новый сосед уже смонтирован и измерен (он был «через одну»), и смена
-  // только сдвигает слои.
+  // только меняет номер: места слоёв на ленте от него не зависят.
   const deferredPage = useDeferredValue(page);
   const pageWindow = [...new Set([
     ...mushafPageWindow(page, 1),
     ...mushafPageWindow(deferredPage, 2),
   ])];
+
+  // 🔴 Номер страницы → прокрутка ленты, но только когда номер сменился НЕ
+  // прокруткой: стрелками, вслед за звуком, прыжком к аяту, открытием экрана.
+  // Если лента уже стоит на этой странице (номер пришёл из самой прокрутки),
+  // её не трогаем — иначе перебивали бы палец и инерцию.
+  //
+  // Смена ширины (поворот, новое окно) меняет шаг, поэтому тогда ленту
+  // выравниваем всегда. Эффект раскладки — до кадра, без мигания.
+  const выровненоДляШага = useRef(0);
+  useLayoutEffect(() => {
+    const track = pageTrackRef.current;
+    if (!track || !area) return;
+    const шагСменился = выровненоДляШага.current !== step;
+    if (шагСменился
+      || pageAtScrollLeft(track.scrollLeft, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE) !== page) {
+      track.scrollLeft = scrollLeftForPage(page, step, MUSHAF_LAST_PAGE);
+      delete track.dataset.turning;
+    }
+    выровненоДляШага.current = step;
+  }, [page, area, step]);
 
   const surahsHere = data?.surahs ?? [];
   const title = surahsHere.length
@@ -863,7 +586,8 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           // и не дают перекрыть нижнюю строку Корана.
           paddingBottom: 'calc(env(safe-area-inset-bottom) + 56px)',
           position: 'relative',
-          touchAction: 'pan-y pinch-zoom',
+          // Горизонталь отдана ленте страниц — нативной прокрутке.
+          touchAction: 'pan-x pinch-zoom',
         }}
       >
         {error && (
@@ -902,31 +626,54 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
         </div>
 
         {!error && (
-          <div ref={pageTrackRef} className="mushaf-page-track" style={{
-            // Зазор задаётся отсюда, а не из CSS: то же число участвует в
-            // расчёте доводки, и разъехаться они не должны.
-            '--mushaf-gutter': `${PAGE_GUTTER}px`,
-            position: 'relative', width: '100%', height: '100%', minHeight: 0,
-            overflowY: 'hidden',
-            overflowX: 'hidden',
-            WebkitOverflowScrolling: 'touch',
-          } as React.CSSProperties}>
-            {pageWindow.map(preparedPage => (
-              <PreparedMushafPage
-                key={preparedPage}
-                page={preparedPage}
-                visible={preparedPage === page}
-                offset={page - preparedPage}
-                fitTo={area}
-                activeVerseKey={activeVerseKey}
-                activeWordPos={tick.currentWordPos}
-                wholeAyahAudioHighlight={usesWholeAyahHighlight(reciter)}
-                selectedVerseKey={selected}
-                landscapeWide={false}
-                variant={mushafFont}
-                edition={edition}
-              />
-            ))}
+          <div
+            ref={pageTrackRef}
+            className="mushaf-page-track"
+            onScroll={onTrackScroll}
+            style={{
+              // Зазор задаётся отсюда, а не из CSS: то же число участвует в
+              // расчёте шага ленты, и разъехаться они не должны.
+              '--mushaf-gutter': `${PAGE_GUTTER}px`,
+              position: 'relative', width: '100%', height: '100%', minHeight: 0,
+              // 🔴 Нативная прокрутка с привязкой к страницам — её на iOS
+              // ведёт системный UIScrollView (шапка `lib/mushafStrip.ts`).
+              overflowX: area ? 'auto' : 'hidden',
+              overflowY: 'hidden',
+              scrollSnapType: 'x mandatory',
+              // Резинка на краю книги не утаскивает жест дальше — в «назад»
+              // браузера или в прокрутку страницы.
+              overscrollBehaviorX: 'contain',
+              touchAction: 'pan-x pinch-zoom',
+              WebkitOverflowScrolling: 'touch',
+            } as React.CSSProperties}
+          >
+            {area && (
+              <div style={{
+                position: 'relative',
+                width: stripWidth(area.width, PAGE_GUTTER, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE),
+                height: '100%',
+              }}>
+                <MushafSnapPoints step={step} pageWidth={area.width} />
+                {pageWindow.map(preparedPage => (
+                  <PreparedMushafPage
+                    key={preparedPage}
+                    page={preparedPage}
+                    visible={preparedPage === page}
+                    offset={page - preparedPage}
+                    left={scrollLeftForPage(preparedPage, step, MUSHAF_LAST_PAGE)}
+                    width={area.width}
+                    fitTo={area}
+                    activeVerseKey={activeVerseKey}
+                    activeWordPos={tick.currentWordPos}
+                    wholeAyahAudioHighlight={usesWholeAyahHighlight(reciter)}
+                    selectedVerseKey={selected}
+                    landscapeWide={false}
+                    variant={mushafFont}
+                    edition={edition}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -965,17 +712,18 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
 /**
  * Одна постоянно смонтированная страница из маленького окна вокруг текущей.
  *
- * Соседний слой (±1) смонтирован и виден: он стоит на шаг в сторону и едет за
- * пальцем, показывая зазор между листами. Подобрать кегль он обязан заранее,
- * до того как въедет в кадр, — QcfMushafPage меряет его синхронно при
- * монтировании. Слой через одну (±2) за один жест не виден (протяжка
- * ограничена шагом), поэтому меряется в простое. Результат в обоих случаях
- * кладётся в кэш — при возврате страница не меряется снова.
+ * Лист стоит на СВОЕЙ координате ленты (`left`) и никуда не двигается сам:
+ * двигается прокрутка. Соседний лист (±1) виден, пока страница едет, поэтому
+ * подбирает кегль сразу при монтировании. Лист через одну (±2) одним жестом
+ * не показать — `scroll-snap-stop: always` не пускает дальше соседа, — и он
+ * меряется в простое. Результат в обоих случаях кладётся в кэш.
  */
 function PreparedMushafPage({
   page,
   visible,
   offset,
+  left,
+  width,
   fitTo,
   activeVerseKey,
   activeWordPos,
@@ -987,7 +735,12 @@ function PreparedMushafPage({
 }: {
   page: number;
   visible: boolean;
+  /** Сколько страниц от текущей: решает, мерить ли кегль сразу или в простое. */
   offset: number;
+  /** Координата листа на ленте, px. */
+  left: number;
+  /** Ширина листа, px — ширина кадра. */
+  width: number;
   fitTo: { width: number; height: number } | null;
   activeVerseKey: string | null;
   activeWordPos: number | null;
@@ -1018,17 +771,16 @@ function PreparedMushafPage({
       aria-hidden={!visible}
       className="mushaf-page-layer"
       data-current={visible ? '' : undefined}
-      // Своё место слоя в px считает пейджер: он же двигает лист каждый кадр.
       data-offset={offset}
       style={{
-        // Соседние листы разведены зазором: между ними видно поле, а не
-        // стык двух картинок. Владелец 07.09.2026 попросил именно это —
-        // «расстояние между двумя листами» вместо прежнего свечения.
-        '--mushaf-page-offset': offset === 0
-          ? '0%'
-          : `calc((100% + var(--mushaf-gutter)) * ${offset})`,
+        // Соседние листы разведены зазором (шаг ленты = ширина + зазор):
+        // между ними видно поле, а не стык двух картинок. Владелец 07.09.2026
+        // попросил именно это — «расстояние между двумя листами».
         position: 'absolute',
-        inset: landscapeWide ? '0 0 auto' : 0,
+        top: 0,
+        bottom: landscapeWide ? 'auto' : 0,
+        left,
+        width,
         minHeight: '100%',
         display: 'flex',
         alignItems: landscapeWide ? 'flex-start' : 'center',
@@ -1037,7 +789,6 @@ function PreparedMushafPage({
         visibility: 'visible',
         pointerEvents: visible ? 'auto' : 'none',
         zIndex: visible ? 1 : 0,
-        willChange: 'transform',
         contain: 'layout paint style',
       } as React.CSSProperties}
     >
@@ -1060,6 +811,37 @@ function PreparedMushafPage({
       )}
     </div>
   );
+}
+
+/**
+ * Точки привязки ленты — по одной на каждую из 604 страниц.
+ *
+ * Пустые блоки без содержимого: привязка прокрутки работает только по
+ * элементам, а смонтированных страниц всего пять. `scroll-snap-stop: always`
+ * — одна страница за бросок, как в книге. Пересобираются только при смене
+ * ширины.
+ */
+function MushafSnapPoints({ step, pageWidth }: { step: number; pageWidth: number }) {
+  const точки = useMemo(() => Array.from(
+    { length: MUSHAF_LAST_PAGE - MUSHAF_FIRST_PAGE + 1 },
+    (_, i) => (
+      <div
+        key={i}
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: i * step,
+          width: pageWidth,
+          height: 1,
+          scrollSnapAlign: 'start',
+          scrollSnapStop: 'always',
+          pointerEvents: 'none',
+        }}
+      />
+    ),
+  ), [step, pageWidth]);
+  return <>{точки}</>;
 }
 
 function MushafPageSkeleton() {
