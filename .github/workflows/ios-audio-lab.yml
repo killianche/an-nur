@@ -70,13 +70,13 @@ jobs:
           for i in $(seq 1 60); do sleep 2; grep -q 'LAB|READY' "${RUNNER_TEMP}/a.log" && break; done
           mkdir -p shots
           xcrun simctl io "$DEV" screenshot shots/0-ready.png
-          swipe() { echo "LABSWIPE $1 $2 $3 $4 dur=$5"; idb ui swipe --udid "$DEV" --duration "$5" "$1" "$2" "$3" "$4"; sleep 2.5; }
+          swipe() { echo "LABSWIPE $1 $2 $3 $4 dur=$5"; idb ui swipe --udid "$DEV" --duration "$5" "$1" "$2" "$3" "$4"; sleep 4; }
           swipe 80 450 330 450 0.12;  xcrun simctl io "$DEV" screenshot shots/1-right.png
           swipe 80 450 330 450 0.12
           swipe 80 450 330 450 0.12;  xcrun simctl io "$DEV" screenshot shots/3-right.png
           swipe 330 450 80 450 0.12;  xcrun simctl io "$DEV" screenshot shots/4-left.png
           swipe 150 450 200 450 0.5;  xcrun simctl io "$DEV" screenshot shots/5-short.png
-          swipe 20 450 390 450 0.06;  xcrun simctl io "$DEV" screenshot shots/6-fling.png
+          swipe 70 450 390 450 0.06;  xcrun simctl io "$DEV" screenshot shots/6-fling.png
           # Скриншот посреди медленного свайпа.
           ( idb ui swipe --udid "$DEV" --duration 2.0 100 450 300 450 & ) ; sleep 1.0; xcrun simctl io "$DEV" screenshot shots/7-mid.png; sleep 3
           sleep 3

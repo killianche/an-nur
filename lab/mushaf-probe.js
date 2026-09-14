@@ -16,8 +16,9 @@
     await sleep(4000);
     const snap = () => {
       const step = t.clientWidth + 18;
+      const off = t.scrollLeft - (604 - Number((document.querySelector('.screen-header')?.textContent?.match(/Страница\s+(\d+)/) ?? [])[1])) * step;
       const n = Number((document.querySelector('.screen-header')?.textContent?.match(/Страница\s+(\d+)/) ?? [])[1]);
-      return { page: n, scrollLeft: Math.round(t.scrollLeft), aligned: Math.abs(t.scrollLeft - (604 - n) * step) < 1, turning: t.dataset.turning !== undefined, layers: document.querySelectorAll('.mushaf-page-layer').length, blankCurrent: !document.querySelector('.mushaf-page-layer[data-current] .mushaf-page, .mushaf-page-layer[data-current] [data-verse-key]') };
+      return { page: n, off: Math.round(off * 10) / 10, scrollLeft: Math.round(t.scrollLeft), aligned: Math.abs(t.scrollLeft - (604 - n) * step) < 1, turning: t.dataset.turning !== undefined, layers: document.querySelectorAll('.mushaf-page-layer').length, blankCurrent: !document.querySelector('.mushaf-page-layer[data-current] .mushaf-page, .mushaf-page-layer[data-current] [data-verse-key]') };
     };
     log('READY', snap());
     let prev = '';

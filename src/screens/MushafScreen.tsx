@@ -138,7 +138,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   // в /qcf1/pages.  Смешать издания нельзя — PUA-коды у них общие, а слова
   // за этими кодами разные.
   const edition = mushafEdition(mushafFont);
-  const { data, loading, error } = useQcfPage(page, edition);
+  const { data, error } = useQcfPage(page, edition);
   const colourMode = mushafFont === 'qpc-v4-tajweed';
   const tajweedFamily = fontFamilyForPage(page);
   // Шрифт открытой страницы заказывается уже в первом рендере, до
@@ -245,13 +245,6 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   // на разных телефонах шапка, вырез и «дом-бар» дают разный остаток.
   const areaRef = useRef<HTMLDivElement>(null);
   const pageTrackRef = useRef<HTMLDivElement>(null);
-  /**
-   * Ширина дорожки, закешированная. Кадровое движение листа не должно
-   * читать вёрстку: `clientWidth` сразу после записи трансформаций — это
-   * принудительный пересчёт, а внутри касания, сразу после смены страницы,
-   * он приходился на свежесмонтированный слой.
-   */
-  const trackWidthRef = useRef(0);
   const [area, setArea] = useState<{ width: number; height: number } | null>(null);
   useLayoutEffect(() => {
     const el = areaRef.current;
@@ -264,8 +257,6 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       const css = getComputedStyle(el);
       const horizontalPadding = parseFloat(css.paddingLeft) + parseFloat(css.paddingRight);
       const verticalPadding = parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
-      const tw = pageTrackRef.current?.clientWidth;
-      if (tw) trackWidthRef.current = tw;
       setArea({
         width: Math.max(0, el.clientWidth - horizontalPadding),
         height: Math.max(0, el.clientHeight - verticalPadding),
@@ -308,24 +299,74 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   /** Шаг ленты: ширина листа плюс зазор. Ширина — из замера области, без чтения вёрстки. */
   const step = (area?.width ?? 0) + PAGE_GUTTER;
 
+  /** Номер, выставленный самой прокруткой: такой номер ленту не выравнивает. */
+  const pageFromScroll = useRef<number | null>(null);
+  /**
+   * Принятая страница — та, на которой лента ОСТАНОВИЛАСЬ. От неё, а не от
+   * номера на ходу, зависят сброс выделения, следование за звуком и запись
+   * позиции чтения.
+   */
+  const acceptedPage = useRef(page);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (settleTimer.current != null) clearTimeout(settleTimer.current);
+  }, []);
+
+  /**
+   * Лента остановилась на странице — принять её.
+   *
+   * 🔴 Не на середине пути. Протянул на 60 % и вернул — страница та же, и
+   * ничего не должно случиться: ни закрыться лист звучащего аята, ни
+   * выключиться следование за звуком (ревью 14.09.2026). `scrollend` в Safari
+   * рассчитывать нельзя, поэтому остановку подтверждает тишина событий
+   * прокрутки и выровненная лента.
+   */
+  const settleStrip = () => {
+    settleTimer.current = null;
+    const track = pageTrackRef.current;
+    if (!track || !area) return;
+    // Палец держит ленту между листами — ждём: отпускание даст новые события.
+    if (!isStripAligned(track.scrollLeft, step)) return;
+    if (track.dataset.turning !== undefined) delete track.dataset.turning;
+    const стоит = pageAtScrollLeft(track.scrollLeft, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE);
+    pageFromScroll.current = null;
+    if (стоит !== pageRef.current) setPageS(стоит);
+    if (стоит !== acceptedPage.current) {
+      acceptedPage.current = стоит;
+      // Человек сам перелистнул — это важнее автоследования за звуком.
+      followsAudio.current = false;
+      setSelected(null);
+      localStorage.setItem(PAGE_KEY, String(стоит));
+    }
+  };
+
   /**
    * Прокрутка ленты → номер страницы.
    *
-   * Номер меняется посреди движения, как только новая страница заняла больше
-   * половины шага: шапка и соседи в окне монтирования поспевают за глазом.
-   * Места слоёв от номера не зависят (каждый стоит на своей координате
-   * ленты), поэтому смена номера ничего на экране не сдвигает.
+   * Номер в шапке и окно монтирования меняются посреди движения, как только
+   * новая страница заняла больше половины шага: соседи поспевают за глазом.
+   * Места листов от номера не зависят (каждый стоит на своей координате
+   * ленты), поэтому смена номера ничего на экране не сдвигает. Всё, что
+   * «принимает» страницу, — в `settleStrip`.
    */
   const onTrackScroll = () => {
     const track = pageTrackRef.current;
     if (!track || !area) return;
     const x = track.scrollLeft;
-    // Пока лента между страницами — виден волосок стыка (CSS
-    // `.mushaf-page-track[data-turning]`), и подбор кегля дальних листов ждёт.
-    if (isStripAligned(x, step)) delete track.dataset.turning;
-    else track.dataset.turning = '';
+    // Пока лента между страницами — `data-turning`: волосок стыка виден, подбор
+    // кегля дальних листов ждёт. Пишем только при смене — событие частое.
+    const между = !isStripAligned(x, step);
+    if (между !== (track.dataset.turning !== undefined)) {
+      if (между) track.dataset.turning = '';
+      else delete track.dataset.turning;
+    }
     const под = pageAtScrollLeft(x, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE);
-    if (под !== pageRef.current) setPage(под);
+    if (под !== pageRef.current) {
+      pageFromScroll.current = под;
+      setPageS(под);
+    }
+    if (settleTimer.current != null) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(settleStrip, 120);
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
@@ -401,8 +442,8 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   // лист. Соседи через одну (±2) — впрок, и монтируются по отложенному
   // номеру страницы: React собирает их прерываемо, мимо касания.
   //
-  // Раньше слоёв было три, и каждая смена страницы монтировала нового
-  // дальнего соседа прямо в `flushSync` внутри касания — синхронная сборка
+  // Раньше (при самодельном пейджере) слоёв было три, и каждая смена страницы
+  // монтировала нового дальнего соседа прямо в `flushSync` внутри касания — синхронная сборка
   // страницы Корана посреди быстрой серии листаний. Теперь к моменту смены
   // новый сосед уже смонтирован и измерен (он был «через одну»), и смена
   // только меняет номер: места слоёв на ленте от него не зависят.
@@ -414,8 +455,12 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
 
   // 🔴 Номер страницы → прокрутка ленты, но только когда номер сменился НЕ
   // прокруткой: стрелками, вслед за звуком, прыжком к аяту, открытием экрана.
-  // Если лента уже стоит на этой странице (номер пришёл из самой прокрутки),
-  // её не трогаем — иначе перебивали бы палец и инерцию.
+  //
+  // Номер, пришедший из самой прокрутки, ленту не трогает никогда, даже если
+  // к этому моменту она уже ушла дальше: сверка «номер против прокрутки»
+  // здесь давала рывок под пальцем (ревью 14.09.2026). И любой внешний номер
+  // ждёт, пока лента в движении или палец на экране: явное действие человека
+  // важнее автоследования (грабли §7) — остановка сама примет страницу.
   //
   // Смена ширины (поворот, новое окно) меняет шаг, поэтому тогда ленту
   // выравниваем всегда. Эффект раскладки — до кадра, без мигания.
@@ -424,12 +469,18 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     const track = pageTrackRef.current;
     if (!track || !area) return;
     const шагСменился = выровненоДляШага.current !== step;
-    if (шагСменился
-      || pageAtScrollLeft(track.scrollLeft, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE) !== page) {
-      track.scrollLeft = scrollLeftForPage(page, step, MUSHAF_LAST_PAGE);
-      delete track.dataset.turning;
-    }
     выровненоДляШага.current = step;
+    const вДвижении = track.dataset.turning !== undefined || touch.current != null;
+    const внешний = page !== pageFromScroll.current;
+    if (шагСменился || (внешний && !вДвижении
+      && pageAtScrollLeft(track.scrollLeft, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE) !== page)) {
+      track.scrollLeft = scrollLeftForPage(page, step, MUSHAF_LAST_PAGE);
+      if (track.dataset.turning !== undefined) delete track.dataset.turning;
+      pageFromScroll.current = null;
+      // Страница выставлена снаружи — она и принята; остановка не должна
+      // принять её ещё раз как «перелистнул сам».
+      acceptedPage.current = page;
+    }
   }, [page, area, step]);
 
   const surahsHere = data?.surahs ?? [];
@@ -455,6 +506,9 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   useEffect(() => {
     if (!followsAudio.current) return;
     if (!audio.currentSurah || !audio.currentAyah || audio.audioState === 'idle') return;
+    // Лента в движении или под пальцем — номер сейчас меняет человек, и
+    // возвращать его к звучащей странице посреди жеста нельзя.
+    if (pageTrackRef.current?.dataset.turning !== undefined || touch.current != null) return;
     const verseKey = `${audio.currentSurah}:${audio.currentAyah}`;
     // Издание обязательно: у «Мадани 1405» своя разбивка страниц, и без
     // него автоперелистывание за аудио встало бы на странице, где
@@ -590,32 +644,20 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           touchAction: 'pan-x pinch-zoom',
         }}
       >
+        {/* 🔴 Ошибка — плашкой ПОВЕРХ ленты, а лента остаётся. Прежде дорожка
+            размонтировалась при ошибке, и без сети листать было больше нечем
+            (ревью 14.09.2026). Заготовка строк на время загрузки живёт внутри
+            каждого листа (`MushafPageSkeleton`) — отдельная рядом с дорожкой
+            делила с ней ширину пополам. */}
         {error && (
           <p style={{
+            position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)',
+            zIndex: 2, pointerEvents: 'none', margin: 0,
             padding: '0 24px', textAlign: 'center',
             fontSize: 'var(--font-footnote)', lineHeight: 1.6, color: 'var(--text-tertiary)',
           }}>
             Не удалось загрузить страницу {page}.<br />{error}
           </p>
-        )}
-
-        {!error && !data && loading && (
-          <div style={{ width: '100%', padding: '0 max(4px, env(safe-area-inset-left), env(safe-area-inset-right))' }} aria-hidden>
-            {Array.from({ length: 15 }).map((_, i) => (
-              <div
-                key={i}
-                className="skeleton"
-                style={{
-                  height: '18px', borderRadius: '4px',
-                  margin: '0 auto 14px',
-                  // Строки мусхафа выровнены по обоим краям, кроме
-                  // последней в суре — заглушка это повторяет, чтобы при
-                  // подмене ничего не прыгнуло.
-                  width: i % 7 === 6 ? '55%' : '100%',
-                }}
-              />
-            ))}
-          </div>
         )}
 
         {/* Плашка о неприехавшем шрифте — поверх страницы, потому что
@@ -625,57 +667,55 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
           <FontErrorBanner source={colourMode ? 'both' : 'qcf'} edition={edition} />
         </div>
 
-        {!error && (
-          <div
-            ref={pageTrackRef}
-            className="mushaf-page-track"
-            onScroll={onTrackScroll}
-            style={{
-              // Зазор задаётся отсюда, а не из CSS: то же число участвует в
-              // расчёте шага ленты, и разъехаться они не должны.
-              '--mushaf-gutter': `${PAGE_GUTTER}px`,
-              position: 'relative', width: '100%', height: '100%', minHeight: 0,
-              // 🔴 Нативная прокрутка с привязкой к страницам — её на iOS
-              // ведёт системный UIScrollView (шапка `lib/mushafStrip.ts`).
-              overflowX: area ? 'auto' : 'hidden',
-              overflowY: 'hidden',
-              scrollSnapType: 'x mandatory',
-              // Резинка на краю книги не утаскивает жест дальше — в «назад»
-              // браузера или в прокрутку страницы.
-              overscrollBehaviorX: 'contain',
-              touchAction: 'pan-x pinch-zoom',
-              WebkitOverflowScrolling: 'touch',
-            } as React.CSSProperties}
-          >
-            {area && (
-              <div style={{
-                position: 'relative',
-                width: stripWidth(area.width, PAGE_GUTTER, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE),
-                height: '100%',
-              }}>
-                <MushafSnapPoints step={step} pageWidth={area.width} />
-                {pageWindow.map(preparedPage => (
-                  <PreparedMushafPage
-                    key={preparedPage}
-                    page={preparedPage}
-                    visible={preparedPage === page}
-                    offset={page - preparedPage}
-                    left={scrollLeftForPage(preparedPage, step, MUSHAF_LAST_PAGE)}
-                    width={area.width}
-                    fitTo={area}
-                    activeVerseKey={activeVerseKey}
-                    activeWordPos={tick.currentWordPos}
-                    wholeAyahAudioHighlight={usesWholeAyahHighlight(reciter)}
-                    selectedVerseKey={selected}
-                    landscapeWide={false}
-                    variant={mushafFont}
-                    edition={edition}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <div
+          ref={pageTrackRef}
+          className="mushaf-page-track"
+          onScroll={onTrackScroll}
+          style={{
+            // Зазор задаётся отсюда, а не из CSS: то же число участвует в
+            // расчёте шага ленты, и разъехаться они не должны.
+            '--mushaf-gutter': `${PAGE_GUTTER}px`,
+            position: 'relative', width: '100%', height: '100%', minHeight: 0,
+            // 🔴 Нативная прокрутка с привязкой к страницам — её на iOS
+            // ведёт системный UIScrollView (шапка `lib/mushafStrip.ts`).
+            overflowX: area ? 'auto' : 'hidden',
+            overflowY: 'hidden',
+            scrollSnapType: 'x mandatory',
+            // Резинка на краю книги не утаскивает жест дальше — в «назад»
+            // браузера или в прокрутку страницы.
+            overscrollBehaviorX: 'contain',
+            touchAction: 'pan-x pinch-zoom',
+            WebkitOverflowScrolling: 'touch',
+          } as React.CSSProperties}
+        >
+          {area && (
+            <div style={{
+              position: 'relative',
+              width: stripWidth(area.width, PAGE_GUTTER, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE),
+              height: '100%',
+            }}>
+              <MushafSnapPoints step={step} pageWidth={area.width} />
+              {pageWindow.map(preparedPage => (
+                <PreparedMushafPage
+                  key={preparedPage}
+                  page={preparedPage}
+                  visible={preparedPage === page}
+                  offset={page - preparedPage}
+                  left={scrollLeftForPage(preparedPage, step, MUSHAF_LAST_PAGE)}
+                  width={area.width}
+                  fitTo={area}
+                  activeVerseKey={activeVerseKey}
+                  activeWordPos={tick.currentWordPos}
+                  wholeAyahAudioHighlight={usesWholeAyahHighlight(reciter)}
+                  selectedVerseKey={selected}
+                  landscapeWide={false}
+                  variant={mushafFont}
+                  edition={edition}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
       </div>
 
@@ -771,7 +811,6 @@ function PreparedMushafPage({
       aria-hidden={!visible}
       className="mushaf-page-layer"
       data-current={visible ? '' : undefined}
-      data-offset={offset}
       style={{
         // Соседние листы разведены зазором (шаг ленты = ширина + зазор):
         // между ними видно поле, а не стык двух картинок. Владелец 07.09.2026
