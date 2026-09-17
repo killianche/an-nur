@@ -30,7 +30,7 @@
  * используют фиксированные строки источника; это не свободная перевёрстка.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Appearance, BookOpen, Typography, ICON_SIZE } from '../components/icons';
 import { BottomDock } from '../components/BottomDock';
 import { QcfMushafPage } from '../components/QcfMushafPage';
@@ -288,6 +288,28 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   /** Номер страницы для обработчика прокрутки — без пересоздания обработчика. */
   const pageRef = useRef(page);
   pageRef.current = page;
+  /**
+   * Страница, вокруг которой смонтированы дальние листы (±2). Меняется только
+   * когда лента СТОИТ — см. окно листов ниже.
+   */
+  const [windowBase, setWindowBase] = useState(page);
+  // Ref пишет ТОЛЬКО `moveWindowBase`. Присваивание из тела компонента
+  // откатывало бы свежий центр: `setWindowBase` идёт переходом, а срочный
+  // рендер смены номера проходит ещё со старым значением (ревью 17.09.2026).
+  const windowBaseRef = useRef(windowBase);
+  /**
+   * Сдвинуть центр окна дальних листов — только если страница ушла от него
+   * на две и больше. Гистерезис: соседняя страница и обратно состав листов не
+   * меняют никогда, как бы часто ни дёргали (замер в iOS-симуляторе
+   * 17.09.2026: без него серии рывков монтировали и снимали листы 145 раз).
+   * Лист, в который въезжаем, при этом всегда уже смонтирован: при странице
+   * на одну от центра её сосед дальше — это центр ±2.
+   */
+  const moveWindowBase = (p: number) => {
+    if (Math.abs(p - windowBaseRef.current) < 2) return;
+    windowBaseRef.current = p;
+    startTransition(() => setWindowBase(p));
+  };
 
   const clearLongPress = () => {
     if (longPressTimer.current != null) clearTimeout(longPressTimer.current);
@@ -359,6 +381,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     const стоит = pageAtScrollLeft(track.scrollLeft, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE);
     pageFromScroll.current = null;
     if (стоит !== pageRef.current) setPageS(стоит);
+    moveWindowBase(стоит);
     if (стоит !== acceptedPage.current) {
       acceptedPage.current = стоит;
       // Человек сам перелистнул — это важнее автоследования за звуком.
@@ -406,6 +429,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     if (под !== pageRef.current) {
       pageFromScroll.current = под;
       setPageS(под);
+      moveWindowBase(под);
     }
     if (settleTimer.current != null) clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(settleStrip, 120);
@@ -487,22 +511,39 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     armSettle();
   };
 
-  // 🔴 Окно из пяти слоёв, собранное из двух частей.
+  // 🔴 Окно из пяти листов, собранное из двух частей.
   //
-  // Соседи текущей страницы (±1) нужны СРАЗУ: они видны, пока палец тянет
-  // лист. Соседи через одну (±2) — впрок, и монтируются по отложенному
-  // номеру страницы: React собирает их прерываемо, мимо касания.
+  // Соседи текущей страницы (±1) нужны СРАЗУ: они видны, пока страница едет.
+  // Соседи через одну (±2) — впрок, вокруг центра окна (`windowBase`), который
+  // сдвигается с гистерезисом — только когда страница ушла на две
+  // (`moveWindowBase`), а не на каждой смене номера.
   //
-  // Раньше (при самодельном пейджере) слоёв было три, и каждая смена страницы
-  // монтировала нового дальнего соседа прямо в `flushSync` внутри касания — синхронная сборка
-  // страницы Корана посреди быстрой серии листаний. Теперь к моменту смены
-  // новый сосед уже смонтирован и измерен (он был «через одну»), и смена
-  // только меняет номер: места слоёв на ленте от него не зависят.
-  const deferredPage = useDeferredValue(page);
+  // 🔴 Это не оптимизация, а защита от бага. Владелец 17.09.2026, iPhone 17:
+  // после резких рывков вправо-влево на странице 77 оказались нарисованы
+  // сразу три листа — 76, 77 и 78 — один поверх другого. В разметке листы
+  // стояли на своих местах (замер в iOS-симуляторе), то есть смещение потерял
+  // WebKit при отрисовке. Спусковой крючок — перестройка окна посреди
+  // инерции: номер на ходу скачет 77 ↔ 78, и окно «±2 вокруг номера» на
+  // каждом рывке снимало один дальний лист и монтировало другой. Теперь
+  // колебание на соседнюю страницу и обратно не меняет состав листов вовсе:
+  // ±1 от страницы на одну от центра всегда внутри центра ±2. Уход на две
+  // страницы сдвигает центр — перестройка тогда неизбежна, но лист, в который
+  // въезжаем, уже смонтирован.
+  //
+  // Доказать на устройстве, что именно перестройка окна — спусковой крючок,
+  // не удалось (в симуляторе баг не воспроизводится). Вторая, вероятно
+  // главная, мера — собственный слой у листа (`PreparedMushafPage`).
+  //
+  // 🔴 И порядок — по номерам, а не «текущая, потом соседи». Прежний порядок
+  // зависел от номера на ходу, и React на каждой его смене ПЕРЕСТАВЛЯЛ узлы
+  // листов местами (снять и вставить тот же узел) посреди прокрутки: замер в
+  // iOS-симуляторе 17.09.2026 — 168 перестановок за серию рывков при
+  // неподвижном окне. Для WebKit это перестройка дерева слоёв на каждом рывке.
+  // Отсортированный список меняется только на краях, когда окно сдвигается.
   const pageWindow = [...new Set([
     ...mushafPageWindow(page, 1),
-    ...mushafPageWindow(deferredPage, 2),
-  ])];
+    ...mushafPageWindow(windowBase, 2),
+  ])].sort((a, b) => a - b);
 
   // 🔴 Номер страницы → прокрутка ленты, но только когда номер сменился НЕ
   // прокруткой: стрелками, вслед за звуком, прыжком к аяту, открытием экрана.
@@ -529,8 +570,10 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       if (track.dataset.turning !== undefined) delete track.dataset.turning;
       pageFromScroll.current = null;
       // Страница выставлена снаружи — она и принята; остановка не должна
-      // принять её ещё раз как «перелистнул сам».
+      // принять её ещё раз как «перелистнул сам». Лента стоит — дальние листы
+      // собираются вокруг новой страницы.
       acceptedPage.current = page;
+      moveWindowBase(page);
     }
   }, [page, area, step]);
 
@@ -881,6 +924,13 @@ function PreparedMushafPage({
         visibility: 'visible',
         pointerEvents: visible ? 'auto' : 'none',
         zIndex: visible ? 1 : 0,
+        // 🔴 Собственный графический слой у каждого листа. Без него все листы
+        // рисуются в общие плитки ленты шириной в четверть миллиона пикселей,
+        // и на iPhone 17 WebKit после резких рывков нарисовал три листа в
+        // одной точке, потеряв их смещение (владелец, 17.09.2026). Лист со
+        // своим слоем ставит на место компоновщик. Двигать `transform` при
+        // этом нельзя (страж в тестах): лист стоит, едет прокрутка.
+        willChange: 'transform',
         contain: 'layout paint style',
       } as React.CSSProperties}
     >
