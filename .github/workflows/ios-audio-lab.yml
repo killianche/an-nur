@@ -1,5 +1,5 @@
 # Лабораторный стенд (ветка lab/audio-local, в main не идёт).
-# Прогон: лента мусхафа на нативной прокрутке — настоящие свайпы в iOS-симуляторе через idb.
+# Прогон: баг наложения листов при резких рывках вправо-влево (iPhone 17) — idb в симуляторе.
 name: iOS audio lab
 
 on:
@@ -58,7 +58,7 @@ jobs:
           set +e
           export PATH="$PATH:$(ls -d ~/Library/Python/*/bin 2>/dev/null | head -1)"
           APP=ru.annur.quran
-          DEV=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))')
+          DEV=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; c=[(k,x) for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")]; pm=[p for p in c if "17 Pro Max" in p[1]["name"]]; p=(pm or c)[0]; print(p[1]["udid"]); import sys as s; s.stderr.write("device %s %s\n" % (p[1]["name"], p[0]))')
           xcrun simctl boot "$DEV"
           xcrun simctl bootstatus "$DEV" -b > /dev/null 2>&1; echo "bootstatus $?"
           xcrun simctl install "$DEV" "${RUNNER_TEMP}/dd/Build/Products/Debug-iphonesimulator/App.app"
@@ -69,21 +69,28 @@ jobs:
           xcrun simctl launch --console-pty "$DEV" "$APP" > "${RUNNER_TEMP}/a.log" 2>&1 &
           for i in $(seq 1 60); do sleep 2; grep -q 'LAB|READY' "${RUNNER_TEMP}/a.log" && break; done
           mkdir -p shots
-          xcrun simctl io "$DEV" screenshot shots/0-ready.png
-          swipe() { echo "LABSWIPE $1 $2 $3 $4 dur=$5"; idb ui swipe --udid "$DEV" --duration "$5" "$1" "$2" "$3" "$4"; sleep 4; }
-          swipe 80 450 330 450 0.12;  xcrun simctl io "$DEV" screenshot shots/1-right.png
-          swipe 80 450 330 450 0.12
-          swipe 80 450 330 450 0.12;  xcrun simctl io "$DEV" screenshot shots/3-right.png
-          swipe 330 450 80 450 0.12;  xcrun simctl io "$DEV" screenshot shots/4-left.png
-          swipe 150 450 200 450 0.5;  xcrun simctl io "$DEV" screenshot shots/5-short.png
-          swipe 70 450 390 450 0.06;  xcrun simctl io "$DEV" screenshot shots/6-fling.png
-          # Скриншот посреди медленного свайпа.
-          ( idb ui swipe --udid "$DEV" --duration 2.0 100 450 300 450 & ) ; sleep 1.0; xcrun simctl io "$DEV" screenshot shots/7-mid.png; sleep 3
-          sleep 3
-          echo "LABTAP 1"; idb ui tap --udid "$DEV" 200 500; sleep 2; xcrun simctl io "$DEV" screenshot shots/8-tap.png
-          echo "LABTAP 2"; idb ui tap --udid "$DEV" 200 500; sleep 2
-          swipe 80 450 330 450 0.12
-          echo "LABTAP 3 after swipe"; idb ui tap --udid "$DEV" 200 500; sleep 2; xcrun simctl io "$DEV" screenshot shots/9-tap-after-swipe.png
+          xcrun simctl io "$DEV" screenshot shots/00-ready.png
+          # Резкие рывки вправо-влево сериями, без пауз между рывками.
+          for burst in 1 2 3 4 5 6; do
+            for k in 1 2 3 4; do
+              idb ui swipe --udid "$DEV" --duration 0.04 110 520 360 520
+              idb ui swipe --udid "$DEV" --duration 0.04 360 520 110 520
+            done
+            sleep 1.5
+            xcrun simctl io "$DEV" screenshot "shots/b${burst}.png"
+            echo "LABBURST $burst"
+          done
+          for burst in 7 8 9; do
+            for k in 1 2 3 4 5 6; do
+              idb ui swipe --udid "$DEV" --duration 0.03 140 520 330 520
+              idb ui swipe --udid "$DEV" --duration 0.03 330 520 140 520
+            done
+            sleep 0.4
+            xcrun simctl io "$DEV" screenshot "shots/b${burst}-fast.png"
+            sleep 1.5
+            xcrun simctl io "$DEV" screenshot "shots/b${burst}.png"
+            echo "LABBURST $burst"
+          done
           sleep 3
           xcrun simctl terminate "$DEV" "$APP" || true
           cp "${RUNNER_TEMP}/a.log" console.log

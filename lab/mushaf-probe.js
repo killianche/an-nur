@@ -1,29 +1,35 @@
-// Зонд: открывает мусхаф и пишет номер страницы и положение ленты.
+// Зонд: открывает мусхаф на странице 77 и после каждой серии рывков проверяет
+// раскладку листов: не налезает ли соседний лист на кадр.
 (function () {
   const log = (...a) => console.log('LAB|' + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '));
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   async function waitFor(fn, ms) { const end = Date.now() + ms; while (Date.now() < end) { const v = fn(); if (v) return v; await sleep(200); } return null; }
+  if (!localStorage.getItem('lab.init')) { localStorage.setItem('lab.init', '1'); localStorage.setItem('mushaf.page', '77'); }
   (async () => {
-    await waitFor(() => document.querySelector('[data-surah="2"]') || document.querySelector('.mushaf-page-track'), 40000);
+    await waitFor(() => document.querySelector('[data-surah="4"]') || document.querySelector('.mushaf-page-track'), 40000);
     await sleep(2500);
     if (!document.querySelector('.mushaf-page-track')) {
-      document.querySelector('[data-surah="2"] button')?.click();
+      document.querySelector('[data-surah="4"] button')?.click();
       await sleep(3000);
       const h = document.querySelector('.screen-header') ?? document.querySelector('header');
       [...(h?.querySelectorAll('button') ?? [])].find(x => /мусхаф/i.test(x.getAttribute('aria-label') ?? ''))?.click();
     }
     const t = await waitFor(() => document.querySelector('.mushaf-page-track'), 20000);
     await sleep(4000);
-    const snap = () => {
-      const step = t.firstElementChild.children[1].offsetLeft;
-      const off = t.scrollLeft - (604 - Number((document.querySelector('.screen-header')?.textContent?.match(/Страница\s+(\d+)/) ?? [])[1])) * step;
+    const check = () => {
+      const tr = t.getBoundingClientRect();
       const n = Number((document.querySelector('.screen-header')?.textContent?.match(/Страница\s+(\d+)/) ?? [])[1]);
-      return { page: n, off: Math.round(off * 10) / 10, scrollLeft: Math.round(t.scrollLeft), aligned: Math.abs(t.scrollLeft - (604 - n) * step) < 1, turning: t.dataset.turning !== undefined, header: document.querySelector('.screen-header[aria-hidden="true"], header[aria-hidden="true"]') ? 'hidden' : 'shown', layers: document.querySelectorAll('.mushaf-page-layer').length, blankCurrent: !document.querySelector('.mushaf-page-layer[data-current] .mushaf-page, .mushaf-page-layer[data-current] [data-verse-key]') };
+      const layers = [...document.querySelectorAll('.mushaf-page-layer')].map(l => {
+        const r = l.getBoundingClientRect();
+        return { cur: l.hasAttribute('data-current'), x: Math.round(r.left - tr.left), w: Math.round(r.width) };
+      });
+      const inView = layers.filter(l => l.x < tr.width - 1 && l.x + l.w > 1);
+      return { page: n, scrollLeft: Math.round(t.scrollLeft), turning: t.dataset.turning !== undefined, inView: inView.length, layers };
     };
-    log('READY', snap());
-    let prev = '';
-    t.addEventListener('scroll', () => { const s = JSON.stringify(snap()); if (s !== prev) { prev = s; } });
-    setInterval(() => { const s = JSON.stringify(snap()); if (s !== prev) { prev = s; log('state', Math.round(performance.now()), s); } }, 100);
-    window.__labSnap = snap;
+    log('READY', check());
+    window.addEventListener('lab-check', () => log('CHECK', check()));
+    setInterval(() => { const c = check(); if (c.inView > 1 && !c.turning) log('OVERLAP', c); }, 500);
+    let n = 0;
+    setInterval(() => { n++; if (n % 4 === 0) log('tick', check()); }, 1000);
   })();
 })();
