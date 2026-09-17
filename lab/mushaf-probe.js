@@ -26,6 +26,10 @@
       const inView = layers.filter(l => l.x < tr.width - 1 && l.x + l.w > 1);
       return { page: n, scrollLeft: Math.round(t.scrollLeft), turning: t.dataset.turning !== undefined, inView: inView.length, layers };
     };
+    let монтаж = 0, снятие = 0;
+    new MutationObserver(ms => { for (const m of ms) { m.addedNodes.forEach(n => { if (n.classList?.contains('mushaf-page-layer')) монтаж++; }); m.removedNodes.forEach(n => { if (n.classList?.contains('mushaf-page-layer')) снятие++; }); } })
+      .observe(t.firstElementChild, { childList: true });
+    setInterval(() => log('churn', { монтаж, снятие }), 5000);
     log('READY', check());
     window.addEventListener('lab-check', () => log('CHECK', check()));
     setInterval(() => { const c = check(); if (c.inView > 1 && !c.turning) log('OVERLAP', c); }, 500);

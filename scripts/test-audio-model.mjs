@@ -1833,6 +1833,13 @@ await groupAsync('Мусхаф: лента страниц на нативной 
   // пейджере или CSS-переход слоя.
   const экран = readFileSync(resolve(ROOT, 'src/screens/MushafScreen.tsx'), 'utf8');
   check('пейджер мусхафа не запускает Web Animations', /\.animate\(/.test(экран), false);
+  // 🔴 Защита от наложения листов на iPhone 17 (владелец 17.09.2026): у листа
+  // свой графический слой, а дальние листы собираются вокруг стоявшей
+  // страницы, а не вокруг номера на ходу.
+  check('у листа мусхафа собственный графический слой',
+    /willChange:\s*'transform'/.test(экран.slice(экран.indexOf('function PreparedMushafPage'))), true);
+  check('дальние листы — вокруг страницы, где лента стояла',
+    /mushafPageWindow\(windowBase,\s*2\)/.test(экран), true);
   check('лента мусхафа — нативная прокрутка с привязкой к страницам',
     /scrollSnapType:\s*'x mandatory'/.test(экран) && /scrollSnapStop:\s*'always'/.test(экран), true);
   const стили = readFileSync(resolve(ROOT, 'src/index.css'), 'utf8');
