@@ -1845,8 +1845,6 @@ await groupAsync('Мусхаф: лента страниц на нативной 
     /willChange:\s*'transform'/.test(телоЛиста), true);
   check('листы идут в порядке номеров — узлы не переставляются на ходу',
     /mushafPageWindow\(windowBase,\s*2\),?\s*\]\)\]\.sort\(\(a,\s*b\)\s*=>\s*a\s*-\s*b\)/.test(экран), true);
-  check('дальние листы — вокруг страницы, где лента стояла',
-    /mushafPageWindow\(windowBase,\s*2\)/.test(экран), true);
   check('лента мусхафа — нативная прокрутка с привязкой к страницам',
     /scrollSnapType:\s*'x mandatory'/.test(экран) && /scrollSnapStop:\s*'always'/.test(экран), true);
   const стили = readFileSync(resolve(ROOT, 'src/index.css'), 'utf8');

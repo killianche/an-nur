@@ -80,6 +80,11 @@ jobs:
             xcrun simctl io "$DEV" screenshot "shots/b${burst}.png"
             echo "LABBURST $burst"
           done
+          # Серии в одну сторону через несколько страниц — проверка гистерезиса окна.
+          for k in 1 2 3 4 5; do idb ui swipe --udid "$DEV" --duration 0.04 110 520 360 520; done
+          sleep 1.5; xcrun simctl io "$DEV" screenshot shots/s1-forward.png; echo "LABSERIES forward"
+          for k in 1 2 3 4 5; do idb ui swipe --udid "$DEV" --duration 0.04 360 520 110 520; done
+          sleep 1.5; xcrun simctl io "$DEV" screenshot shots/s2-back.png; echo "LABSERIES back"
           for burst in 7 8 9; do
             for k in 1 2 3 4 5 6; do
               idb ui swipe --udid "$DEV" --duration 0.03 140 520 330 520

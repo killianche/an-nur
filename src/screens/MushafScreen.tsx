@@ -293,8 +293,10 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
    * когда лента СТОИТ — см. окно листов ниже.
    */
   const [windowBase, setWindowBase] = useState(page);
+  // Ref пишет ТОЛЬКО `moveWindowBase`. Присваивание из тела компонента
+  // откатывало бы свежий центр: `setWindowBase` идёт переходом, а срочный
+  // рендер смены номера проходит ещё со старым значением (ревью 17.09.2026).
   const windowBaseRef = useRef(windowBase);
-  windowBaseRef.current = windowBase;
   /**
    * Сдвинуть центр окна дальних листов — только если страница ушла от него
    * на две и больше. Гистерезис: соседняя страница и обратно состав листов не
