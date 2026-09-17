@@ -1836,8 +1836,13 @@ await groupAsync('Мусхаф: лента страниц на нативной 
   // 🔴 Защита от наложения листов на iPhone 17 (владелец 17.09.2026): у листа
   // свой графический слой, а дальние листы собираются вокруг стоявшей
   // страницы, а не вокруг номера на ходу.
+  const телоЛиста = (() => {
+    const от = экран.indexOf('function PreparedMushafPage');
+    const до = экран.indexOf('\nfunction ', от + 1);
+    return экран.slice(от, до === -1 ? undefined : до);
+  })();
   check('у листа мусхафа собственный графический слой',
-    /willChange:\s*'transform'/.test(экран.slice(экран.indexOf('function PreparedMushafPage'))), true);
+    /willChange:\s*'transform'/.test(телоЛиста), true);
   check('дальние листы — вокруг страницы, где лента стояла',
     /mushafPageWindow\(windowBase,\s*2\)/.test(экран), true);
   check('лента мусхафа — нативная прокрутка с привязкой к страницам',

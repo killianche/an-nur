@@ -293,6 +293,21 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
    * когда лента СТОИТ — см. окно листов ниже.
    */
   const [windowBase, setWindowBase] = useState(page);
+  const windowBaseRef = useRef(windowBase);
+  windowBaseRef.current = windowBase;
+  /**
+   * Сдвинуть центр окна дальних листов — только если страница ушла от него
+   * на две и больше. Гистерезис: соседняя страница и обратно состав листов не
+   * меняют никогда, как бы часто ни дёргали (замер в iOS-симуляторе
+   * 17.09.2026: без него серии рывков монтировали и снимали листы 145 раз).
+   * Лист, в который въезжаем, при этом всегда уже смонтирован: при странице
+   * на одну от центра её сосед дальше — это центр ±2.
+   */
+  const moveWindowBase = (p: number) => {
+    if (Math.abs(p - windowBaseRef.current) < 2) return;
+    windowBaseRef.current = p;
+    startTransition(() => setWindowBase(p));
+  };
 
   const clearLongPress = () => {
     if (longPressTimer.current != null) clearTimeout(longPressTimer.current);
@@ -364,7 +379,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     const стоит = pageAtScrollLeft(track.scrollLeft, step, MUSHAF_FIRST_PAGE, MUSHAF_LAST_PAGE);
     pageFromScroll.current = null;
     if (стоит !== pageRef.current) setPageS(стоит);
-    startTransition(() => setWindowBase(стоит));
+    moveWindowBase(стоит);
     if (стоит !== acceptedPage.current) {
       acceptedPage.current = стоит;
       // Человек сам перелистнул — это важнее автоследования за звуком.
@@ -412,6 +427,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
     if (под !== pageRef.current) {
       pageFromScroll.current = под;
       setPageS(под);
+      moveWindowBase(под);
     }
     if (settleTimer.current != null) clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(settleStrip, 120);
@@ -496,8 +512,9 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   // 🔴 Окно из пяти листов, собранное из двух частей.
   //
   // Соседи текущей страницы (±1) нужны СРАЗУ: они видны, пока страница едет.
-  // Соседи через одну (±2) — впрок, вокруг страницы, на которой лента
-  // последний раз ОСТАНОВИЛАСЬ (`windowBase`), а не вокруг номера на ходу.
+  // Соседи через одну (±2) — впрок, вокруг центра окна (`windowBase`), который
+  // сдвигается с гистерезисом — только когда страница ушла на две
+  // (`moveWindowBase`), а не на каждой смене номера.
   //
   // 🔴 Это не оптимизация, а защита от бага. Владелец 17.09.2026, iPhone 17:
   // после резких рывков вправо-влево на странице 77 оказались нарисованы
@@ -507,7 +524,13 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
   // инерции: номер на ходу скачет 77 ↔ 78, и окно «±2 вокруг номера» на
   // каждом рывке снимало один дальний лист и монтировало другой. Теперь
   // колебание на соседнюю страницу и обратно не меняет состав листов вовсе:
-  // ±1 от номера на ходу всегда внутри ±2 от стоявшей страницы.
+  // ±1 от страницы на одну от центра всегда внутри центра ±2. Уход на две
+  // страницы сдвигает центр — перестройка тогда неизбежна, но лист, в который
+  // въезжаем, уже смонтирован.
+  //
+  // Доказать на устройстве, что именно перестройка окна — спусковой крючок,
+  // не удалось (в симуляторе баг не воспроизводится). Вторая, вероятно
+  // главная, мера — собственный слой у листа (`PreparedMushafPage`).
   const pageWindow = [...new Set([
     ...mushafPageWindow(page, 1),
     ...mushafPageWindow(windowBase, 2),
@@ -541,7 +564,7 @@ export function MushafScreen({ initialPage, onBack, theme, setTheme, onOpenFeed 
       // принять её ещё раз как «перелистнул сам». Лента стоит — дальние листы
       // собираются вокруг новой страницы.
       acceptedPage.current = page;
-      startTransition(() => setWindowBase(page));
+      moveWindowBase(page);
     }
   }, [page, area, step]);
 
