@@ -36,10 +36,12 @@
  * что произошло и что будет дальше.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState,
+} from 'react';
 import { GLASS_BLUR } from '../lib/glass';
 import { createPortal } from 'react-dom';
-import { Appearance, EyeOff, ICON_SIZE, Typography, More, Eye } from '../components/icons';
+import { Appearance, EyeOff, ICON_SIZE, Typography, Eye } from '../components/icons';
 import { AzkarTypographySettings } from '../components/AzkarSettings';
 import { SettingsSheet } from '../components/ReadingSettings';
 import { TasbihPill } from '../components/DevotionalBits';
@@ -108,12 +110,14 @@ export function DuaScreen({ theme, setTheme }: Props) {
   const total = data?.entries.length ?? 0;
 
   /*
-   * Отмена вместо подтверждения.
+   * И вопрос, и отмена — они про разные ошибки.
    *
-   * Потеря дуа из списка обратима, и Apple такие вещи лечит не диалогом
-   * перед каждым удалением, а возможностью вернуть — как «Undo Send» в
-   * Почте.  Диалог на каждое удаление превращается в нытьё, и человек
-   * начинает жать «да» не читая.
+   * Вопрос перед скрытием владелец попросил 21.09.2026: он защищает от
+   * случайного нажатия по кнопке, стоящей на каждой карточке. Плашка отмены
+   * остаётся: она защищает от другой ошибки — «нажал осознанно, но не на том
+   * дуа», когда вопрос уже подтверждён. Прежняя редакция этого комментария
+   * отвергала подтверждение как «нытьё»; это верно для диалога на КАЖДОЕ
+   * действие, а здесь действие одно и редкое.
    *
    * Помним и место, откуда дуа ушло: вернуть надо туда же, иначе
    * порядок чтения ломается.
@@ -294,11 +298,12 @@ export function DuaScreen({ theme, setTheme }: Props) {
                   onCount={() => inc(e.id)}
                   onResetCount={() => reset(e.id)}
                   menu={
-                    <CardMenu
+                    <HideButton
                       title={e.title_ru}
-                      label="Скрыть"
-                      icon={<EyeOff size={ICON_SIZE.sm} />}
-                      onAction={() => скрыть(e)}
+                      question="Скрыть это дуа из витрины?"
+                      confirmLabel="Скрыть"
+                      confirmIcon={<EyeOff size={ICON_SIZE.sm} />}
+                      onConfirm={() => скрыть(e)}
                     />
                   }
                 />
@@ -326,66 +331,122 @@ export function DuaScreen({ theme, setTheme }: Props) {
   );
 }
 /**
- * CardMenu — три точки и всплывающее меню с одним действием.
+ * HideButton — кнопка «скрыть» на карточке и подтверждение рядом с ней.
  *
- * ── Почему меню, а не свайп ───────────────────────────────────────────
+ * ── Почему кнопка, а не меню ──────────────────────────────────────────
  *
- * Владелец 10.09.2026 попросил убрать скрытие свайпом и поставить в угол
- * карточки три точки. Свайп был невидим — о нём нужно знать заранее, — и
- * спорил с системным «назад», для чего пришлось вырезать полосу у края.
- * Кнопка видна сразу и ни с чем не спорит.
+ * Владелец 21.09.2026: «сделаем базовую кнопку, на которую нажимаешь, потом
+ * подтверждение; кнопка не должна отвлекать». До этого здесь было меню из
+ * трёх точек с единственным пунктом «Скрыть» (10.09.2026), а ещё раньше —
+ * невидимый свайп. Меню с одним пунктом — лишний шаг: кнопка делает то же
+ * самое, а вопрос перед скрытием защищает от случайного нажатия.
+ *
+ * Кнопка не отвлекает: только значок, цвет третичного текста, без фона и
+ * рамки. Попадание при этом 40 px — отрицательные поля возвращают карточке
+ * её отступы, и шапка карточки не становится выше.
  *
  * ── Почему через портал ───────────────────────────────────────────────
  *
  * У карточки `overflow: hidden` и анимация появления на `transform`. Внутри
  * такого предка всплывающее окно обрезалось бы краем карточки, а
- * `position: fixed` отсчитывался бы от карточки, а не от экрана. Меню
+ * `position: fixed` отсчитывался бы от карточки, а не от экрана. Окно
  * рисуется в `body` и ставится по прямоугольнику кнопки.
  *
- * Закрывается касанием мимо, прокруткой и Escape; при открытии фокус
- * переходит на пункт — для клавиатуры и экранного диктора.
+ * Закрывается касанием мимо, прокруткой и Escape; при открытии с клавиатуры
+ * фокус переходит на подтверждение.
  */
-function CardMenu({ title, label, icon, onAction }: {
+function HideButton({ title, question, confirmLabel, confirmIcon, onConfirm }: {
   /** Название карточки — для подписи кнопки у экранного диктора. */
   title: string;
-  label: string;
-  icon: ReactNode;
-  onAction: () => void;
+  /** Вопрос в окне подтверждения. */
+  question: string;
+  confirmLabel: string;
+  confirmIcon: ReactNode;
+  onConfirm: () => void;
 }) {
   const [place, setPlace] = useState<{ top: number; right: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const itemRef = useRef<HTMLButtonElement>(null);
-  /** Меню открыли с клавиатуры — тогда и только тогда переводим фокус. */
-  const сКлавиатуры = useRef(false);
+  const окноRef = useRef<HTMLDivElement>(null);
+  /** Вопрос — его читает экранный диктор вместе с окном (`aria-describedby`). */
+  const вопросId = useId();
+  /**
+   * Куда вернуть фокус, когда окно закрылось.
+   *
+   * `наКнопку` — обычный случай (отмена, Escape): фокус туда, откуда пришли.
+   * После подтверждения кнопки скоро не станет вместе с карточкой, и
+   * проверка `isConnected` не спасает: в этот момент она ещё в документе, а
+   * размонтируется следующим рендером — фокус уезжал в body (замер
+   * 21.09.2026). Поэтому после действия сразу целимся в кнопку скрытых.
+   */
+  const вернутьФокус = (наКнопку = true) => {
+    if (наКнопку && btnRef.current?.isConnected) {
+      btnRef.current.focus({ preventScroll: true });
+      return;
+    }
+    // Карточка ушла вместе с кнопкой — фокус на кнопку скрытых в шапке,
+    // оттуда дуа и возвращают. Иначе фокус падает в body, и следующий Tab
+    // начинается с начала документа (ревью 21.09.2026).
+    //
+    // Следующим тиком: после первого же скрытия кнопка скрытых только
+    // появляется в шапке, и в момент подтверждения её ещё нет в документе
+    // (замер 21.09.2026 — фокус уходил в body).
+    window.setTimeout(() => {
+      document
+        .querySelector<HTMLButtonElement>('button[aria-label^="Скрытые дуа"]')
+        ?.focus({ preventScroll: true });
+    }, 0);
+  };
   const open = place !== null;
 
-  const toggle = (сКлавы: boolean) => {
+  const toggle = () => {
     if (open) { setPlace(null); return; }
-    сКлавиатуры.current = сКлавы;
     const r = btnRef.current?.getBoundingClientRect();
     if (!r) return;
-    // Меню высотой в один пункт: 52 px с полями. Не влезает под кнопку —
-    // открываем над ней, чтобы нижнюю карточку не прятала панель вкладок.
-    const высота = 52;
+    // Окно: вопрос и два действия — 98 px по замеру. Ставим по этой оценке, а
+    // после монтирования поправляем по настоящей высоте (длинный вопрос на
+    // узком экране занимает три строки). Не влезает под кнопку — открываем
+    // над ней, чтобы нижнюю карточку не прятала панель вкладок.
+    const высота = 98;
     const снизу = r.bottom + 6;
     const top = снизу + высота > window.innerHeight - 96 ? r.top - высота - 6 : снизу;
     setPlace({ top, right: Math.max(8, window.innerWidth - r.right) });
   };
 
+  // Настоящая высота окна известна только после монтирования: если оно вышло
+  // за нижний край, переносим его над кнопкой (ревью 21.09.2026).
+  useLayoutEffect(() => {
+    const окно = окноRef.current;
+    const кнопка = btnRef.current?.getBoundingClientRect();
+    if (!окно || !кнопка || !place) return;
+    const h = окно.getBoundingClientRect().height;
+    if (place.top + h <= window.innerHeight - 96) return;
+    const наверх = кнопка.top - h - 6;
+    if (наверх >= 8 && наверх !== place.top) setPlace({ ...place, top: наверх });
+  }, [place]);
+
   useEffect(() => {
     if (!open) return;
-    // 🔴 Фокус — только тем, кто пришёл с клавиатуры. После касания
-    // программный фокус рисовал вокруг пункта жирную рамку фокуса
-    // (снимок 10.09.2026): пальцу она не нужна, а выглядит как ошибка.
-    if (сКлавиатуры.current) itemRef.current?.focus({ preventScroll: true });
+    // 🔴 Фокус уходит на САМО окно, а не на кнопку внутри. Программный фокус
+    // на кнопке рисовал вокруг неё жирную рамку (снимок 10.09.2026) — пальцу
+    // она не нужна; у контейнера с `outline: none` рамки нет, зато VoiceOver
+    // попадает в окно и читает вопрос, а не продолжает по карточке (ревью
+    // 21.09.2026). С клавиатуры первый Tab даёт «Отмена» — безопасное
+    // действие идёт первым.
+    окноRef.current?.focus({ preventScroll: true });
     const мимо = (e: PointerEvent) => {
       const t = e.target as Node;
-      if (menuRef.current?.contains(t) || btnRef.current?.contains(t)) return;
-      // 🔴 Касание мимо ТОЛЬКО закрывает меню, как в iOS. Раньше оно ещё и
+      if (окноRef.current?.contains(t) || btnRef.current?.contains(t)) return;
+      // 🔴 Касание мимо ТОЛЬКО закрывает окно, как в iOS. Раньше оно ещё и
       // срабатывало под пальцем — например, давало +1 к счётчику соседней
       // карточки (ревью 10.09.2026). Гасим и само касание (слушатель на
       // документе в фазе захвата — раньше корня React), и клик следом.
+      //
+      // 🔴 Кроме кнопки скрытия другой карточки: гасить её значит требовать
+      // второго тапа, и кнопка выглядит сломанной (ревью 21.09.2026). Там
+      // нет побочного действия — только открытие такого же окна.
+      const поКнопкеСкрытия = t instanceof Element
+        && !!t.closest('[aria-haspopup="dialog"]');
+      if (поКнопкеСкрытия) { setPlace(null); return; }
       e.stopPropagation();
       // Ловушка на один клик. Касание могло перейти в прокрутку, и клика не
       // будет вовсе — тогда её снимает следующее касание (оно уже другой
@@ -405,14 +466,13 @@ function CardMenu({ title, label, icon, onAction }: {
     };
     const клавиша = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      // Escape закрывает только меню. Лист скрытых слушает Escape на окне, и
+      // Escape закрывает только это окно. Лист скрытых слушает Escape на окне, и
       // без этого одно нажатие закрывало бы сразу оба слоя.
       e.stopImmediatePropagation();
       setPlace(null);
-      // Кнопка могла исчезнуть вместе с карточкой — фокус в пустоту не шлём.
-      if (btnRef.current?.isConnected) btnRef.current.focus({ preventScroll: true });
+      вернутьФокус();
     };
-    // Меню стоит по координатам кнопки; при прокрутке оно бы от неё уехало.
+    // Окно стоит по координатам кнопки; при прокрутке оно бы от неё уехало.
     const прокрутка = () => setPlace(null);
     document.addEventListener('pointerdown', мимо, true);
     document.addEventListener('keydown', клавиша);
@@ -429,16 +489,15 @@ function CardMenu({ title, label, icon, onAction }: {
       <button
         ref={btnRef}
         type="button"
-        // У клика с клавиатуры (Enter, пробел) `detail` равен нулю, у
-        // касания и мыши — числу нажатий.
-        onClick={e => toggle(e.detail === 0)}
-        aria-haspopup="menu"
+        onClick={() => toggle()}
+        aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Действия: ${title}`}
+        aria-label={`Скрыть: ${title}`}
+        title="Скрыть"
         className="icon-btn"
         style={{
           flexShrink: 0,
-          // Попадание 40 px, а на вид — только точки: отрицательные поля
+          // Попадание 40 px, а на вид — только значок: отрицательные поля
           // возвращают карточке её отступы, и шапка не становится выше.
           width: '40px', height: '40px',
           margin: '-10px -10px -10px 0',
@@ -447,54 +506,76 @@ function CardMenu({ title, label, icon, onAction }: {
           background: open ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent',
         }}
       >
-        <More size={ICON_SIZE.sm} />
+        <EyeOff size={ICON_SIZE.sm} />
       </button>
       {place && createPortal(
         <div
-          ref={menuRef}
-          role="menu"
+          ref={окноRef}
+          role="dialog"
+          aria-modal="false"
           aria-label={title}
+          aria-describedby={вопросId}
+          tabIndex={-1}
           className="liquid-glass"
           style={{
             ...GLASS_BLUR,
             position: 'fixed',
             top: `${place.top}px`,
             right: `${place.right}px`,
-            // Поверх всего, включая лист скрытых и плашку отмены: меню
-            // живёт секунды и обязано быть видно целиком. На 60 пункт
-            // «Вернуть» уходил под плашку отмены (снимок 10.09.2026).
+            // Поверх всего, включая лист скрытых и плашку отмены: окно живёт
+            // секунды и обязано быть видно целиком.
             zIndex: 1000,
-            minWidth: '196px',
-            padding: 'var(--space-tight)',
+            width: 'min(268px, calc(100vw - 32px))',
+            padding: 'var(--space-cozy)',
             borderRadius: '14px',
+            outline: 'none',
             animation: 'card-in 0.16s cubic-bezier(0.22,1,0.36,1) both',
           }}
         >
-          <button
-            ref={itemRef}
-            type="button"
-            role="menuitem"
-            onClick={() => { setPlace(null); onAction(); }}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              gap: 'var(--space-cozy)',
-              width: '100%', minHeight: '44px',
-              padding: '0 var(--space-cozy)',
-              border: 'none', borderRadius: '10px',
-              background: 'transparent',
-              color: 'var(--text-primary)',
-              fontFamily: 'inherit',
-              fontSize: 'var(--font-body)',
-              textAlign: 'left',
-              cursor: 'pointer',
-            }}
-          >
-            {/* Как в системных меню iOS: подпись слева, значок справа. */}
-            <span>{label}</span>
-            <span aria-hidden style={{ display: 'inline-flex', color: 'var(--text-secondary)' }}>
-              {icon}
-            </span>
-          </button>
+          <p id={вопросId} style={{
+            margin: '0 0 var(--space-snug)',
+            fontSize: 'var(--font-subhead)',
+            lineHeight: 'var(--leading-subhead)',
+            color: 'var(--text-primary)',
+          }}>
+            {question}
+          </p>
+          <div style={{ display: 'flex', gap: 'var(--space-tight)' }}>
+            <button
+              type="button"
+              onClick={() => { setPlace(null); вернутьФокус(); }}
+              style={{
+                flex: 1, minHeight: '44px',
+                border: '1px solid var(--hairline)', borderRadius: '10px',
+                background: 'transparent',
+                color: 'var(--text-secondary)',
+                fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
+                cursor: 'pointer',
+              }}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => { setPlace(null); onConfirm(); вернутьФокус(false); }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 'var(--space-tight)',
+                flex: 1, minHeight: '44px',
+                border: 'none', borderRadius: '10px',
+                background: 'rgb(var(--ink-rgb) / 0.08)',
+                color: 'var(--text-primary)',
+                fontFamily: 'inherit', fontSize: 'var(--font-subhead)',
+                fontWeight: 'var(--weight-semibold)',
+                cursor: 'pointer',
+              }}
+            >
+              <span>{confirmLabel}</span>
+              <span aria-hidden style={{ display: 'inline-flex', color: 'var(--text-secondary)' }}>
+                {confirmIcon}
+              </span>
+            </button>
+          </div>
         </div>,
         document.body,
       )}
@@ -541,15 +622,29 @@ function HiddenSheet({ items, onReturn, onClose }: {
             }}>
               {e.title_ru}
             </span>
-            {/* Возврат тем же жестом, что и скрытие: три точки → «Вернуть».
-                Владелец 10.09.2026: «из скрытых возвращается примерно таким
-                же образом». Одно действие — одно место и один вид. */}
-            <CardMenu
-              title={e.title_ru}
-              label="Вернуть"
-              icon={<Eye size={ICON_SIZE.sm} />}
-              onAction={() => onReturn(e.id)}
-            />
+            {/* Возврат — обычной кнопкой, без вопроса: он ничего не прячет и
+                легко отменяется повторным скрытием. Подтверждение стоит там,
+                где действие убирает дуа с глаз (владелец 21.09.2026). */}
+            <button
+              type="button"
+              onClick={() => onReturn(e.id)}
+              aria-label={`Вернуть: ${e.title_ru}`}
+              className="icon-btn"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 'var(--space-tight)',
+                flexShrink: 0, minHeight: '36px',
+                padding: '0 var(--space-snug)',
+                borderRadius: 'var(--radius-pill)',
+                border: '1px solid var(--hairline)',
+                background: 'transparent',
+                color: 'var(--text-secondary)',
+                fontFamily: 'inherit', fontSize: 'var(--font-footnote)',
+                cursor: 'pointer',
+              }}
+            >
+              <span>Вернуть</span>
+              <Eye size={ICON_SIZE.sm} />
+            </button>
           </div>
         ))}
       </div>
@@ -638,7 +733,7 @@ function DuaCard({
   count: number;
   onCount: () => void;
   onResetCount: () => void;
-  /** Три точки в правом верхнем углу — действия с карточкой. */
+  /** Кнопка скрытия в правом верхнем углу карточки. */
   menu?: ReactNode;
 }) {
   const font = azkarFontConfig(prefs.arabicFont);
@@ -829,7 +924,7 @@ function UndoBar({ title, onUndo, onDismiss }: {
       </button>
       <button
         onClick={onDismiss}
-        aria-label="Скрыть"
+        aria-label="Закрыть"
         style={{
           position: 'relative',
           flexShrink: 0, width: '30px', height: '30px',
